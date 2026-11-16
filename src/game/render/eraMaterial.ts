@@ -1,0 +1,325 @@
+import * as THREE from 'three';
+import { MAX_RIFTS } from '../era/EraSystem';
+
+/**
+ * Shared uniforms that let every world material know which graphical generation it is
+ * rendering in at each fragment. During an era change the boundary is a sphere growing from
+ * the ripple centre; in Beyond, rifts carve bubbles of older generations into the world.
+ */
+export const eraUniforms = {
+  uEraFrom: { value: 0 },
+  uEraTo: { value: 0 },
+  uRippleCenter: { value: new THREE.Vector3() },
+  uRippleRadius: { value: 0 },
+  uSunView: { value: new THREE.Vector3(0, 1, 0) },
+  /** Menu / gallery: era by world x bands (5 thresholds → 6 bands). */
+  uSplit: { value: 0 },
+  uSplitX: { value: [0, 0, 0, 0, 0] as number[] },
+  uRifts: { value: Array.from({ length: MAX_RIFTS }, () => new THREE.Vector4(0, -999, 0, 0)) },
+  uRiftEra: { value: [0, 0, 0, 0] as number[] },
+  /** Pip's Regress bubble (xyz centre, w radius; w = 0 when off) and its generation. */
+  uBubble: { value: new THREE.Vector4(0, -999, 0, 0) },
+  uBubbleEra: { value: 0 },
+  /** Censor fields: up to 4 boxes forced to a generation. */
+  uFieldMin: { value: Array.from({ length: 4 }, () => new THREE.Vector3(0, -999, 0)) },
+  uFieldMax: { value: Array.from({ length: 4 }, () => new THREE.Vector3(0, -999, 0)) },
+  uFieldEra: { value: [0, 0, 0, 0] as number[] },
+  uTime: { value: 0 },
+  /** Early-3D vertex snapping grid (in NDC units per half-screen). */
+  uSnapRes: { value: new THREE.Vector2(110, 80) },
+};
+
+export const PATTERN = {
+  none: 0,
+  dirt: 1,
+  grass: 2,
+  stone: 3,
+  ruin: 4,
+  hedge: 5,
+  wood: 6,
+  metal: 7,
+  water: 8,
+  mural: 9,
+  /** City facades: lit windows. */
+  facade: 10,
+  /** Wet asphalt: puddles go mirror-smooth in the modern generations. */
+  wet: 11,
+} as const;
+
+/** GLSL shared by vertex and fragment stages: per-point era resolution. */
+export const ERA_GLSL_COMMON = /* glsl */ `
+uniform float uEraFrom;
+uniform float uEraTo;
+uniform vec3 uRippleCenter;
+uniform float uRippleRadius;
+uniform float uSplit;
+uniform float uSplitX[5];
+uniform vec4 uRifts[${MAX_RIFTS}];
+uniform float uRiftEra[${MAX_RIFTS}];
+uniform vec4 uBubble;
+uniform float uBubbleEra;
+uniform vec3 uFieldMin[4];
+uniform vec3 uFieldMax[4];
+uniform float uFieldEra[4];
+uniform float uTime;
+float eraAtWorld(vec3 w) {
+  if (uSplit > 0.5) {
+    float e = 0.0;
+    for (int i = 0; i < 5; i++) e += step(uSplitX[i], w.x);
+    return e;
+  }
+  float e = distance(w, uRippleCenter) < uRippleRadius ? uEraTo : uEraFrom;
+  for (int i = 0; i < 4; i++) {
+    if (all(greaterThanEqual(w, uFieldMin[i])) && all(lessThanEqual(w, uFieldMax[i]))) e = uFieldEra[i];
+  }
+  if (uBubble.w > 0.01 && distance(w, uBubble.xyz) < uBubble.w) return uBubbleEra;
+  if (e > 4.5) {
+    for (int i = 0; i < ${MAX_RIFTS}; i++) {
+      if (uRifts[i].w > 0.01 && distance(w, uRifts[i].xyz) < uRifts[i].w) { e = uRiftEra[i]; break; }
+    }
+  }
+  return e;
+}
+`;
+
+const NOISE_GLSL = /* glsl */ `
+float eraHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float vnoise(vec3 p) {
+  vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  float n000 = eraHash(i), n100 = eraHash(i + vec3(1,0,0)), n010 = eraHash(i + vec3(0,1,0)), n110 = eraHash(i + vec3(1,1,0));
+  float n001 = eraHash(i + vec3(0,0,1)), n101 = eraHash(i + vec3(1,0,1)), n011 = eraHash(i + vec3(0,1,1)), n111 = eraHash(i + vec3(1,1,1));
+  return mix(mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y), mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);
+}
+float fbm(vec3 p) { return vnoise(p) * 0.55 + vnoise(p * 2.13) * 0.28 + vnoise(p * 4.41) * 0.17; }
+`;
+
+const FRAG_HEAD = /* glsl */ `
+varying vec3 vEraWorld;
+uniform vec3 uSunView;
+uniform float uPattern;
+uniform float uFlatBoost;
+${ERA_GLSL_COMMON}
+${NOISE_GLSL}
+vec3 eraPattern(vec3 col, vec3 p, float kind, float era) {
+  float cs = era < 0.5 ? 0.5 : (era < 1.5 ? 0.25 : (era < 2.5 ? 0.5 : 0.125));
+  vec3 c = floor(p / cs + 0.001);
+  float n = eraHash(c + kind * 13.0);
+  float amp = era < 0.5 ? 0.2 : (era < 1.5 ? 0.15 : (era < 2.5 ? 0.12 : (era < 3.5 ? 0.05 : 0.08)));
+  float f = 1.0 + (n - 0.5) * amp;
+  if (kind < 1.5) {
+    float strata = step(0.84, fract(p.y * (era < 0.5 ? 0.9 : 1.6)));
+    f *= 1.0 - strata * (era < 1.5 ? 0.16 : 0.07);
+    f *= 1.0 - step(0.94, n) * 0.22;
+    if (era > 4.5) f *= 0.85 + 0.3 * fbm(p * 3.0);
+  } else if (kind < 2.5) {
+    f = 1.0 + (n - 0.5) * amp * 1.5;
+    if (era > 4.5) f *= 0.82 + 0.36 * fbm(p * 1.7);
+  } else if (kind < 4.5) {
+    float bh = kind < 3.5 ? 0.5 : 0.75;
+    float row = floor(p.y / bh);
+    float u = (p.x + p.z) / (bh * 2.0) + mod(row, 2.0) * 0.5;
+    float v = p.y / bh;
+    float mortar = clamp(step(fract(u), 0.05) + step(fract(v), 0.07), 0.0, 1.0);
+    f *= 1.0 - mortar * (era < 1.5 ? 0.32 : (era < 3.5 ? 0.25 : 0.22));
+    f *= 0.9 + eraHash(vec3(floor(u), row, kind)) * 0.2;
+    if (era > 4.5) f *= 0.8 + 0.4 * fbm(p * 4.0);
+  } else if (kind < 5.5) {
+    f = 0.82 + n * 0.36;
+  } else if (kind < 6.5) {
+    float v = fract(p.x / 0.5);
+    f *= 1.0 - step(0.9, v) * 0.35;
+    f *= 0.95 + 0.1 * sin(p.x * 40.0 + p.z * 7.0);
+  } else if (kind < 7.5) {
+    f = 1.0 + (n - 0.5) * amp * 0.5;
+  } else if (kind < 8.5) {
+    float w = sin(p.x * 2.0 + uTime * 1.6) * 0.5 + sin(p.z * 3.1 - uTime * 1.2) * 0.5;
+    f = 0.9 + 0.12 * w;
+  } else if (kind < 9.5) {
+    f = 1.0;
+  } else if (kind < 10.5) {
+    // facade panels
+    vec3 pc = floor(vec3(p.x / 3.2, p.y / 4.4, p.z / 3.2));
+    f = 0.82 + eraHash(pc) * 0.3;
+  } else {
+    // asphalt: grain plus darker wet patches
+    f = (0.85 + (n - 0.5) * amp) * (era > 3.5 ? 0.75 + 0.35 * fbm(p * 0.6) : 1.0);
+    float puddle = smoothstep(0.56, 0.64, fbm(vec3(p.x * 0.33, 0.0, p.z * 0.33)));
+    f *= 1.0 - puddle * 0.35;
+  }
+  return col * f;
+}
+
+/** Lit windows on city facades (works in every generation; the post pass pixelates it). */
+vec3 eraWindows(vec3 p, vec3 nW, float era) {
+  if (abs(nW.y) > 0.5) return vec3(0.0);
+  float u = abs(nW.z) > abs(nW.x) ? p.x : p.z;
+  vec2 cell = floor(vec2(u / 1.6, p.y / 2.2));
+  vec2 f = fract(vec2(u / 1.6, p.y / 2.2));
+  float inWin = step(0.18, f.x) * step(f.x, 0.82) * step(0.22, f.y) * step(f.y, 0.78);
+  float h = eraHash(vec3(cell, nW.x * 3.0 + nW.z * 7.0));
+  float lit = step(0.52, h);
+  float flick = era > 3.5 ? 0.85 + 0.15 * sin(uTime * (1.0 + h * 3.0) + h * 40.0) : 1.0;
+  vec3 warm = vec3(1.0, 0.72, 0.4);
+  vec3 cool = vec3(0.45, 0.85, 1.0);
+  vec3 pink = vec3(1.0, 0.35, 0.75);
+  vec3 c = h > 0.86 ? pink : (h > 0.68 ? cool : warm);
+  return c * inWin * lit * flick * 1.6;
+}
+`;
+
+export interface EraMatOptions {
+  color: THREE.ColorRepresentation;
+  emissive?: THREE.ColorRepresentation;
+  emissiveIntensity?: number;
+  pattern?: number;
+  roughness?: number;
+  metalness?: number;
+  transparent?: boolean;
+  opacity?: number;
+  /** Brightness multiplier in the flat (pixel) eras. */
+  flatBoost?: number;
+  side?: THREE.Side;
+  vertexColors?: boolean;
+  /** Use MeshPhysicalMaterial (clearcoat, iridescence) for hero surfaces. */
+  physical?: Partial<Pick<THREE.MeshPhysicalMaterial, 'clearcoat' | 'clearcoatRoughness' | 'iridescence' | 'sheen' | 'sheenColor'>>;
+  /** Extra vertex displacement GLSL run in world space (receives `vec3 wp`, may modify it). */
+  vertexWorld?: string;
+}
+
+/**
+ * A standard (or physical) material that renders differently per generation:
+ *  0 flat 2-band · 1 banded 3-tone + rim · 2 faceted vertex-lit low-poly with vertex jitter ·
+ *  3 cel-shaded with tinted shadows and rim · 4 PBR · 5 PBR with procedural micro-detail.
+ */
+export function eraMaterial(o: EraMatOptions): THREE.MeshStandardMaterial {
+  const params: THREE.MeshPhysicalMaterialParameters = {
+    color: o.color,
+    emissive: o.emissive ?? 0x000000,
+    emissiveIntensity: o.emissiveIntensity ?? 1,
+    roughness: o.roughness ?? 0.85,
+    metalness: o.metalness ?? 0,
+    transparent: o.transparent ?? false,
+    opacity: o.opacity ?? 1,
+    side: o.side ?? THREE.FrontSide,
+    vertexColors: o.vertexColors ?? false,
+  };
+  const m = o.physical ? new THREE.MeshPhysicalMaterial({ ...params, ...o.physical }) : new THREE.MeshStandardMaterial(params);
+  const local = { uPattern: { value: o.pattern ?? 0 }, uFlatBoost: { value: o.flatBoost ?? 1 } };
+  const vertexWorld = o.vertexWorld ?? '';
+  m.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, eraUniforms, local);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\nvarying vec3 vEraWorld;\nuniform vec2 uSnapRes;\n${ERA_GLSL_COMMON}`)
+      .replace(
+        '#include <project_vertex>',
+        `vec4 eraWp = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          eraWp = instanceMatrix * eraWp;
+        #endif
+        vec3 wp = (modelMatrix * eraWp).xyz;
+        ${vertexWorld}
+        vEraWorld = wp;
+        vec4 mvPosition = viewMatrix * vec4(wp, 1.0);
+        gl_Position = projectionMatrix * mvPosition;
+        // Early 3D: snap vertices to a coarse screen grid for that wobbly, jittery polygon look.
+        if (abs(eraAtWorld(wp) - 2.0) < 0.5 && gl_Position.w > 0.0) {
+          vec2 ndc = gl_Position.xy / gl_Position.w;
+          ndc = floor(ndc * uSnapRes + 0.5) / uSnapRes;
+          gl_Position.xy = ndc * gl_Position.w;
+        }`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\n${FRAG_HEAD}`)
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        float eraF = eraAtWorld(vEraWorld);
+        if (uPattern > 0.5) diffuseColor.rgb = eraPattern(diffuseColor.rgb, vEraWorld, uPattern, eraF);`,
+      )
+      .replace(
+        '#include <roughnessmap_fragment>',
+        `#include <roughnessmap_fragment>
+        if (eraF > 4.5 && uPattern > 0.5) {
+          float rn = fbm(vEraWorld * 2.7);
+          roughnessFactor = clamp(roughnessFactor * (0.65 + 0.7 * rn), 0.04, 1.0);
+          if (uPattern > 7.5 && uPattern < 8.5) roughnessFactor = 0.03;
+        }
+        if (eraF > 3.5 && uPattern > 10.5) {
+          float puddle = smoothstep(0.56, 0.64, fbm(vec3(vEraWorld.x * 0.33, 0.0, vEraWorld.z * 0.33)));
+          roughnessFactor = mix(roughnessFactor, 0.035, puddle);
+        }`,
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        if (uPattern > 9.5 && uPattern < 10.5) {
+          // geometric (un-bumped) normal so the window grid is stable per face
+          vec3 nWorld = normalize(cross(dFdx(vEraWorld), dFdy(vEraWorld)));
+          nWorld = sign(nWorld) * step(0.5, abs(nWorld));
+          totalEmissiveRadiance += eraWindows(vEraWorld, nWorld, eraF);
+        }`,
+      )
+      .replace(
+        '#include <normal_fragment_maps>',
+        `#include <normal_fragment_maps>
+        // Beyond: procedural micro-surface detail (pores, grain, ripples) as a bump.
+        if (eraF > 4.5 && uPattern > 0.5) {
+          float sc = uPattern > 7.5 && uPattern < 8.5 ? 1.3 : 6.0;
+          vec3 wpd = vEraWorld * sc + (uPattern > 7.5 && uPattern < 8.5 ? vec3(uTime * 0.6, 0.0, uTime * 0.45) : vec3(0.0));
+          float e = 0.05;
+          float h0 = fbm(wpd);
+          vec3 g = vec3(fbm(wpd + vec3(e, 0, 0)) - h0, fbm(wpd + vec3(0, e, 0)) - h0, fbm(wpd + vec3(0, 0, e)) - h0) / e;
+          float amt = uPattern > 7.5 && uPattern < 8.5 ? 0.22 : 0.09;
+          vec3 gv = (viewMatrix * vec4(g, 0.0)).xyz;
+          normal = normalize(normal - gv * amt);
+        }`,
+      )
+      .replace(
+        '#include <opaque_fragment>',
+        `if (eraF < 3.5) {
+          vec3 nV = normalize(normal);
+          vec3 sun = normalize(uSunView);
+          float ndl = dot(nV, sun);
+          vec3 col;
+          if (eraF < 0.5) {
+            col = diffuseColor.rgb * (ndl > 0.15 ? 1.0 : 0.7) * 0.95 * uFlatBoost;
+          } else if (eraF < 1.5) {
+            float b = ndl > 0.55 ? 1.04 : (ndl > -0.05 ? 0.86 : 0.64);
+            float rim = pow(1.0 - abs(nV.z), 3.0) * 0.12;
+            col = diffuseColor.rgb * (b + rim) * 0.92 * uFlatBoost;
+          } else if (eraF < 2.5) {
+            // Faceted, per-polygon vertex lighting with no specular and no shadow maps.
+            vec3 fn = normalize(cross(dFdx(-vViewPosition), dFdy(-vViewPosition)));
+            float d = max(dot(fn, sun), 0.0);
+            float hemi = 0.5 + 0.5 * fn.y;
+            col = diffuseColor.rgb * (0.38 + 0.22 * hemi + 0.62 * d) * uFlatBoost;
+          } else {
+            // Cel shading driven by the real lighting (so shadows still band), with tinted shade.
+            float lum = dot(totalDiffuse, vec3(0.333)) / max(dot(diffuseColor.rgb, vec3(0.333)), 0.02);
+            float band = lum > 0.95 ? 1.06 : (lum > 0.45 ? 0.82 : 0.55);
+            vec3 shade = mix(vec3(0.62, 0.58, 0.98), vec3(1.0), smoothstep(0.55, 1.06, band));
+            vec3 v = normalize(vViewPosition);
+            float rim = step(0.62, 1.0 - max(dot(nV, v), 0.0)) * 0.22 * smoothstep(-0.2, 0.4, ndl);
+            vec3 h = normalize(sun + v);
+            float spec = step(0.985, max(dot(nV, h), 0.0)) * (1.0 - roughnessFactor) * 0.6;
+            col = diffuseColor.rgb * band * shade * 1.04 + vec3(rim + spec);
+          }
+          outgoingLight = col + totalEmissiveRadiance;
+        }
+        #include <opaque_fragment>`,
+      );
+  };
+  m.customProgramCacheKey = () => `era-v2${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical ? '-phys' : ''}`;
+  return m;
+}
+
+const cache = new Map<string, THREE.MeshStandardMaterial>();
+/** Cached variant for repeated decoration. */
+export function sharedEraMaterial(key: string, o: EraMatOptions) {
+  let m = cache.get(key);
+  if (!m) {
+    m = eraMaterial(o);
+    cache.set(key, m);
+  }
+  return m;
+}
