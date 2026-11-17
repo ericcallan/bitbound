@@ -495,8 +495,9 @@ void main() {
   if (uSplit > 0.5) {
     float m = 1.0;
     for (int i = 0; i < 5; i++) m = min(m, abs(uv.x - uSplitScreen[i]));
-    float seam = exp(-pow(m * uRes.x * 0.25, 2.0));
-    col += vec3(0.75, 0.95, 1.0) * seam * (0.14 + 0.05 * sin(uTime * 3.0 + uv.y * 30.0));
+    // hairline seams between the generations
+    float seam = exp(-pow(m * uRes.x * 0.7, 2.0));
+    col = mix(col, vec3(1.0), seam * 0.32);
   }
   col += uFlash * vec3(0.8, 1.0, 1.0);
   col = mix(col, uFadeColor, uFade);
