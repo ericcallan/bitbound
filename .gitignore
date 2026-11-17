@@ -9,3 +9,5 @@ assets/exports/
 assets/source-textures/baked/
 tools/
 assets/source-textures/packed/
+test-results/
+playwright-report/

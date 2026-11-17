@@ -95,6 +95,8 @@ export class GameView {
   /** The real sky in use this frame (null: the older generations' procedural sky). */
   private hdSky: HdSkyData | null = null;
   private hdActive = false;
+  /** Dev scenarios: 0 freezes wind, water and other animation for reproducible screenshots. */
+  timeScale = 1;
   /** 0..1: how far the camera focus is inside the hidden chamber. */
   private indoor = 0;
   /** The 8-bit tile renderer (2D only). */
@@ -490,7 +492,7 @@ export class GameView {
 
   update(dt: number) {
     const g = this.game;
-    this.t += dt;
+    this.t += dt * this.timeScale;
     this.lastDt = dt;
     const t = this.t;
     const a = g.alpha;

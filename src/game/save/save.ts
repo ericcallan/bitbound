@@ -129,7 +129,14 @@ export function loadSave(): SaveData | null {
   }
 }
 
+let writesEnabled = true;
+/** Dev scenarios play from a fixed state and must never overwrite the player's real save. */
+export function setSaveWrites(on: boolean) {
+  writesEnabled = on;
+}
+
 export function writeSave(d: SaveData) {
+  if (!writesEnabled) return;
   try {
     storage()?.setItem(KEY, JSON.stringify({ ...d, savedAt: Date.now() }));
   } catch {

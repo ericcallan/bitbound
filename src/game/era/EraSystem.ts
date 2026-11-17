@@ -85,6 +85,8 @@ const inBox = (p: V3, f: EraField) =>
 export class EraSystem {
   era: Era = 0;
   transition: EraTransition | null = null;
+  /** Dev scenarios turn the drifting rifts off so screenshots are reproducible. */
+  riftsEnabled = true;
   /** Active rifts (only while the world is in the Beyond generation). */
   rifts: Rift[] = [];
   private anchors: RiftAnchor[] = [];
@@ -194,7 +196,7 @@ export class EraSystem {
 
   /** The rifts nearest the focus drift on slow Lissajous paths around their anchors. */
   private updateRifts(focusX: number) {
-    if (this.riftStrength <= 0 || this.anchors.length === 0) {
+    if (!this.riftsEnabled || this.riftStrength <= 0 || this.anchors.length === 0) {
       this.rifts.length = 0;
       return;
     }
