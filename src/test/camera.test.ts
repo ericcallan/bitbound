@@ -113,8 +113,8 @@ describe('3D camera: collision, clearance and line of sight', () => {
 
   it('with a rock ridge right behind Pip, the camera detects it and keeps a clear view instead of filming the rock', () => {
     const { game } = game3d();
-    // just past the light fence's ridge on the plateau, off the lane: the chase camera's spot is inside the ridge
-    game.player.teleport({ x: 119.2, y: game.level.plateauY + 0.1, z: -5 });
+    // just past the second light fence's ridge, off the lane: the chase camera's spot is inside the ridge
+    game.player.teleport({ x: 164.4, y: game.level.plateauY + 0.1, z: -5 });
     game.camera.snap(game.cameraContext());
     run(game, 2);
     const cam = game.camera.pos;
@@ -123,9 +123,9 @@ describe('3D camera: collision, clearance and line of sight', () => {
     expect(terrainClearance(cam, chest)).toBeGreaterThan(0);
   });
 
-  it('on the far aqueduct half, the cut in the seal ridge leaves the chase view clear', () => {
+  it('on the aqueduct stub over the canyon, the chase view stays clear', () => {
     const { game } = game3d();
-    game.player.teleport({ x: 215.5, y: game.level.sealY, z: -5.4 });
+    game.player.teleport({ x: 215.5, y: game.level.sealY, z: 0 });
     game.camera.snap(game.cameraContext());
     run(game, 2);
     const chest = v3(game.player.pos.x, game.player.pos.y + 0.6, game.player.pos.z);

@@ -11,8 +11,9 @@ import { clamp, smoothstep } from '../math';
  * On the 2D lane the height equals the platform tops exactly, so 2D play, the dimension shift and every
  * puzzle behave as before. Off the lane the ground keeps each section's exact height, so every rise in the
  * level (ground → plateau → Halo Path → Seal) is a sheer rock face across the valley, never a slope to walk
- * around a puzzle. Pits are one stream gorge each, crossing the whole valley; each gate (light fences,
- * brambles, the seal door) is set into a rock ridge that crosses it too.
+ * around a puzzle. Pits are one stream gorge each, crossing the whole valley. Each gate (light fences,
+ * brambles, the Stalled Gate) is set into a rock ridge behind the path; in front of it the gate's own side wall
+ * (meadows.ts `gateFlank`) runs out across the meadow, so nothing rises between the 2D camera and the gate.
  */
 
 export const LANE_BACK = -3;
@@ -56,18 +57,17 @@ export const GORGES: [number, number][] = [
 export const PADS: [number, number, number, number, number][] = [
   // the hidden chamber floor (it has its own stone floor mesh; the terrain mesh is drawn just under it)
   [51.6, 62, -12, -3, 0],
-  // the far aqueduct half's landing on the seal side: a cut through the seal ridge behind the door. It leads
-  // only onto that half, which ends in mid-air over the canyon (its secret is the reward), so the door can't be
-  // bypassed this way (tested in valley.test.ts).
-  [210.8, 214.2, -6.8, -3.9, 12.5],
 ];
-/** Gates on the lane: the terrain rises into a rock ridge across the valley on either side of each. */
+/** Gates on the lane: behind each, the terrain rises into a rock ridge across the valley. */
 export const GATES: [number, number][] = [
   [117.4, 117.8], // light fence
   [160, 160.4], // second light fence
   [175, 176.6], // brambles
-  [212.6, 213.4], // the seal door
+  [212.6, 213.4], // the Stalled Gate
 ];
+/** How far each gate's ridge spreads along the path either side (a broad spur, not a fin); the Stalled Gate's
+ * stays narrow, since the canyon starts just past it. */
+const GATE_SPREAD = [3.2, 3.2, 3.2, 1.4];
 const GATE_RISE = 5;
 
 /** Every x where the ground changes abruptly (section ends, gorge walls, pads, gates) and every z likewise:
@@ -146,7 +146,8 @@ function gorge(x: number, z: number) {
 /** 1 on a gate's x-span, easing to 0 just beyond it. */
 function gate(x: number) {
   let k = 0;
-  for (const [a, b] of GATES) k = Math.max(k, 1 - smoothstep(0.3, 1.4, Math.max(a - x, x - b, 0)));
+  // full height across the spur, then a steep drop at its edge (never a slope you could walk over)
+  GATES.forEach(([a, b], i) => (k = Math.max(k, 1 - smoothstep(GATE_SPREAD[i] - 1.1, GATE_SPREAD[i], Math.max(a - x, x - b, 0)))));
   return k;
 }
 
@@ -203,8 +204,8 @@ export function valleyHeight(x: number, z: number): number {
   // The stream gorge that crosses the valley at each pit.
   const g = gorge(x, z);
   if (g > 0) h = h * (1 - g) + (GORGE_FLOOR + fbm(x, z * 0.5) * 0.6) * g;
-  // Gates sit in rock ridges across the valley (never on the lane itself).
-  const gk = gate(x) * smoothstep(0, 0.45, off);
+  // Gates sit in rock ridges across the valley behind the path (never on the lane, never in front of it).
+  const gk = z < LANE_BACK ? gate(x) * smoothstep(0, 0.45, off) : 0;
   if (gk > 0) h = Math.max(h, h + (top + GATE_RISE + fbm(x * 0.6, z * 0.2) * 1.5 - h) * gk);
   for (const [x0, x1, z0, z1, ph] of PADS) if (x >= x0 && x <= x1 && z >= z0 && z <= z1) return ph;
   return h;

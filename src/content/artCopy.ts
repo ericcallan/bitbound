@@ -81,7 +81,7 @@ export const ART_PAGES: ArtPage[] = [
     path: '/art/environment/',
     label: 'Environment',
     title: 'One world, six generations — Bitbound Art & Design',
-    description: 'The Bitbound world in every graphics generation: the meadow, the ruins, the hidden chamber, the Painted Stair and the broken aqueduct over the canyon.',
+    description: 'The Bitbound world in every graphics generation: the meadow, the ruins, the hidden chamber, the Painted Stair, the Stalled Gate, the Update Wave and the World Wheel.',
     heading: 'The world',
     intro: 'Every view is the real, playable level, rendered live. Pick a place, then compare all six generations side by side or look at one at a time.',
     cards: [
@@ -92,17 +92,18 @@ export const ART_PAGES: ArtPage[] = [
         ],
       },
       {
-        title: 'Three lessons of perspective',
+        title: 'Two lessons of perspective, then the generations',
         body: [
           'The Broken Passage teaches that 3D reveals what 2D hides: a chamber behind the scenery.',
           'The Painted Stair teaches the reverse: flattened into 2D, a painting of stairs becomes stairs.',
-          'The broken aqueduct asks you to believe it: its two halves stand at different depths, and only line up — and hold you up — from the side.',
+          'Then the Halo Path turns the generations into tools: light fences 8-bit never drew, brambles that are only scenery in 16-bit, handholds that hold only in ink, and an ending in three beats about updates themselves.',
         ],
       },
       {
-        title: 'The broken aqueduct, before and after',
+        title: 'The end of the Halo Path',
         body: [
-          'The canyon at the end of the Halo Path was two stone slabs between sheer walls. It was rebuilt as a place: a two-tier Roman aqueduct on its own piers, broken in mid-canyon, water still running along its channel and pouring off the break, ivy, moss and lavender, and a camera that sits at deck height so the halves meet on screen.',
+          'The Stalled Gate never finished updating: its stele is a blur of 16-bit pixels until full detail is rolled over it. The Update Wave is a band of Early 3D sweeping a broken aqueduct; the missing span only exists inside it, so you cross by walking with it. At the World Wheel, six version plates each install in their own generation, and with all six the wheel turns.',
+          'The canyon was once two stone slabs between sheer walls (before, on the left); it became a two-tier Roman aqueduct broken in mid-canyon, with water pouring off each end, ivy and lavender.',
         ],
       },
       {

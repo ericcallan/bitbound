@@ -57,10 +57,11 @@ export const SCRIPT = {
   thicket: [N('Known issue: brambles over the path.'), P("In 16-bit, bushes are scenery. Scenery's a different layer.")],
   thicketPassed: [P('Behind the bushes the whole time.')],
   relief: [N('Handholds carved in 4.0. Worn smooth by 5.0.'), P("Then I'll roll them back to ink.")],
-  sleeping: [N('Known issue: these stones never finished updating. Still on 2.0.'), P("The writing's all blurry.")],
+  sleeping: [N('Known issue: this gate never finished updating. Still on 2.0.'), P("The writing's all blurry.")],
   glyphs: [P('It says: TURN ME GENTLY.'), N("The wheel's instructions. Written in 1991.")],
-  aqueduct: [N('Known issue: the aqueduct broke in two.'), P('From the side, it still lines up.')],
-  summit: [N('The world wheel. Last turned: 1985.'), P("Everyone's been waiting for the next version."), P('Here it comes.')],
+  aqueduct: [N('Known issue: the aqueduct is stuck mid-update. It was whole in 3.0.'), P("Then I'll cross while it's 3.0.")],
+  summit: [N('The world wheel. Last turned: 1985.'), N('Install all six. In any order.'), P('One of each of me.')],
+  wheelReady: [P("Everyone's been waiting for the next version."), P('Here it comes.')],
   ending: [N('All updates installed. Nothing removed. Every version stays.'), S('The world is awake, every generation at once.')],
 } satisfies Record<string, Line[]>;
 

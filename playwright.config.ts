@@ -9,7 +9,7 @@ const url = process.env.PIP_URL ?? 'http://localhost:5180';
 export default defineConfig({
   testDir: 'e2e',
   timeout: 90_000,
-  workers: 2,
+  workers: 1,
   reporter: [['list']],
   expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.04, threshold: 0.25 } },
   use: {

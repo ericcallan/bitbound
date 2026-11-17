@@ -46,12 +46,13 @@ uses flat painted colours with soft bands.
 keeps its face and animation but is rebuilt in detail (tube stem, curled blades, velvet petals, glossy eyes).
 
 **8-bit** is a green landscape: grass-topped earth and stone tiles (16×16, three colours each), flat two-colour
-hills and bushes, plain clouds, blocky trees, and exactly 240 rows at a whole-number scale with letterbox bars
+hills and bushes, plain clouds, blocky trees, and about 240 rows at a whole-number scale (since 2026-11-17 the frame
+fills the screen; it used to sit between letterbox bars)
 (read back from the frame: 240 rows, 0 off-palette pixels).
 
 **16-bit** is now real: 24×24 tiles cut from the scanned ground materials and reduced to 12 colours; three painted
 parallax layers over a banded sky; Pip (idle, 4 walk frames, jump) and the scenery pre-rendered from the Blender
-models; 224 rows letterboxed; the camera pulls in from the 8-bit frame on the upgrade ripple.
+models; about 224 rows, filling the screen; the camera pulls in from the 8-bit frame on the upgrade ripple.
 
 **Animation.** Procedural layers on the keyframed clips: feet planted on slopes (verified: both soles on the terrain
 across and along a slope), walk blending into run by speed, lean into turns and acceleration, squash and stretch.

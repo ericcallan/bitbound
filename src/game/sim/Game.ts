@@ -1,8 +1,8 @@
 import { World, overlaps, type Collider } from '../collision/World';
-import { LEVEL, type Level } from '../level/meadows';
+import { LEVEL, PLATES, WAVE, waveCenter, type Level } from '../level/meadows';
 import { NO_INTENT, PlayerController, type MoveIntent, type PlayerEvent } from '../player/PlayerController';
 import { DimensionShift, type ShiftBlock } from '../shift/DimensionShift';
-import { EraSystem, ERA_BLURBS, ERA_NAMES, ERA_TITLES, generationFlag, type Bubble, type Era } from '../era/EraSystem';
+import { EraSystem, ERA_BLURBS, ERA_LABELS, ERA_NAMES, ERA_TITLES, generationFlag, type Bubble, type Era, type EraField } from '../era/EraSystem';
 import { CameraRig, type CameraContext } from '../camera/CameraRig';
 import { BrokenPassage } from '../puzzle/BrokenPassage';
 import { PaintedStair } from '../puzzle/PaintedStair';
@@ -58,6 +58,7 @@ export type GameEventType =
   | 'bubbleOff'
   | 'bubblePop'
   | 'glyphs'
+  | 'install'
   | 'wheel';
 
 export interface GameEvent {
@@ -209,14 +210,59 @@ export class Game {
   /** Ids of solids that fade for the camera (see blocksCamera). */
   private occluders = new Set<string>();
 
+  /** The Update Wave's field (a band of Early 3D) and its clock. */
+  readonly waveField: EraField = { min: v3(0, 0, 0), max: v3(0, 0, 0), era: 2 };
+  private waveT = 0;
+  /** Centre x of the Update Wave now. */
+  waveX = WAVE.c0;
+  /** Toast once per visit when Rollback is refused over the canyon. */
+  private rollbackBusyShown = false;
+
+  /** Dev scenarios hold the Update Wave still, for repeatable pictures. */
+  waveFrozen = false;
+  /** Put the Update Wave at a given point in its cycle. */
+  setWaveTime(t: number) {
+    this.waveT = t;
+    this.stepWave(0);
+  }
+
+  private stepWave(dt: number) {
+    this.waveT += dt;
+    this.waveX = waveCenter(this.waveT);
+    const f = this.waveField;
+    f.min.x = this.waveX - WAVE.width / 2;
+    f.max.x = this.waveX + WAVE.width / 2;
+    f.min.y = WAVE.y0;
+    f.max.y = WAVE.y1;
+    f.min.z = WAVE.z0;
+    f.max.z = WAVE.z1;
+  }
+
+  /** Rollback is refused over the Update Wave's canyon: a bubble of Early 3D would carry Pip straight across. */
+  inNoRollback(x = this.player.pos.x) {
+    const n = this.level.noRollback;
+    return x > n.x0 && x < n.x1 && this.player.pos.y > this.level.sealY - 6;
+  }
+
+  private rollbackBusy() {
+    if (this.rollbackBusyShown) return;
+    this.rollbackBusyShown = true;
+    this.toast = { keys: [], text: 'Rollback is busy: update in progress. Walk with the wave.', tone: 'warn' };
+    this.toastT = 2.6;
+    this.emit('fizzle', { pos: { ...this.player.pos }, text: 'regress' });
+  }
+
   constructor(
     public input: InputSource,
     save: SaveData | null = null,
     public mode: GameMode = 'play',
   ) {
     this.era = new EraSystem(this.level.riftAnchors);
-    // The glyph stones still sleep at 16-bit until full fidelity is projected over them.
-    this.era.fields = [{ ...this.level.sleepField }];
+    // The Stalled Gate is stuck on 16-bit until full detail is projected over its stele; the Update Wave is a
+    // band of Early 3D sweeping the aqueduct's canyon (moved every step, see stepWave).
+    const sf = this.level.sleepField;
+    this.era.fields = [{ min: { ...sf.min }, max: { ...sf.max }, era: sf.era }, this.waveField];
+    this.stepWave(0);
     for (const s of this.level.solids) {
       this.world.add(s.id, s.kind, s.box, s.enabled ?? true, s.only2d ?? false, s.genMask);
       if (s.occluder) this.occluders.add(s.id);
@@ -437,8 +483,21 @@ export class Game {
     const gd = Math.abs(p.pos.x - this.level.gate.x);
     const gateTarget = this.save.gatePassed ? 1 : clamp(1 - (gd - 2) / 14, 0.15, 0.9);
     this.gateGlow += (gateTarget - this.gateGlow) * Math.min(1, dt * 2);
-    if (this.save.glyphsRead) this.sealOpen = Math.min(1, this.sealOpen + dt * 0.5);
+    if (this.save.glyphsRead) {
+      this.sealOpen = Math.min(1, this.sealOpen + dt * 0.5);
+      // read and open, the gate finishes updating: its stalled field is gone
+      const f = this.era.fields[0];
+      if (this.sealOpen > 0.5 && f.min.y > -900) f.min.y = f.max.y = -999;
+    }
     if (this.save.finished || this.cine?.name === 'summit') this.wheelTurn += dt * (this.save.finished ? 0.08 : 0.04);
+    this.stepWave(this.waveFrozen ? 0 : dt);
+    // Over the canyon an existing bubble is dropped (once the wave is the only way across)
+    if (this.inNoRollback()) {
+      if (this.era.bubble && !this.cine) {
+        this.setBubble(null, true, true);
+        this.rollbackBusy();
+      }
+    } else this.rollbackBusyShown = false;
 
     // World systems
     const eraDone = this.era.step(dt, p.pos.x);
@@ -604,6 +663,11 @@ export class Game {
   /** Project (or drop) a generation bubble, refusing if it would leave Pip inside something. */
   applyRegress(era: Era | null) {
     const p = this.player;
+    if (era !== null && this.inNoRollback()) {
+      this.rollbackBusyShown = false;
+      this.rollbackBusy();
+      return false;
+    }
     const base = this.era.baseEraAt(p.pos);
     if (era === null || (era === base && this.era.gameEraAt(p.pos) === base)) return this.setBubble(null);
     const b: Bubble = { x: p.pos.x, y: p.pos.y + p.h * 0.5, z: p.pos.z, r: BUBBLE_RADIUS, era };
@@ -813,7 +877,21 @@ export class Game {
     }
     if (!this.save.beaconLit && x > L.beaconX && p.pos.y < 3 && p.grounded) this.startCine('beacon');
     if (!this.save.gatePassed && x > L.gateX && p.pos.y > L.plateauY - 1 && p.grounded) this.startCine('gate');
-    if (!this.save.finished && x > L.summitX && p.pos.y > L.sealY - 1 && p.grounded) this.startCine('summit');
+    // The world wheel: six version plates; stand on plate N while the world there is generation N.
+    if (x > L.summitX && p.pos.y > L.sealY - 1) this.say('summit');
+    if (!this.save.finished && p.grounded && Math.abs(p.pos.y - L.sealY) < 0.3) {
+      for (const pl of PLATES) {
+        const bit = 1 << pl.era;
+        if (this.save.installed & bit || Math.abs(x - pl.x) > 0.75 || Math.abs(p.pos.z - pl.z) > 1.1) continue;
+        if (this.era.gameEraAt(v3(pl.x, L.sealY + 0.5, pl.z)) !== pl.era) continue;
+        this.save.installed |= bit;
+        this.emit('install', { pos: v3(pl.x, L.sealY, pl.z), value: pl.era });
+        this.toast = { keys: [], text: `Installed: Patch ${pl.era + 1}.0 · ${ERA_LABELS[pl.era]}`, tone: 'story' };
+        this.toastT = 2.4;
+        this.persist();
+      }
+      if (this.save.installed === 63 && !this.cine) this.startCine('summit');
+    }
   }
 
   private activateCheckpoint(id: string) {
@@ -1122,7 +1200,7 @@ export class Game {
         break;
       }
       case 'summit': {
-        // The world wheel turns; the camera pulls back over every place Pip has been.
+        // The world wheel turns; the camera settles on it, with the path and the valley behind.
         const w = L.wheel;
         this.once('start', 0, () => {
           this.setBubble(null, true, true);
@@ -1130,15 +1208,17 @@ export class Game {
           this.camera.override = { target: v3(w.x, w.y + 2.5, w.z), yaw: 0.5, pitch: 0.14, fov: 44, dist: 14 };
           this.camera.overrideGoal = 1;
           this.camera.overrideRate = 1.4;
-          this.say('summit', true);
+          this.say('wheelReady', true);
         });
         if (!c.fired.has('turn') && c.t > 2 && !this.speaking) {
           this.once('turn', 0, () => {
             this.emit('wheel', { pos: { ...w } });
             this.camera.shake = 0.4;
             this.setAction('dance');
-            this.camera.override = { target: v3(120, 6, -10), yaw: -0.25, pitch: 0.18, fov: 52, dist: 150 };
-            this.camera.overrideRate = 0.35;
+            // from the front and a little east of the wheel, looking back along the path: the wheel turning, Pip on
+            // the lit plates, and the valley he came through (a pull-back across the whole valley drowned in haze)
+            this.camera.override = { target: v3(w.x - 5, w.y - 1.6, -1.5), yaw: 0.62, pitch: 0.16, fov: 50, dist: 19 };
+            this.camera.overrideRate = 0.45;
             this.emit('reveal', { pos: { ...p.pos } });
           });
         }
@@ -1259,12 +1339,19 @@ export class Game {
     if (near(L.reliefGap.x0 - 3, L.reliefGap.x1) && p.pos.y > L.haloY - 1 && bubble?.era !== 3)
       return { keys: ['Q', '4'], text: 'Carved handholds only hold you in the Stylized world', tone: 'info' };
     if (near(L.sleepField.min.x - 1, L.glyphStone.x + 4) && !this.save.glyphsRead && p.pos.y > L.sealY - 1)
-      return { keys: ['Q', '6'], text: 'The stone never updated past 16-bit — roll it forward to full detail', tone: 'info' };
-    if (near(L.aqueduct.x0 - 3, L.aqueduct.x0 + 0.5) && p.pos.y > L.sealY - 1) {
-      if (this.shift.mode === '3d') return { keys: ['E'], text: 'From the side, the two halves line up — shift to 2D', tone: 'info' };
-      return null;
+      return { keys: ['Q', '6'], text: 'The stele is stuck on 16-bit — roll it forward to full detail to read it', tone: 'info' };
+    if (near(L.noRollback.x0, L.noRollback.x1) && p.pos.y > L.sealY - 1.5)
+      return { keys: [], text: 'The bridge only exists in Early 3D — walk with the wave', tone: 'info' };
+    if (x > L.summitX && !this.cine) {
+      const left = PLATES.filter((pl) => !(this.save.installed & (1 << pl.era)));
+      if (left.length) {
+        // the nearest plate still to install, and the key for its generation
+        const pl = left.reduce((a, b) => (Math.abs(b.x - x) < Math.abs(a.x - x) ? b : a));
+        if (pl.era === 5) return { keys: [], text: `Stand on plate 6.0 in Beyond${bubble ? ' (tap Q to drop the bubble)' : ''}`, tone: 'info' };
+        return { keys: ['Q', String(pl.era + 1)], text: `Plate ${pl.era + 1}.0 installs in ${ERA_LABELS[pl.era]} — roll back and stand on it`, tone: 'info' };
+      }
     }
-    if (bubble && x > L.aqueduct.x1) return { keys: ['Q'], text: 'Tap Q to drop the bubble', tone: 'info' };
+    if (bubble && x > L.aqueduct.x1 && x < L.summitX) return { keys: ['Q'], text: 'Tap Q to drop the bubble', tone: 'info' };
     return null;
   }
 

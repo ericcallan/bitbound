@@ -38,8 +38,9 @@ Checks (all automated):
 | No softlocks | from every surface the spawn reaches, the goal is still reachable |
 | Checkpoints are safe | each stands on ground, is free, has 0.4 headroom, is on the route and has the goal ahead |
 | Every bit on the lane can be collected | the measured jump arc off a reachable surface passes within the pickup radius |
-| 3D-only secrets can be collected | simulated with the real input path: both aqueduct ends, the lamp alcove (the hidden chamber is covered in `valley.test.ts`) |
-| Gates can't be walked round in 3D | `valley.test.ts` (rock ridges, the plateau, the light fence, the seal ridge's one cut) |
+| 3D-only secrets can be collected | simulated with the real input path: in front of the Stalled Gate, behind the far bridgehead, the lamp alcove (the hidden chamber is covered in `valley.test.ts`) |
+| Gates can't be walked round in 3D | `valley.test.ts` (a rock spur behind every gate, its side wall in front, the plateau, the light fence, the brambles, the Stalled Gate) |
+| The Update Wave can't be skipped | `chapter6.test.ts`: the span (7) is wider than the longest jump (5.34), exists only inside the wave, and Rollback is refused over the canyon |
 | The camera can always see Pip | `camera.test.ts`: ~1000 spots and orbits across the level |
 | Shifting is safe | `shiftFeedback.test.ts`, `qa.test.ts` (fuzz over 16 seeds, resume from every checkpoint) |
 
@@ -66,6 +67,5 @@ Expert shortcuts the graph finds (allowed; none skips a story beat):
 ## Bugs this found
 
 - **The far aqueduct half's secret (c7) was unreachable.** The seal-door ridge sealed off its bank entirely; every
-  simulated attempt fell into the canyon. The half now meets land in a cut through the ridge behind the door (an
-  aqueduct has to meet land at both ends). The cut leads only onto that half, which ends in mid-air, so the door
-  still can't be bypassed (tested).
+  simulated attempt fell into the canyon. (Since then the aqueduct runs in line with the path and the cut is gone;
+  the secrets moved to the meadow in front of the Stalled Gate and behind the far bridgehead.)

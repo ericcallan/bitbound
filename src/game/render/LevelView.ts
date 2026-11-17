@@ -149,8 +149,21 @@ export class LevelView {
 
   /** The seal door's meshes: they sink into the ground as it opens (GameView drives it from game.sealOpen). */
   sealDoor = new THREE.Group();
+  /** Gates' side walls: drawn only in 3D (GameView hides them in 2D, where they'd stand in front of the gate). */
+  flanks: THREE.Group[] = [];
 
   private buildSolid(s: SolidDef) {
+    if (s.flank) {
+      // drawn from the meadow up; below that it's inside the hillside
+      const before = this.group.children.length;
+      const box = { min: { ...s.box.min, y: s.flank.visualMinY }, max: { ...s.box.max } };
+      this.buildSolidInner({ ...s, box, occluder: false });
+      const g = new THREE.Group();
+      for (const o of this.group.children.splice(before)) g.add(o);
+      this.group.add(g);
+      this.flanks.push(g);
+      return;
+    }
     if (s.id === 'sealDoor') {
       const before = this.group.children.length;
       this.buildSolidInner(s);

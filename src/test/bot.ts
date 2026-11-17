@@ -2,7 +2,7 @@ import type { Game } from '../game/sim/Game';
 import type { ScriptedInput } from './helpers';
 import type { Action } from '../game/sim/Input';
 import type { Era } from '../game/era/EraSystem';
-import { RELIEFS } from '../game/level/meadows';
+import { AQUEDUCT, PLATES, RELIEFS, WAVE } from '../game/level/meadows';
 import { v3 } from '../game/math';
 
 interface Waypoint {
@@ -250,6 +250,31 @@ export class Bot {
     if (g.save.glyphsRead && bubble && x < L.aqueduct.x0) {
       stop();
       this.regress(g, null);
+      return true;
+    }
+    // The Update Wave: wait at the near stub until the wave sits there, then keep pace with it across.
+    if (x > AQUEDUCT.gap0 - 1.2 && x < AQUEDUCT.gap1 + 0.3 && p.pos.y > L.sealY - 1) {
+      if (x < AQUEDUCT.gap0) {
+        // board only while the wave is paused at this end (or just leaving it)
+        this.input.x = g.waveX < WAVE.c0 + 0.4 && g.waveX >= WAVE.c0 ? 0.5 : x < AQUEDUCT.gap0 - 0.7 ? 0.4 : 0;
+        if (this.input.x === 0 && x > AQUEDUCT.gap0 - 0.4) this.input.x = -0.3;
+        return true;
+      }
+      this.input.x = x > AQUEDUCT.gap1 || x < g.waveX + 0.5 ? 0.6 : 0;
+      return true;
+    }
+    // The world wheel: on each plate still to install, roll back to its generation (plate 6.0: Beyond, no bubble).
+    if (x > L.summitX - 1 && !g.save.finished) {
+      const left = PLATES.filter((pl) => !(g.save.installed & (1 << pl.era)));
+      if (!left.length) return false;
+      const pl = left[0];
+      if (Math.abs(x - pl.x) > 0.3 || !p.grounded) {
+        this.input.x = Math.sign(pl.x - x) * Math.min(1, Math.abs(pl.x - x) + 0.15);
+        return true;
+      }
+      stop();
+      const want = pl.era === 5 ? null : pl.era;
+      if ((bubble?.era ?? null) !== want) this.regress(g, want);
       return true;
     }
     return false;

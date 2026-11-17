@@ -9,7 +9,9 @@ import type { Era } from '../era/EraSystem';
  * Act 1 (x < 100): the Broken Passage — 3D reveals what 2D hides.
  * Act 2 (x ≥ 100): the Painted Stair — 2D makes solid what 3D shows is only paint.
  * Chapter 6 (x ≥ 153): the Halo Path — the same strip climbs to the world wheel on Mount Halo,
- * and each obstacle answers to a different generation's rules (Regress).
+ * and each obstacle answers to a different generation's rules (Rollback). It ends in three beats about the
+ * generations themselves: the Stalled Gate (a gate that never finished updating), the Update Wave (a band of
+ * Early 3D sweeping a broken aqueduct, the only time its span exists) and the World Wheel (install all six).
  */
 
 export type Look = 'grass' | 'dirt' | 'stone' | 'ruin' | 'hedge' | 'wood' | 'metal' | 'mural' | 'beam' | 'relief' | 'invisible';
@@ -26,8 +28,14 @@ export interface SolidDef {
   only2d?: boolean;
   /** Generations in which this solid exists (bitmask; undefined = all). */
   genMask?: number;
-  /** How the 8- and 16-bit tile layers draw it when its own look is invisible (the aqueduct's 2D-only span). */
+  /** How the 8- and 16-bit tile layers draw it when its own look is invisible. */
   retroLook?: Look;
+  /**
+   * A gate's side wall out across the front meadow (see `gateFlank`): solid in 2D and 3D, but only drawn in 3D,
+   * where it shows the gate can't be walked round. In 2D it would stand between the camera and the gate.
+   * Drawn from `visualMinY` up (below that it's inside the hillside).
+   */
+  flank?: { visualMinY: number };
 }
 
 export interface EnemyDef {
@@ -163,12 +171,53 @@ export const NOT_8BIT = gens(1, 2, 3, 4, 5);
 export const NOT_16BIT = gens(0, 2, 3, 4, 5);
 /** Carved pictures only hold you up where painted things are real. */
 export const ONLY_STYLIZED = gens(3);
+/** The aqueduct's missing span: it was whole in version 3.0, so it only exists where the world is Early 3D. */
+export const ONLY_EARLY_3D = gens(2);
+
+/** The river's level (valley.ts WATER_Y): gate flanks reach below it. */
+const RIVER = -2.7;
+/**
+ * The front side of a gate: a wall from the lane's front edge out across the meadow to where the meadow drops
+ * sheer to the stream (7.4 out), as tall as the gate. With it the gate can't be walked (or jumped) round in front,
+ * and the terrain needn't rise into a ridge there, which hid the gate from the 2D camera.
+ */
+function gateFlank(id: string, look: Look, x0: number, x1: number, top: number, height: number, genMask?: number): SolidDef {
+  return { id, kind: 'wall', look, box: makeBox(x0, RIVER - 1, 2.5, x1, top + height, 2.5 + 7.4), genMask, occluder: true, flank: { visualMinY: top - 1.6 } };
+}
 
 // ---------------------------------------------------------------- Chapter 6: the Halo Path
 const HALO = 10.5;
 const SEAL = 12.5;
-/** How far each aqueduct half runs past the middle (see the aqueduct solids). */
-const AQ_OVERLAP = 1.5;
+/**
+ * The broken aqueduct, in line with the path: a stub on each bank and a missing middle span, too wide to jump
+ * (7 against Pip's 5.3). The span is seven pieces that exist only in Early 3D, which the Update Wave sweeps across.
+ */
+export const AQUEDUCT = { x0: 213, gap0: 216.5, gap1: 223.5, x1: 227, y: SEAL, halfD: 0.8 };
+const spanSolids: SolidDef[] = Array.from({ length: 7 }, (_, i) => ({
+  id: `span${i}`,
+  kind: 'platform' as const,
+  look: 'invisible' as const,
+  box: makeBox(AQUEDUCT.gap0 + i, SEAL - 0.5, -AQUEDUCT.halfD, AQUEDUCT.gap0 + i + 1, SEAL, AQUEDUCT.halfD),
+  genMask: ONLY_EARLY_3D,
+}));
+/**
+ * The Update Wave: a band of Early 3D that sweeps to and fro across the canyon like a progress bar that never
+ * finishes, pausing at each bridgehead. It's an era field that moves (EraSystem.fields). Centre x range, band
+ * width and timing.
+ */
+export const WAVE = { c0: 217.0, c1: 223.0, width: 6.0, speed: 2.0, pause: 1.8, y0: SEAL - 2.5, y1: SEAL + 6, z0: -3.2, z1: 2.8 };
+/** The wave's centre at time t: pause at the near bridgehead, sweep across, pause, sweep back. */
+export function waveCenter(t: number) {
+  const travel = (WAVE.c1 - WAVE.c0) / WAVE.speed;
+  const cycle = 2 * (travel + WAVE.pause);
+  const u = ((t % cycle) + cycle) % cycle;
+  if (u < WAVE.pause) return WAVE.c0;
+  if (u < WAVE.pause + travel) return WAVE.c0 + (u - WAVE.pause) * WAVE.speed;
+  if (u < 2 * WAVE.pause + travel) return WAVE.c1;
+  return WAVE.c1 - (u - 2 * WAVE.pause - travel) * WAVE.speed;
+}
+/** The version plates before the world wheel: stand on plate N while the world there is generation N to install it. */
+export const PLATES = [231.5, 233.5, 235.5, 237.5, 239.5, 241.5].map((x, i) => ({ x, z: 0, era: i as Era }));
 /** Carved handholds across the cliff gap (solid only in a Stylized bubble). */
 export const RELIEFS = [
   { x0: 186.2, x1: 188.6, top: 11.1 },
@@ -224,24 +273,28 @@ export const LEVEL = {
     ground('p1', 112, 121, PLATEAU),
     // An old light fence: thin threads of light only exist from 16-bit up, so an 8-bit bubble walks through.
     solid('fence', 'wall', 'beam', 117.4, PLATEAU, -3, 117.8, PLATEAU + 4.5, 2.5, { genMask: NOT_8BIT }),
+    gateFlank('fenceFlank', 'beam', 117.4, 117.8, PLATEAU, 4.5, NOT_8BIT),
     ground('p2', 126, 133, PLATEAU),
     ground('p3', 135.6, 166, PLATEAU),
     // Chapter 6 — the Halo Path
     solid('beam1', 'wall', 'beam', 160.0, PLATEAU, -3, 160.4, PLATEAU + 4.5, 2.5, { genMask: NOT_8BIT }),
+    gateFlank('beam1Flank', 'beam', 160.0, 160.4, PLATEAU, 4.5, NOT_8BIT),
     ground('p5', 166, 184, HALO),
     // Overgrown brambles: in 16-bit they're the foreground layer, and you walk behind them.
     solid('thicket', 'wall', 'hedge', 175, HALO, -3, 176.6, HALO + 4.5, 2.5, { genMask: NOT_16BIT }),
+    gateFlank('thicketFlank', 'hedge', 175, 176.6, HALO, 4.5, NOT_16BIT),
     ...reliefSolids,
     // the rock face behind the relief gap, standing from the gorge floor
     solid('cliff', 'wall', 'ruin', 184, -13, -3.4, 198, 17, -2.6),
     ground('p6', 198, 214, SEAL),
+    // The Stalled Gate: its doors never finished updating (still 2.0); the stele beside it opens them. Drawn as
+    // a gatehouse (render/haloEnd.ts); the front flank is the gatehouse's curtain wall.
     solid('sealDoor', 'wall', 'ruin', 212.6, SEAL, -3, 213.4, SEAL + 5, 2.5),
-    // The broken aqueduct: two halves at different depths that only line up from the side. Each half runs
-    // AQ_OVERLAP past the middle, so from the 2D camera (which sits at deck height here, see align2D) the
-    // near half always overlaps the far one and the deck reads as continuous; in 3D they are 9 units apart.
-    solid('aqA', 'platform', 'stone', 214, SEAL - 1, -6.2, 220 + AQ_OVERLAP, SEAL, -4.6),
-    solid('aqB', 'platform', 'stone', 220 - AQ_OVERLAP, SEAL - 1, 4.6, 226, SEAL, 6.2),
-    solid('aqLane', 'platform', 'invisible', 214, SEAL - 0.3, -0.45, 226, SEAL, 0.45, { only2d: true, retroLook: 'stone' }),
+    gateFlank('sealFlank', 'invisible', 212.6, 213.4, SEAL, 5),
+    // The broken aqueduct: a stub on each bank, the middle span only in Early 3D (the Update Wave)
+    solid('aqA', 'platform', 'stone', AQUEDUCT.x0, SEAL - 1, -AQUEDUCT.halfD, AQUEDUCT.gap0, SEAL, AQUEDUCT.halfD),
+    solid('aqB', 'platform', 'stone', AQUEDUCT.gap1, SEAL - 1, -AQUEDUCT.halfD, AQUEDUCT.x1, SEAL, AQUEDUCT.halfD),
+    ...spanSolids,
     ground('p7', 226, 254, SEAL),
     // World edges
     solid('edgeL', 'invisible', 'invisible', -9, BOTTOM, -30, -8, 40, 30),
@@ -291,9 +344,9 @@ export const LEVEL = {
       // Lamp alcove (3D only)
       { id: 'c5', pos: v3(101.2, 0.6, 7.6) },
       { id: 'c6', pos: v3(110.8, 0.6, 7.6) },
-      // Halo Path secrets: the end of each broken aqueduct half (3D only)
-      { id: 'c7', pos: v3(215, SEAL + 0.6, -5.4) },
-      { id: 'c8', pos: v3(225, SEAL + 0.6, 5.4) },
+      // Halo Path secrets (3D only): in the meadow in front of the Stalled Gate, and behind the far bridgehead
+      { id: 'c7', pos: v3(210.2, SEAL + 0.1, 4.6) },
+      { id: 'c8', pos: v3(228.2, SEAL + 0.8, -4.6) },
     ]),
 
   checkpoints: [
@@ -308,6 +361,7 @@ export const LEVEL = {
     { id: 'thicket', pos: v3(170, HALO, 0) },
     { id: 'relief', pos: v3(181.5, HALO, 0) },
     { id: 'seal', pos: v3(200, SEAL, 0) },
+    { id: 'wave', pos: v3(214.6, SEAL, 0) },
     { id: 'summit', pos: v3(229, SEAL, 0) },
   ] as CheckpointDef[],
 
@@ -342,17 +396,22 @@ export const LEVEL = {
   beamX: 160.2,
   thicketX: 175.8,
   reliefGap: { x0: 184, x1: 198 },
-  /** The glyph stone sleeps inside a 16-bit field; full fidelity makes it readable. */
+  /** The stele beside the Stalled Gate: inside the stalled (16-bit) field; full detail makes it readable. */
   glyphStone: v3(208, SEAL, -2.2),
-  sleepField: { min: v3(203.5, SEAL - 1, -4), max: v3(212.4, SEAL + 8, 3), era: 1 as Era },
+  /** The Stalled Gate's field: the lane's width only (the gate, the stele, the path), stuck on 16-bit. */
+  sleepField: { min: v3(204, SEAL - 1, -3.2), max: v3(213.6, SEAL + 7, 2.8), era: 1 as Era },
   aqueduct: { x0: 214, x1: 226, y: SEAL },
+  /** Where Rollback is refused: the Update Wave's canyon (a bubble of Early 3D would carry Pip across). */
+  noRollback: { x0: 212.8, x1: 227.4 },
   /**
-   * Where the 2D camera drops to eye level with a deck: pieces at different depths line up exactly along the
-   * horizon, so a bridge that only exists from the side looks whole. [x0, x1, deck height].
+   * Where the 2D camera drops to eye level with a deck, so pieces at different depths line up along the horizon.
+   * [x0, x1, deck height]. (None at the moment: the aqueduct now runs in line with the path.)
    */
-  align2D: [[210, 230, SEAL]] as [number, number, number][],
-  wheel: v3(246, SEAL, -1.6),
-  summitX: 242.5,
+  align2D: [] as [number, number, number][],
+  /** The world wheel: upright behind the path, facing the camera, on a dais. */
+  wheel: v3(247.6, SEAL + 4.1, -3.9),
+  wheelRadius: 3.3,
+  summitX: 229.5,
   haloY: HALO,
   sealY: SEAL,
 
@@ -380,8 +439,8 @@ export const LEVEL = {
     { x: 131, y: 10.6, z: -1.0, r: 2.4, era: 3 as Era },
     { x: 146, y: 10.4, z: -0.6, r: 3.0, era: 1 as Era },
     { x: 168, y: 11.6, z: -1.2, r: 2.6, era: 2 as Era },
-    { x: 202, y: 13.6, z: -1.4, r: 2.4, era: 3 as Era },
-    { x: 236, y: 13.8, z: -1.0, r: 2.8, era: 0 as Era },
+    { x: 200.5, y: 13.6, z: -1.4, r: 2.2, era: 3 as Era },
+    { x: 252, y: 13.8, z: -1.0, r: 2.4, era: 0 as Era },
   ],
 
   decor: [
@@ -454,13 +513,10 @@ export const LEVEL = {
     { type: 'mushroom', pos: v3(182.5, HALO, 1.4), seed: 5 },
     { type: 'pillar', pos: v3(199.5, SEAL, -2.2), scale: 1.2, seed: 5 },
     { type: 'flowers', pos: v3(205, SEAL, 1.2), seed: 13 },
-    { type: 'pillar', pos: v3(211.6, SEAL, -2.2), scale: 1.3, seed: 6 },
     { type: 'tree', pos: v3(229, SEAL, -2.4), scale: 1.25, seed: 16 },
     { type: 'flowers', pos: v3(233, SEAL, 1.2), seed: 14 },
-    { type: 'bloomer', pos: v3(238, SEAL, -2.0), seed: 10, scale: 1.3 },
-    { type: 'arch', pos: v3(241.5, SEAL, -2.4), seed: 2 },
-    { type: 'statue', pos: v3(251, SEAL, -2.6), seed: 3, scale: 1.6 },
-    { type: 'crystal', pos: v3(249, SEAL, -1.6), scale: 1.4, seed: 3 },
+    { type: 'bloomer', pos: v3(227.6, SEAL, -2.3), seed: 10, scale: 1.3 },
+    { type: 'statue', pos: v3(252.8, SEAL, -2.6), seed: 3, scale: 1.6 },
   ] as DecorDef[],
 };
 

@@ -68,18 +68,29 @@ export const SCENARIOS: Record<string, Scenario> = {
   passage: { label: 'Broken Passage (the ruin and the machine)', era: 1, mode: '2d', pos: { x: 53, y: 0, z: 0 }, save: LATE },
   stair: { label: 'Painted Stair', era: 4, mode: '2d', pos: { x: 104, y: 0, z: 0 }, save: LATE },
   plateau: { label: 'Plateau', era: 5, mode: '2d', pos: { x: 140, y: 9, z: 0 }, save: LATE },
-  aqueduct: { label: 'Broken aqueduct', era: 5, mode: '2d', pos: { x: 219, y: 12.5, z: 0 }, save: LATE },
-  aqueduct3d: { label: 'Broken aqueduct (3D, on the far half)', era: 5, mode: '3d', pos: { x: 215.5, y: 12.5, z: -5.4 }, save: LATE },
+  aqueduct: { label: 'The Update Wave (2D)', era: 5, mode: '2d', pos: { x: 215.2, y: 12.5, z: 0 }, save: LATE },
+  aqueduct3d: { label: 'The Update Wave (3D, on the near stub)', era: 5, mode: '3d', pos: { x: 215.2, y: 12.5, z: 0 }, save: LATE },
   aqueductView: {
-    label: 'Broken aqueduct (3D overview)',
+    label: 'The Update Wave (3D overview)',
     era: 5,
     mode: '3d',
-    pos: { x: 224, y: 12.5, z: 5.4 },
-    camera: { target: { x: 219, y: 8, z: 0 }, yaw: 0.85, pitch: 0.42, fov: 50, dist: 26 },
+    pos: { x: 227.5, y: 12.5, z: 0 },
+    camera: { target: { x: 220, y: 9, z: 0 }, yaw: 0.6, pitch: 0.32, fov: 50, dist: 24 },
     save: LATE,
   },
-  seal: { label: 'Seal door (3D)', era: 5, mode: '3d', pos: { x: 210, y: 12.5, z: 0 }, save: LATE },
-  summit: { label: 'Summit', era: 5, mode: '2d', pos: { x: 236, y: 12.5, z: 0 }, save: LATE },
+  seal: { label: 'The Stalled Gate (3D, unread)', era: 5, mode: '3d', pos: { x: 205, y: 12.5, z: 0 }, save: { ...LATE, glyphsRead: false } },
+  seal2d: { label: 'The Stalled Gate (2D, unread)', era: 5, mode: '2d', pos: { x: 209.5, y: 12.5, z: 0 }, save: { ...LATE, glyphsRead: false } },
+  fence2d: { label: 'Light fence on the plateau (2D)', era: 5, mode: '2d', pos: { x: 115.5, y: 9, z: 0 }, save: LATE },
+  thicket2d: { label: 'Brambles (2D)', era: 5, mode: '2d', pos: { x: 173, y: 10.5, z: 0 }, save: LATE },
+  summit: { label: 'The World Wheel (2D)', era: 5, mode: '2d', pos: { x: 236, y: 12.5, z: 0 }, save: LATE },
+  wheel3d: {
+    label: 'The World Wheel (3D)',
+    era: 5,
+    mode: '3d',
+    pos: { x: 238, y: 12.5, z: 0 },
+    camera: { target: { x: 241, y: 15, z: -3 }, yaw: 0.25, pitch: 0.12, fov: 50, dist: 17 },
+    save: { ...LATE, installed: 0b100101 },
+  },
 };
 
 /** Query-string scenario, if any (dev builds only). */
@@ -140,6 +151,9 @@ export function bootScenario(sc: { name: string; s: Scenario; freeze: boolean })
     setTimeout(() => {
       if (sc.freeze) {
         g.paused = true;
+        // the Update Wave mid-sweep, the same in every picture
+        g.setWaveTime(2.6);
+        g.waveFrozen = true;
         session.input && (session.input.enabled = false);
         const view = (session as unknown as { view?: { timeScale: number } }).view;
         if (view) view.timeScale = 0;

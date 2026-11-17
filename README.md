@@ -39,6 +39,17 @@ updates up the mountain.
 | 5 | Modern HD | Patch 5.0 · Light |
 | 6 | Beyond | Patch 6.0 · Every version at once: the Halo Path, solved with Rollback |
 
+**The end of the Halo Path** is three beats about the generations themselves:
+- **The Stalled Gate:** a gatehouse that never finished updating (its little zone is still 16-bit). The stele beside it
+  is a blur of pixels until you roll full detail over it (Q + 6); then it reads "TURN ME GENTLY" and the doors sink.
+- **The Update Wave:** the aqueduct's middle span is gone, too wide to jump. A band of Early 3D sweeps to and fro
+  across the canyon like a progress bar that never finishes, and inside it the span exists again. You cross by
+  walking with the wave. Rollback is refused over the canyon.
+- **The World Wheel:** six version plates, 1.0 to 6.0. Stand on each while the world there is its generation (roll
+  back to it, or plate 6.0 in Beyond itself); each lights a segment of the wheel. With all six, it turns.
+
+Every gate on the path stands clear of the rock in 2D: behind it a rock spur crosses the valley, and in front its
+own side wall runs out across the meadow (drawn in 3D only), so nothing can be walked round.
 **Where it goes next.** The map already shows what lies below the valley: Megatower, stuck on 2.0 (a 16-bit
 arcade city), and the Streets Below, on 3.0. Each region is a different era to patch, the earlier couriers can be
 woken as helpers, every new version adds a rule to roll back to, and after the credits: "Patch 7.0: in
@@ -59,9 +70,9 @@ development."
 ## Graphics
 
 - **8-bit** (2D only) is a real tile renderer: a green landscape of 16×16, three-colour tiles, flat hills and
-  bushes, plain clouds, exactly 240 rows letterboxed at a whole-number scale, and a 3-colour 16×16 Pip.
+  bushes, plain clouds, about 240 rows at a whole-number scale filling the screen, and a 3-colour 16×16 Pip.
 - **16-bit** (2D only): tiles cut from scanned ground materials, three parallax layers over a banded sky, and Pip and
-  the scenery pre-rendered from the Blender models; 224 rows.
+  the scenery pre-rendered from the Blender models; about 224 rows, filling the screen.
 - **One 3D world** from Early 3D up, across the whole level: continuous terrain, cliffs, river gorges, forest and
   meadow you can walk anywhere in, shaped so no puzzle can be walked round. Early 3D and Stylized have their own
   terrain looks.
@@ -124,7 +135,7 @@ shows. Numbers, method and what didn't work: **docs/PERF.md** (`node scripts/hit
 ## Development tools (dev builds only)
 
 - **Scenarios:** `?scenario=aqueduct` (also `start`, `ruins`, `ruins3d`, `chamber`, `stair`, `plateau`,
-  `aqueduct3d`, `aqueductView`, `seal`, `summit`) starts in a fixed state without touching your save. Add
+  `aqueduct3d`, `aqueductView`, `seal`, `seal2d`, `fence2d`, `thicket2d`, `summit`, `wheel3d`) starts in a fixed state without touching your save. Add
   `&era=0..5`, `&mode=2d|3d`, `&freeze=1`.
 - **Debug overlay:** the backquote key. Generation, position, velocity, ground, shift eligibility and the exact
   reason it's blocked, camera obstruction, fps, draw calls; layers for collision boxes, camera rays, the route

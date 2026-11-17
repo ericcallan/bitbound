@@ -3,7 +3,7 @@ import { Game } from '../game/sim/Game';
 import { ScriptedInput, makeGame, run, runUntil } from './helpers';
 import { newSave, type SaveData } from '../game/save/save';
 import { STEP, SHIFT_DURATION } from '../game/sim/constants';
-import { RELIEFS } from '../game/level/meadows';
+import { AQUEDUCT, PLATES, RELIEFS, WAVE } from '../game/level/meadows';
 import { v3 } from '../game/math';
 import type { Era } from '../game/era/EraSystem';
 
@@ -128,33 +128,83 @@ describe('The Halo Path (Chapter 6)', () => {
     expect(game.world.get('sealDoor')!.enabled).toBe(false);
   });
 
-  it('the broken aqueduct only joins up in 2D, and you cannot unfold halfway across', () => {
-    const { game } = halo({ checkpoint: 'seal', glyphsRead: true });
+  it('the Update Wave: the aqueduct span is too wide to jump, and exists only where the wave (Early 3D) is', () => {
+    const { game } = halo({ checkpoint: 'wave', glyphsRead: true });
     run(game, 0.2);
-    const aq = game.level.aqueduct;
-    const mid = (aq.x0 + aq.x1) / 2;
-    // In 2D the lane walkway is solid.
-    game.player.teleport({ x: mid, y: aq.y + 0.3, z: 0 });
-    runUntil(game, (g) => g.player.grounded, 1);
-    expect(game.player.ground?.id).toBe('aqLane');
-    expect(game.requestShift()).toBe('painted');
-    // In 3D there's nothing on the lane between the two offset halves.
-    game.player.teleport({ x: aq.x0 - 2, y: aq.y, z: 0 });
-    run(game, 0.3);
-    game.requestShift();
-    run(game, SHIFT_DURATION + 0.1);
-    expect(game.shift.mode).toBe('3d');
-    expect(game.world.groundBelow(game.player.box(v3(mid, aq.y, 0)), 2)).toBeFalsy();
+    // the gap between the stubs is beyond Pip's measured running jump (5.34 at the same height)
+    expect(AQUEDUCT.gap1 - AQUEDUCT.gap0).toBeGreaterThan(6.5);
+    const spans = Array.from({ length: 7 }, (_, i) => game.world.get(`span${i}`)!);
+    // as the wave sweeps, only the pieces it covers are solid
+    for (let k = 0; k < 40; k++) {
+      run(game, 0.2);
+      const f = game.waveField;
+      for (const c of spans) {
+        const covered = c.max.x > f.min.x && c.min.x < f.max.x;
+        expect(game.world.active(c), `${c.id} at wave ${game.waveX.toFixed(2)}`).toBe(covered);
+      }
+    }
+    // it travels the whole gap, both ways
+    const xs: number[] = [];
+    runUntil(game, () => (xs.push(game.waveX), false), 20);
+    expect(Math.min(...xs)).toBeCloseTo(WAVE.c0, 3);
+    expect(Math.max(...xs)).toBeCloseTo(WAVE.c1, 3);
   });
 
-  it('reaching the world wheel ends the story and unlocks every generation', () => {
+  it('riding the wave crosses the canyon; standing still on the span drops you', () => {
+    const { game, input } = halo({ checkpoint: 'wave', glyphsRead: true });
+    game.player.teleport({ x: AQUEDUCT.gap0 - 0.6, y: AQUEDUCT.y, z: 0 });
+    // wait for the wave to sit at the near bridgehead, then walk along with it
+    runUntil(game, () => game.waveX === WAVE.c0, 10);
+    const crossed = runUntil(game, (g) => g.player.pos.x > AQUEDUCT.gap1 + 0.6 && g.player.grounded, 12, (g) => {
+      // keep pace with the wave; once on the far stub, walk on
+      input.x = g.player.pos.x > AQUEDUCT.gap1 || g.player.pos.x < g.waveX + 0.6 ? 1 : 0;
+    });
+    input.x = 0;
+    expect(crossed).toBe(true);
+    // stand still mid-span: the wave moves on and the bridge goes with it
+    const b = halo({ checkpoint: 'wave', glyphsRead: true });
+    b.game.player.teleport({ x: AQUEDUCT.gap0 - 0.6, y: AQUEDUCT.y, z: 0 });
+    runUntil(b.game, () => b.game.waveX === WAVE.c0, 10);
+    runUntil(b.game, (g) => g.player.pos.x > AQUEDUCT.gap0 + 1.5, 4, () => (b.input.x = 1));
+    b.input.x = 0;
+    const fell = runUntil(b.game, (g) => g.events.some((e) => e.type === 'respawn'), 12);
+    expect(fell).toBe(true);
+  });
+
+  it('Rollback is refused over the canyon, and a bubble carried into it is dropped', () => {
+    const { game } = halo({ checkpoint: 'wave', glyphsRead: true });
+    run(game, 0.2);
+    game.player.teleport({ x: AQUEDUCT.x0 - 1.5, y: AQUEDUCT.y, z: 0 });
+    run(game, 0.2);
+    expect(bubble(game, 2)).toBe(true);
+    game.player.teleport({ x: AQUEDUCT.x0 + 1, y: AQUEDUCT.y, z: 0 });
+    run(game, 0.2);
+    expect(game.era.bubble).toBeNull();
+    expect(bubble(game, 2)).toBe(false);
+  });
+
+  it('the world wheel: each plate installs only in its own generation; all six turn the wheel and end the story', () => {
     const { game } = halo({ checkpoint: 'summit', glyphsRead: true });
     run(game, 0.2);
-    game.player.teleport({ x: game.level.summitX + 0.5, y: game.level.sealY, z: 0 });
+    for (const pl of PLATES) {
+      game.player.teleport({ x: pl.x, y: game.level.sealY, z: 0 });
+      run(game, 0.3);
+      if (pl.era !== 5) {
+        // the wrong generation installs nothing
+        expect(game.save.installed & (1 << pl.era)).toBe(0);
+        expect(bubble(game, pl.era)).toBe(true);
+        run(game, 0.3);
+      }
+      expect(game.save.installed & (1 << pl.era), `plate ${pl.era + 1}.0`).not.toBe(0);
+      if (pl.era !== 5) bubble(game, null);
+      if (pl.era < 5) expect(game.save.finished).toBe(false);
+    }
+    expect(game.save.installed).toBe(63);
     const ok = runUntil(game, (g) => g.finaleCard, 60, (g) => g.advanceDialogue());
     expect(ok).toBe(true);
     expect(game.save.finished).toBe(true);
     expect(game.save.eraKeys).toBe(true);
+    expect(game.events.filter((e) => e.type === 'install').length).toBe(6);
     expect(game.events.some((e) => e.type === 'wheel')).toBe(true);
   });
 });

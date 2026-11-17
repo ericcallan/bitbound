@@ -8,6 +8,7 @@ import { PixelSprite } from './sprites';
 import { TerrainView } from './terrain';
 import { TitleSet } from './titleSet';
 import { AqueductView } from './aqueduct';
+import { HaloEndView } from './haloEnd';
 import { TITLE } from '../level/title';
 import { loadHdSky, type HdSkyData, type SkyName } from './sky';
 import { initTextures } from './textures';
@@ -95,6 +96,8 @@ export class GameView {
   terrain = new TerrainView();
   title: TitleSet | null = null;
   aqueduct: AqueductView | null = null;
+  /** The Stalled Gate, the Update Wave and the World Wheel (render/haloEnd.ts). */
+  haloEnd: HaloEndView | null = null;
   /** Extra sky rotation (radians about +y): the title set's lighting angle. */
   skyYaw = 0;
   /** Forest, grass, flowers and rocks scattered over the valley (Modern HD and Beyond). Not on the title. */
@@ -218,6 +221,8 @@ export class GameView {
       };
       this.aqueduct = new AqueductView({ aqA: box('aqA'), aqB: box('aqB') });
       this.scene.add(this.aqueduct.group);
+      this.haloEnd = new HaloEndView(game, this.level.sealDoor);
+      this.scene.add(this.haloEnd.group);
     }
     if (this.options.title) {
       this.skyYaw = TITLE.skyYaw;
@@ -317,6 +322,7 @@ export class GameView {
     this.terrain.dispose();
     this.title?.dispose();
     this.aqueduct?.dispose();
+    this.haloEnd?.dispose();
     this.post.dispose();
     this.retro.dispose();
     this.retro16.dispose();
@@ -509,8 +515,8 @@ export class GameView {
     const dist = cam.position.distanceTo(target);
     const buf = this.gl.getDrawingBufferSize(new THREE.Vector2());
     const H = buf.y;
-    // 8-bit: exactly 240 rows at 16 px per unit (a 1985 frame). 16-bit: 224 rows at 24 px per unit. Each
-    // retro pixel is a whole number (k) of screen pixels; letterbox bars fill what's left.
+    // 8-bit: 16 px per unit, scaled so about 240 rows fill the screen (a 1985 frame). 16-bit: 24 px per unit, about
+    // 224 rows. Each retro pixel is a whole number (k) of screen pixels; any rows left over just show more world.
     const ppu = this.retroMode === 8 ? TILE_PX : TILE16_PX;
     const rows = this.retroMode === 8 ? RETRO_ROWS : RETRO16_ROWS;
     const k = Math.max(1, Math.floor(H / rows));
@@ -821,6 +827,12 @@ export class GameView {
     // the seal door sinks into the ground once its glyphs are read (its collider is already gone)
     this.level.sealDoor.position.y = -g.sealOpen * 5.3;
     this.level.sealDoor.visible = g.sealOpen < 0.999;
+    // gates' side walls only in 3D (in 2D they'd stand between the camera and the gate)
+    for (const fl of this.level.flanks) fl.visible = split || g.shift.blend > 0.5;
+    if (this.haloEnd) {
+      this.haloEnd.group.visible = split || Math.abs(camTarget.x - 225) < 70;
+      if (this.haloEnd.group.visible) this.haloEnd.update(g, dt);
+    }
     if (this.aqueduct) {
       // the canyon's dressing exists from Early 3D up, and only matters near the Halo Path's end
       const near = Math.abs(camTarget.x - 220) < 90;
@@ -865,7 +877,9 @@ export class GameView {
     if (retro2D && shown & 1) this.retro.update(g.world);
     f.retro = this.retro;
     f.retro2D = retro2D;
-    f.letterbox = smoothstep(0, 1, this.retroCamW);
+    // the retro frames fill the screen: the camera already shows whole retro pixels top to bottom, so the extra rows
+    // beyond 240 (or 224) are just more sky and ground, never black bars
+    f.letterbox = 0;
     f.retroK = this.retroK;
     f.letterboxRows = this.retroRows;
     if (retro2D && shown & 2) this.retro16.update(g.world);

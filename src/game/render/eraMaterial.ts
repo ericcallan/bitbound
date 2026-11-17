@@ -245,6 +245,10 @@ export interface EraMatOptions {
    * dither inside a narrow cone from Pip to the camera. Never the terrain (the camera moves instead).
    */
   cutaway?: boolean;
+  /** Drawn only where the world is this generation, per pixel (the Update Wave's bridge: Early 3D only). */
+  onlyEra?: number;
+  /** Drawn everywhere except where the world is this generation (the bridge's ghost, where the wave isn't). */
+  exceptEra?: number;
 }
 
 /**
@@ -303,6 +307,8 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
     // only while the tiles draw the world: a bubble in a Beyond world keeps its boxes, drawn in its generation
     o.retroTile ? 'if (uRetroTiles > 0.5 && eraF < 1.5) discard;' : '',
     o.cutaway ? CUTAWAY_GLSL : '',
+    o.onlyEra !== undefined ? `if (abs(eraF - ${o.onlyEra.toFixed(1)}) > 0.5) discard;` : '',
+    o.exceptEra !== undefined ? `if (abs(eraF - ${o.exceptEra.toFixed(1)}) < 0.5) discard;` : '',
   ].join('\n');
   // Chain onto any patch already on the material (e.g. the terrain splat shader).
   const prev = m.onBeforeCompile.bind(m);
@@ -414,7 +420,7 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
   };
   const prevKey = m.customProgramCacheKey.bind(m);
   m.customProgramCacheKey = () =>
-    `${prevKey()}|era-v4${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.minEra ? '-me' + o.minEra : ''}${o.structural ? '-st' : ''}${o.retroTile ? '-rt' : ''}${o.vertexEra ? '-ve' : ''}${o.cutaway ? '-cut' : ''}`;
+    `${prevKey()}|era-v4${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.minEra ? '-me' + o.minEra : ''}${o.structural ? '-st' : ''}${o.retroTile ? '-rt' : ''}${o.vertexEra ? '-ve' : ''}${o.cutaway ? '-cut' : ''}${o.onlyEra !== undefined ? '-only' + o.onlyEra : ''}${o.exceptEra !== undefined ? '-except' + o.exceptEra : ''}`;
   return m;
 }
 

@@ -32,6 +32,8 @@ const SPEC = {
   // two viaduct halves from the river to the deck, plus fallen stones; textured at runtime (no images). The halves
   // hang from their origin (the deck's underside, where the game places them), so the base check is off.
   aqueduct: { nodes: ['aq_half_A', 'aq_half_B', 'aq_rubble'], maxTris: 60000, maxKB: 900, height: [14, 18], hangs: true },
+  // the end of the Halo Path; node origins are reference points in the level, not their bases
+  halo: { nodes: ['halo_gate_back', 'halo_gate_front', 'halo_door', 'halo_stele', 'halo_wheel', 'halo_dais', 'halo_plate'], maxTris: 40000, maxKB: 600, height: [0.05, 26], hangs: true },
   vegetation: { nodes: ['grass_clump', 'tall_grass', 'flower_white', 'flower_violet', 'fern'], maxTris: 3000, maxKB: 200, height: [0.3, 1.2] },
   props: { nodes: ['mushroom_cluster', 'signpost'], maxTris: 20000, maxKB: 800, height: [0.3, 2] },
   terrain: { nodes: ['valley_terrain'], maxTris: 320000, maxKB: 9000, height: [3, 80] },

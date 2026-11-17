@@ -28,8 +28,8 @@ const VERGE: Room[] = [
   { id: 'gate', x: 500, y: 150, w: 60, h: 40, label: 'Frame Gate' },
   { id: 'brambles', x: 564, y: 136, w: 70, h: 40, label: 'Brambles' },
   { id: 'cliff', x: 638, y: 120, w: 60, h: 50, label: 'Carved Cliff' },
-  { id: 'seal', x: 702, y: 110, w: 64, h: 40, label: 'Sleeping Seal' },
-  { id: 'aqueduct', x: 770, y: 110, w: 56, h: 30, label: 'Aqueduct' },
+  { id: 'seal', x: 702, y: 110, w: 64, h: 40, label: 'Stalled Gate' },
+  { id: 'aqueduct', x: 770, y: 110, w: 56, h: 30, label: 'Update Wave' },
   { id: 'summit', x: 830, y: 80, w: 100, h: 60, label: 'World Wheel' },
 ];
 const ALLEY: Room = { id: 'alcove', x: 336, y: 262, w: 0, h: 0 };

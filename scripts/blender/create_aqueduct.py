@@ -1,7 +1,7 @@
 """
-The broken aqueduct over the Halo Path canyon: two halves of a two-tier arched viaduct (Pont du Gard rather than
-a plank), each standing on its own piers from the river to the deck, each broken off in mid-canyon over a fallen
-span. The deck of each half is exactly its collider (aqA / aqB in src/game/level/meadows.ts, read from
+The broken aqueduct over the Halo Path canyon: the two surviving ends of a two-tier arched viaduct (Pont du Gard
+rather than a plank), in line with the path, each standing on its own piers from the river to the deck, each broken
+off over the missing middle span. The deck of each half is exactly its collider (aqA / aqB in src/game/level/meadows.ts, read from
 slice_blocks.json); everything below the deck is scenery. Arches are cut with booleans, the stone is chipped, and
 the masonry texture is projected at runtime (material "stone_wall_tri_large", see src/game/render/assets.ts), so the
 structure stays sharp at any size without a unique bake.
@@ -207,9 +207,10 @@ def main():
     data = {b["id"]: b for b in json.load(open(os.path.join(C.TEX_DIR, "slice_blocks.json")))}
     a = data["aqA"]
     b = data["aqB"]
-    # Each half stands on its own piers from its own bank; each breaks off over the middle of the canyon.
-    A = half("aq_half_A", a["min"]["x"], a["max"]["x"], a["min"]["y"], a["max"]["y"], [214.55, 217.6, 220.15], a["max"]["x"], 11)
-    B = half("aq_half_B", b["min"]["x"], b["max"]["x"], b["min"]["y"], b["max"]["y"], [219.85, 222.4, 225.45], b["min"]["x"], 23)
+    # A stub on each bank, in line with the path, standing on its piers; the middle span is gone (in the game it
+    # only exists in Early 3D, where the Update Wave passes).
+    A = half("aq_half_A", a["min"]["x"], a["max"]["x"], a["min"]["y"], a["max"]["y"], [213.6, 215.75], a["max"]["x"], 11)
+    B = half("aq_half_B", b["min"]["x"], b["max"]["x"], b["min"]["y"], b["max"]["y"], [224.25, 226.4], b["min"]["x"], 23)
     R = rubble(5)
     for o in (A, B, R):
         C.log(f"{o.name}: {C.tri_count(o)} tris")

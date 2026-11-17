@@ -56,11 +56,11 @@ describe('8-bit tile renderer', () => {
   it('draws only the path as solid ground: structures behind it are background, nothing in front covers Pip', () => {
     const byId = new Map(LEVEL.solids.map((s) => [s.id, s]));
     // the hidden chamber and the ruin's facade stand behind the path: background, not ground
-    for (const id of ['facade', 'chamberFloor', 'chamberBack', 'cliff', 'aqA']) expect(laneLayer(byId.get(id)!), id).toBe('back');
-    // the device's pedestal, the alcove walls and the near aqueduct half are in front: not tiles at all
-    for (const id of ['devicePedestal', 'alcoveFront', 'aqB']) expect(isRetroTile(byId.get(id)!), id).toBe(false);
-    // the ground Pip walks on, and the aqueduct's 2D-only span, are foreground tiles
-    for (const id of ['g4', 'aqLane', 'p6']) {
+    for (const id of ['facade', 'chamberFloor', 'chamberBack', 'cliff']) expect(laneLayer(byId.get(id)!), id).toBe('back');
+    // the device's pedestal, the alcove walls and the gates' side walls are in front: not tiles at all
+    for (const id of ['devicePedestal', 'alcoveFront', 'fenceFlank', 'sealFlank']) expect(isRetroTile(byId.get(id)!), id).toBe(false);
+    // the ground Pip walks on, and the aqueduct's stubs, are foreground tiles
+    for (const id of ['g4', 'aqA', 'aqB', 'p6']) {
       expect(laneLayer(byId.get(id)!), id).toBe('lane');
       expect(isRetroTile(byId.get(id)!), id).toBe(true);
     }

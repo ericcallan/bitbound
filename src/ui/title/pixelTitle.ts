@@ -1,6 +1,6 @@
 import { PALETTE_8 } from '../../game/render/post/Pipeline';
 import { TILES, HILL_COLORS, BUSH_COLORS, CLOUD_COLORS } from '../../game/render/retro/RetroLayer';
-import { BACKDROP } from '../../game/render/sprites';
+import { BACKDROP, SPRITES } from '../../game/render/sprites';
 
 /**
  * The title screen in 8-bit and 16-bit, drawn the way those consoles drew, rather than the 3D scene through a
@@ -360,57 +360,28 @@ export class PixelTitle {
   }
 
   /**
-   * The title Pip in 8-bit: drawn pixel by pixel in the sprite's three colours (ink, burnt orange, cream), larger
-   * than the in-game sprite as title-screen art was. Blinks and bobs his antenna.
+   * The title Pip in 8-bit: the very sprite he is in play (SPRITES.pip, 16×16 in three colours), at exactly twice
+   * the size, so the title and the game show the same character. Blinks (the eyes close) and bobs his antenna.
    */
   private pip8(cx: number, by: number, t: number) {
     const c = this.ctx;
-    const K = P(0);
-    const O = P(11);
-    const C = P(9);
-    const r = (col: string, x: number, y: number, w: number, h: number) => ((c.fillStyle = col), c.fillRect(cx + x, by + y, w, h));
+    const ink: Record<string, string> = { k: P(0), o: P(11), c: P(9) };
+    const S = 2;
+    const rows = SPRITES.pip[0];
     const blink = t % 3.2 < 0.12;
-    const bob = Math.round(Math.sin(t * 3) * 1);
-    // boots
-    r(K, -10, -5, 9, 5);
-    r(K, 2, -5, 9, 5);
-    r(C, -9, -4, 7, 2);
-    r(C, 3, -4, 7, 2);
-    // legs
-    r(K, -7, -10, 5, 5);
-    r(K, 3, -10, 5, 5);
-    r(O, -6, -10, 3, 5);
-    r(O, 4, -10, 3, 5);
-    // body with the core
-    r(K, -9, -22, 19, 13);
-    r(C, -8, -21, 17, 11);
-    r(K, -3, -19, 7, 7);
-    r(O, -2, -18, 5, 5);
-    r(C, 0, -16, 1, 1);
-    // arms
-    r(K, -12, -20, 4, 8);
-    r(C, -11, -19, 2, 6);
-    r(K, 9, -20, 4, 8);
-    r(C, 10, -19, 2, 6);
-    // neck
-    r(K, -3, -24, 7, 2);
-    // head: rounded orange box, dark screen, cream eyes
-    r(K, -14, -44, 29, 20);
-    r(K, -13, -45, 27, 1);
-    r(O, -13, -43, 27, 18);
-    r(K, -11, -41, 23, 13);
-    if (blink) {
-      r(C, -6, -35, 4, 1);
-      r(C, 3, -35, 4, 1);
-    } else {
-      r(C, -6, -38, 3, 6);
-      r(C, 4, -38, 3, 6);
-    }
-    // ear
-    r(K, -16, -38, 2, 6);
-    // antenna
-    r(K, 0, -51 + bob, 2, 6);
-    r(C, 0, -53 + bob, 2, 2);
+    const bob = Math.round(Math.sin(t * 3) * 0.5);
+    const x0 = cx - (rows[0].length * S) / 2;
+    const y0 = by - rows.length * S;
+    rows.forEach((row, y) => {
+      for (let x = 0; x < row.length; x++) {
+        let ch = row[x];
+        if (ch === '.' || !ink[ch]) continue;
+        // eyes are the cream pixels inside the screen (rows 5-6); a blink paints them dark
+        if (blink && ch === 'c' && (y === 5 || y === 6)) ch = 'k';
+        c.fillStyle = ink[ch];
+        c.fillRect(x0 + x * S, y0 + y * S + (y < 2 ? -bob * S : 0), S, S);
+      }
+    });
   }
 
   // ------------------------------------------------------------------ 16-bit

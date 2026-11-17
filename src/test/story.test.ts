@@ -17,7 +17,7 @@ describe('story script', () => {
   });
 
   it('keeps every story beat id, so saved progress (save.story) stays valid', () => {
-    const ids: LineId[] = ['boot', 'holes', 'goodJob', 'shard', 'deadPixel', 'device', 'firstShift', 'chamber', 'inked', 'mural', 'stairDone', 'beacon', 'fence', 'fencePassed', 'reflection', 'halo', 'beam', 'thicket', 'thicketPassed', 'relief', 'sleeping', 'glyphs', 'aqueduct', 'summit', 'ending'];
+    const ids: LineId[] = ['boot', 'holes', 'goodJob', 'shard', 'deadPixel', 'device', 'firstShift', 'chamber', 'inked', 'mural', 'stairDone', 'beacon', 'fence', 'fencePassed', 'reflection', 'halo', 'beam', 'thicket', 'thicketPassed', 'relief', 'sleeping', 'glyphs', 'aqueduct', 'summit', 'wheelReady', 'ending'];
     expect(Object.keys(SCRIPT).sort()).toEqual([...ids].sort());
   });
 

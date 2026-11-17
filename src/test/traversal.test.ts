@@ -37,7 +37,7 @@ describe('Traversal: Pip measured, and the level checked against it', () => {
     const { game, segs } = world2d();
     const edges = laneEdges(segs, env);
     const start = segmentAt(segs, game.level.spawn.x, game.level.spawn.y)!;
-    const goal = segmentAt(segs, game.level.wheel.x, game.level.wheel.y)!;
+    const goal = segmentAt(segs, game.level.wheel.x, game.level.sealY)!;
     const path = safestPath(edges, start.id, goal.id);
     expect(path).not.toBeNull();
     const jumps = path!.filter((e) => e.kind === 'jump');
@@ -54,7 +54,7 @@ describe('Traversal: Pip measured, and the level checked against it', () => {
     const { game, segs } = world2d();
     const edges = laneEdges(segs, env);
     const start = segmentAt(segs, game.level.spawn.x, game.level.spawn.y)!;
-    const goal = segmentAt(segs, game.level.wheel.x, game.level.wheel.y)!;
+    const goal = segmentAt(segs, game.level.wheel.x, game.level.sealY)!;
     const reached = search(edges, start.id);
     const toGoal = search(edges, goal.id, true);
     const stuck = [...reached.keys()].filter((n) => !toGoal.has(n));
@@ -65,7 +65,7 @@ describe('Traversal: Pip measured, and the level checked against it', () => {
     const { game, segs } = world2d();
     const edges = laneEdges(segs, env);
     const start = segmentAt(segs, game.level.spawn.x, game.level.spawn.y)!;
-    const goal = segmentAt(segs, game.level.wheel.x, game.level.wheel.y)!;
+    const goal = segmentAt(segs, game.level.wheel.x, game.level.sealY)!;
     const reached = search(edges, start.id);
     const toGoal = search(edges, goal.id, true);
     for (const cp of game.level.checkpoints) {
@@ -124,11 +124,11 @@ describe('Traversal: Pip measured, and the level checked against it', () => {
     return b.collected;
   }
 
-  it('the 3D-only secrets at both ends of the broken aqueduct can be collected', () => {
-    // far half: along the cut in the seal ridge, onto the half, to its secret
-    expect(collect3d({ x: 209.5, y: 12.6, z: -2 }, [{ x: 210.5, z: -5.4 }, { x: 213.8, z: -5.4 }, { x: 215.2, z: -5.4 }], 'c7')).toBe(true);
-    // near half: from the summit bank, a jump across the drop onto it, then back along it to its secret
-    expect(collect3d({ x: 228.5, y: 12.6, z: 3.2 }, [{ x: 226.6, z: 4.6, jump: true }, { x: 225, z: 5.4 }], 'c8')).toBe(true);
+  it('the 3D-only secrets around the Update Wave can be collected', () => {
+    // in the meadow in front of the Stalled Gate
+    expect(collect3d({ x: 207, y: 12.6, z: 1.5 }, [{ x: 209, z: 3.6 }, { x: 210.2, z: 4.6 }], 'c7')).toBe(true);
+    // behind the far bridgehead
+    expect(collect3d({ x: 229, y: 12.6, z: 0 }, [{ x: 228.6, z: -2.6 }, { x: 228.2, z: -4.6 }], 'c8')).toBe(true);
   });
 
   it('the lamp alcove secrets can be collected in 3D', () => {

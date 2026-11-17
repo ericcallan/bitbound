@@ -14,8 +14,10 @@ export interface SaveData {
   gatePassed: boolean;
   /** Regress (projecting older generations) unlocked at the beacon. */
   regress: boolean;
-  /** Chapter 6: the sleeping glyphs at the sanctuary door have been read. */
+  /** Chapter 6: the stele at the Stalled Gate has been read (the gate is open). */
   glyphsRead: boolean;
+  /** The world wheel's version plates installed so far, one bit per generation (63 = all six). */
+  installed: number;
   /** Story lines already spoken (so they never repeat across sessions). */
   story: string[];
   bits: string[];
@@ -45,6 +47,7 @@ export const newSave = (): SaveData => ({
   gatePassed: false,
   regress: false,
   glyphsRead: false,
+  installed: 0,
   story: [],
   bits: [],
   finished: false,
@@ -111,7 +114,10 @@ export function loadSave(): SaveData | null {
     if (raw) {
       const d = JSON.parse(raw) as SaveData;
       if (d.version !== 4) return null;
-      return { ...newSave(), ...d };
+      const s = { ...newSave(), ...d };
+      // saves from before the version plates: a finished game has installed them all
+      if (s.finished) s.installed = 63;
+      return s;
     }
     const tries: [string, number, (d: Record<string, unknown>) => SaveData][] = [
       [KEY_V3, 3, migrateV3],

@@ -9,11 +9,11 @@ Build: `tsc --noEmit` clean, `vite build` clean (one 1.63 MB chunk, 479 KB gzipp
 | controller / shift / puzzle | Physics, shift safety and puzzle rules |
 | `playthrough.test.ts` | A bot plays new game → Halo Path → ending through the real input path, with terrain collision on everywhere in 3D |
 | `qa.test.ts` | Resume matrix over every checkpoint, fuzz over 16 seeds (no interpenetration with the terrain pads or boxes), save migration |
-| `chapter6.test.ts` (10) | The Halo Path's generation-rule obstacles |
+| `chapter6.test.ts` (12) | The Halo Path's generation-rule obstacles, the Update Wave, Rollback refused over the canyon, the six version plates |
 | `valley.test.ts` (11) | Lane heights exact for every ground section; every pit a deep gorge; gates can't be walked round; the plateau can't be reached without the Painted Stair; the hidden chamber is reachable; cliffs stop Pip; the camera never goes underground |
 | `readability.test.ts` (3) | No foreground prop covers any enemy patrol, the spawn or a checkpoint (footprints from each prop's largest variant) |
 | `camera.test.ts` (7) | 3D camera across ~1000 spots and four orbits: never under the terrain, inside a solid, or blind to Pip; smooth turning; landing kept in view |
-| `shiftFeedback.test.ts` (7) | Block reasons, the unfold hint, the aqueduct halves meeting on screen, slide limits, refusals |
+| `shiftFeedback.test.ts` (5) | Block reasons, the painted stair's refusal, slide limits, refusals |
 | `traversal.test.ts` (7) | Pip measured; the route, every jump, checkpoints, bits and 3D secrets checked against it (docs/TRAVERSAL.md) |
 | `e2e/scenarios.spec.ts` (33, Playwright) | Every scenario × generation: no console/shader/asset errors, non-blank, colour-grid baseline; title screen; shift in the browser |
 | `retro.test.ts` (5) | 8-bit tiles 16×16 in exactly three palette colours; hills/bushes two colours; sprites ≤ 3 colours; palette-only sky and clouds; tiles only from solids that exist in 8-bit |

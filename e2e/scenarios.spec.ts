@@ -24,7 +24,11 @@ const CASES: [string, number[]][] = [
   ['aqueduct3d', [2, 3, 4, 5]],
   ['aqueductView', [2, 3, 4, 5]],
   ['seal', [5]],
+  ['seal2d', [1, 5]],
+  ['fence2d', [5]],
+  ['thicket2d', [5]],
   ['summit', [4, 5]],
+  ['wheel3d', [4, 5]],
 ];
 const GRID = { w: 48, h: 27 };
 const DIR = path.join(path.dirname(new URL(import.meta.url).pathname), 'baselines');

@@ -97,30 +97,39 @@ describe('The valley (immersive 3D terrain)', () => {
     }
   });
 
-  it('gates sit in rock ridges: nowhere off the lane is low enough to walk round them', () => {
+  it('gates sit in a rock ridge behind the path, with their own side wall in front: no way round, nothing hiding them', () => {
+    const flanks = LEVEL.solids.filter((s) => s.flank);
+    expect(flanks.length).toBe(GATES.length);
     for (const [a, b] of GATES) {
       const x = (a + b) / 2;
       const top = valleyHeight(x, 0);
-      const seal = a > 210;
-      for (const z of [-30, -12, -5, -3.6, 3.2, 6, 12, 18, 26]) {
-        // the seal ridge has one cut, behind the door, where the far aqueduct half lands (see the next test)
-        if (seal && z === -5) continue;
-        expect(valleyHeight(x, z), `gate ${a} z=${z}`).toBeGreaterThan(top + 3);
-      }
+      // behind: a ridge too high to walk or jump over
+      for (const z of [-30, -12, -5, -3.6]) expect(valleyHeight(x, z), `gate ${a} z=${z}`).toBeGreaterThan(top + 3);
+      // in front: nothing above the path (the 2D camera sees the gate), and the gate's side wall spans the meadow
+      for (const z of [3.2, 6]) expect(valleyHeight(x, z), `gate ${a} z=${z}`).toBeLessThan(top + 0.2);
+      const f = flanks.find((s) => s.box.min.x <= a + 0.01 && s.box.max.x >= b - 0.01)!;
+      expect(f, `flank for gate ${a}`).toBeTruthy();
+      expect(f.box.min.z).toBeLessThanOrEqual(LANE_FRONT);
+      expect(f.box.max.y).toBeGreaterThan(top + 3);
+      // past the wall's end the meadow has already dropped sheer to the stream: no way back up
+      for (const z of [f.box.max.z + 0.2, f.box.max.z + 4]) expect(valleyHeight(x, z), `gate ${a} z=${z}`).toBeLessThan(top - 6);
     }
   });
 
-  it("the cut in the seal ridge leads only onto the far aqueduct half, which can't reach the far bank", () => {
-    const { game } = makeGame({ ...ready, era: 5 as const, checkpoint: 'seal', glyphsRead: false });
-    const aqA = game.world.get('aqA')!;
-    const aqB = game.world.get('aqB')!;
-    // from the end of the far half, the nearest far-bank ground (x 226, beside the near half) is out of reach
-    const gapX = 226 - aqA.max.x;
-    const gapZ = aqB.min.z - aqA.max.z;
-    expect(Math.hypot(gapX, Math.max(0, gapZ - 6))).toBeGreaterThan(0);
-    expect(Math.hypot(gapX, gapZ)).toBeGreaterThan(6.5);
-    // and the canyon floor below is a respawn, not a route: the lane between the halves has no ground in 3D
-    expect(game.world.groundBelow(game.player.box({ x: 222, y: aqA.max.y, z: 0 }), 4, false)).toBeFalsy();
+  it('the brambles and the Stalled Gate cannot be walked round in front in 3D either', () => {
+    for (const [checkpoint, x0, x1, y, extra] of [
+      ['thicket', 172, 179, 10.5, {}],
+      ['seal', 210, 216, 12.5, { glyphsRead: false }],
+    ] as const) {
+      const { game, input } = makeGame({ ...ready, era: 5 as const, gatePassed: true, regress: true, checkpoint, ...extra });
+      game.player.teleport({ x: x0, y, z: 0 });
+      into3d(game);
+      for (const tz of [4, 8]) {
+        walkTo(game, input, x0, tz, 6);
+        walkTo(game, input, x1, tz, 6);
+        expect(game.player.pos.x, `${checkpoint} z=${tz}`).toBeLessThan((x0 + x1) / 2);
+      }
+    }
   });
 
   const raised = { ...ready, era: 4 as const, checkpoint: 'stair', stairRepaired: false };

@@ -6,6 +6,7 @@ import { newSave, type SaveData } from '../game/save/save';
 import { SHIFT_DURATION } from '../game/sim/constants';
 import { SAFE_SLIDE, SHIFT_BLOCK_LABEL, type ShiftBlock } from '../game/shift/DimensionShift';
 import { v3 } from '../game/math';
+import { STAIR, stairStep } from '../game/level/meadows';
 
 const HALO: Partial<SaveData> = {
   awakened: true, shardTaken: true, era: 5, shiftUnlocked: true, firstShiftDone: true, bridgeRepaired: true,
@@ -28,63 +29,24 @@ function screenX(g: Game, p: THREE.Vector3) {
   return p.clone().project(cam);
 }
 
-describe('Shift feedback and the 2D-only aqueduct', () => {
+describe('Shift feedback', () => {
   it('every block reason has a short label for the HUD', () => {
     const reasons: ShiftBlock[] = ['locked', 'airborne', 'off-lane', 'obstructed', 'no-ground', 'painted', 'busy'];
     for (const r of reasons) expect(SHIFT_BLOCK_LABEL[r].length).toBeGreaterThan(3);
   });
 
-  it('on the aqueduct the chip says why, and a refused unfold points at solid stone', () => {
+  it('on the painted stair the chip says why the unfold is refused', () => {
     const { game, events } = halo();
-    const aq = game.level.aqueduct;
-    game.player.teleport({ x: (aq.x0 + aq.x1) / 2, y: aq.y + 0.3, z: 0 });
+    const i = STAIR.count - 1;
+    const st = stairStep(i);
+    game.player.teleport({ x: (st.x0 + st.x1) / 2, y: st.top + 0.3, z: 0 });
     runUntil(game, (g) => g.player.grounded, 1);
+    expect(game.player.ground?.id).toBe(`stair${i}`);
     expect(game.shiftStatus).toBe('blocked');
     expect(game.shiftBlock).toBe('painted');
     expect(game.requestShift()).toBe('painted');
-    expect(events).toContain('shiftHint');
-    const x = game.shift.nearestUnfold()!;
-    expect(x).not.toBeNull();
-    // the hinted spot really allows the unfold
-    game.player.teleport({ x, y: aq.y, z: 0 });
-    run(game, 0.3);
-    expect(game.shiftBlock).toBeNull();
-  });
-
-  it('the 2D camera drops to deck height on the aqueduct, so the two halves meet on screen', () => {
-    const { game } = halo();
-    const aq = game.level.aqueduct;
-    const near = game.world.get('aqB')!;
-    const far = game.world.get('aqA')!;
-    for (const x of [aq.x0 + 0.5, aq.x0 + 3, (aq.x0 + aq.x1) / 2, aq.x1 - 3, aq.x1 - 0.5]) {
-      game.player.teleport({ x, y: aq.y + 0.3, z: 0 });
-      game.camera.snap(game.cameraContext());
-      run(game, 1.5);
-      // eye at deck height (within a few centimetres)
-      expect(Math.abs(game.camera.pos.y - aq.y)).toBeLessThan(0.08);
-      // the top edges of both halves project to the same screen row
-      const yFar = screenX(game, new THREE.Vector3(far.max.x - 0.5, aq.y, far.max.z)).y;
-      const yNear = screenX(game, new THREE.Vector3(near.min.x + 0.5, aq.y, near.min.z)).y;
-      expect(Math.abs(yFar - yNear)).toBeLessThan(0.01);
-      // and the near half starts left of where the far half ends: no visible gap in the deck
-      const endFar = screenX(game, new THREE.Vector3(far.max.x, aq.y, far.max.z)).x;
-      const startNear = screenX(game, new THREE.Vector3(near.min.x, aq.y, near.max.z)).x;
-      expect(startNear).toBeLessThanOrEqual(endFar + 1e-3);
-    }
-    // off the bridge the normal framing returns
-    game.player.teleport({ x: 200, y: aq.y, z: 0 });
-    run(game, 0.5);
-    game.player.teleport({ x: 160, y: game.level.haloY + 0.3, z: 0 });
-    run(game, 3);
-    expect(game.camera.alignW).toBeLessThan(0.05);
-  });
-
-  it('in 3D the two halves stay apart: the overlap adds no way across', () => {
-    const { game } = halo();
-    const a = game.world.get('aqA')!;
-    const b = game.world.get('aqB')!;
-    expect(b.min.z - a.max.z).toBeGreaterThan(8);
-    expect(game.world.get('aqLane')!.only2d).toBe(true);
+    expect(events).toContain('fizzle');
+    expect(game.toast?.text).toMatch(/only holds together from the side/);
   });
 
   it('repeated shifts back and forth on solid ground keep Pip on the lane and on the ground', () => {

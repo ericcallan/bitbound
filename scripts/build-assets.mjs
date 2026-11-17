@@ -10,7 +10,7 @@ import path from 'node:path';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const BLENDER = process.env.BLENDER ?? '/Applications/Blender.app/Contents/MacOS/Blender';
-const ORDER = ['rocks', 'pip', 'tree', 'gateway', 'aqueduct', 'vegetation', 'props', 'terrain'];
+const ORDER = ['rocks', 'pip', 'tree', 'gateway', 'aqueduct', 'halo', 'vegetation', 'props', 'terrain'];
 const only = process.argv.slice(2);
 const names = (only.length ? only : ORDER).filter((n) => fs.existsSync(path.join(ROOT, 'scripts', 'blender', `create_${n}.py`)));
 if (!fs.existsSync(BLENDER)) {
