@@ -1,6 +1,6 @@
-# PIP — Beyond the Frame
+# Bitbound
 
-A playable browser game about a small robot restoring a forgotten world one graphical generation at a time.
+A playable browser game about Pip, a small robot restoring a forgotten world one graphical generation at a time.
 Each of the **six generations** (8-bit, 16-bit, Early 3D, Stylized, Modern HD, Beyond) is a chapter, and also a
 puzzle tool. The same world **shifts between a 2D side-scroller and full 3D**.
 

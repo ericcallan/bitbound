@@ -106,7 +106,7 @@ function DesktopNotice({ onContinue }: { onContinue: () => void }) {
             <path d="M8 20h8M12 16v4" />
           </svg>
         </div>
-        <h2>PIP is built for desktop</h2>
+        <h2>Bitbound is built for desktop</h2>
         <p>It plays with a keyboard or a gamepad, and it needs a larger screen. There are no touch controls yet.</p>
         <button className="title-btn title-btn--primary device-notice__btn" onClick={onContinue}>
           <span className="title-btn__text">
@@ -338,23 +338,19 @@ export function MainMenu() {
     <div className={`menu ${leaving ? 'menu--leaving' : ''}`}>
       <div className="menu__scrim" aria-hidden />
       <div className="menu__panel">
-        <h1 className="logo" aria-label="PIP — Beyond the Frame">
+        <h1 className="logo" aria-label="Bitbound">
           <span className="logo__mark">
             <span className="logo__pixels" aria-hidden>
               {Array.from({ length: 14 }, (_, i) => (
                 <i key={i} />
               ))}
             </span>
-            <span className="logo__pip">
-              {['P', 'I', 'P'].map((c, i) => (
-                <span key={i} className={`logo__letter logo__letter--${i}`} data-c={c}>
-                  {c}
-                </span>
-              ))}
+            <span className="logo__word">
+              <span className="logo__letter logo__letter--bit">BIT</span>
+              <span className="logo__letter logo__letter--bound">BOUND</span>
             </span>
             <span className="logo__swoosh" aria-hidden />
           </span>
-          <span className="logo__sub">Beyond the Frame</span>
           <span className="logo__rule" aria-hidden>
             <i />
           </span>

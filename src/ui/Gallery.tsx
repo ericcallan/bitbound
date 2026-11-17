@@ -37,7 +37,7 @@ export function Gallery() {
           ← Back
         </button>
         <h1>
-          PIP <span>Art &amp; Design</span>
+          Bitbound <span>Art &amp; Design</span>
         </h1>
         <nav>
           {tabs.map(([id, label]) => (

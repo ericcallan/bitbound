@@ -1,4 +1,4 @@
-# QA report: PIP — Beyond the Frame (phase 7)
+# QA report: Bitbound (phase 7)
 
 Build: `tsc --noEmit` clean, `vite build` clean (one 1.63 MB chunk, 479 KB gzipped).
 

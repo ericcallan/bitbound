@@ -25,6 +25,7 @@ export interface SaveData {
   savedAt: number;
 }
 
+// The game was called "PIP — Beyond the Frame" when these were named. The keys stay, so existing saves still load.
 const KEY_V1 = 'pip-beyond-the-frame/save-v1';
 const KEY_V2 = 'pip-beyond-the-frame/save-v2';
 const KEY_V3 = 'pip-beyond-the-frame/save-v3';

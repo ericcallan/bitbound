@@ -120,15 +120,14 @@ kbd {
 }
 .logo__mark {
   position: relative;
-  font-size: clamp(72px, 9.2vw, 148px);
-  padding-left: 0.12em;
+  font-size: clamp(54px, 5.6vw, 100px);
+  padding-left: 0.16em;
 }
-.logo__pip {
+.logo__word {
   position: relative;
   display: flex;
-  gap: 0.01em;
   font: 900 1em/0.9 var(--font-m);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
   transform: skewX(-9deg);
 }
 .logo__letter {
@@ -139,14 +138,12 @@ kbd {
   -webkit-text-fill-color: transparent;
   filter: drop-shadow(0 0.035em 0 #0b1530) drop-shadow(0 0.06em 0.06em rgba(4, 8, 24, 0.55));
 }
-.logo__letter--0 {
+.logo__letter--bit {
   background-image: linear-gradient(180deg, #ffd27a 0%, #ff9b3d 45%, #f0702a 70%, #d4561e 100%);
 }
-.logo__letter--1 {
-  background-image: linear-gradient(180deg, #ffffff 0%, #fff6e2 60%, #e9dcc2 100%);
-}
-.logo__letter--2 {
-  background-image: linear-gradient(180deg, #b9f4ff 0%, #4fd2f4 45%, #2a9fe4 72%, #2a6fd0 100%);
+/* BOUND: from the white of the generations' highlight into the Beyond cyan */
+.logo__letter--bound {
+  background-image: linear-gradient(180deg, #ffffff 0%, #c9f6ff 30%, #4fd2f4 62%, #2a8fe0 100%);
 }
 /* the swoosh under the last P */
 .logo__swoosh {
@@ -200,19 +197,10 @@ kbd {
     opacity: 0.7;
   }
 }
-.logo__sub {
-  margin-top: 0.5em;
-  padding-left: 0.2em;
-  font: 700 clamp(15px, 1.55vw, 24px) var(--font-m);
-  letter-spacing: 0.42em;
-  text-transform: uppercase;
-  color: #ffffff;
-  text-shadow: 0 1px 2px rgba(4, 8, 24, 0.7), 0 0 16px rgba(4, 8, 24, 0.4);
-}
 .logo__rule {
   position: relative;
-  margin: 14px 0 0 0.2em;
-  width: clamp(240px, 24vw, 380px);
+  margin: 18px 0 0 0.2em;
+  width: clamp(240px, 26vw, 420px);
   height: 2px;
   background: linear-gradient(90deg, rgba(79, 210, 244, 0), rgba(79, 210, 244, 0.85) 30%, rgba(79, 210, 244, 0.85) 70%, rgba(79, 210, 244, 0));
 }

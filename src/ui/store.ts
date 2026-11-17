@@ -46,6 +46,7 @@ export interface Settings {
   quality: QualitySetting;
 }
 
+/** Kept from the game's earlier name, so existing settings still load. */
 const SETTINGS_KEY = 'pip-beyond-the-frame/settings';
 
 function loadSettings(): Settings {
