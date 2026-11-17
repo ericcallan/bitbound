@@ -106,7 +106,7 @@ export function WorldMap({ overlay = false, onClose, hud: hudOverride }: { overl
           ))}
         </g>
       ))}
-      <text className="wm-region" x="560" y="520">Still folded up — the rest of the world</text>
+      <text className="wm-region" x="560" y="520">Still on version 1.0 — the rest of the world</text>
 
       {/* explored region */}
       <text className="wm-region wm-region--known" x="150" y="140">Pixel Meadows</text>
@@ -140,7 +140,7 @@ export function WorldMap({ overlay = false, onClose, hud: hudOverride }: { overl
       <Marker x={123} y={226} got={hud.shardTaken} label="Generation Shard" />
       <Marker x={235} y={228} got={hud.shiftUnlocked} label="Dimension Core" />
       <Marker x={453} y={170} got={hud.gatePassed} label="Frame Gate" />
-      <Marker x={300} y={200} got={hud.regress} label="Regress" />
+      <Marker x={300} y={200} got={hud.regress} label="Rollback" />
       <Marker x={890} y={120} got={hud.room === 'summit' || hud.eraKeys} label="World Wheel" />
 
       {/* landmarks */}

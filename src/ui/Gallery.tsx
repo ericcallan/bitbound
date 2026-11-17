@@ -472,7 +472,7 @@ const SAMPLE: HudState = {
   gatePassed: false,
   eraKeys: false,
   maxCells: 3,
-  objective: 'Chapter 2 · Colour',
+  objective: 'Ch 2 · Colour',
   dialogue: null,
   regress: false,
   bubbleEra: -1,

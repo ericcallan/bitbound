@@ -9,14 +9,8 @@ export const ERA_COUNT = 6;
 export const ERAS: Era[] = [0, 1, 2, 3, 4, 5];
 
 export const ERA_NAMES = ['8-BIT', '16-BIT', 'EARLY 3D', 'STYLIZED', 'MODERN HD', 'BEYOND'] as const;
-export const ERA_TITLES = [
-  'A Pixel Awakens',
-  'The Painted Light',
-  'Into the Third Dimension',
-  'The Mechanism Wakes',
-  'Beacon Ridge',
-  'Beyond the Frame',
-] as const;
+/** Each generation arrives as a patch to the world (the story's frame): the story moments' banner subtitles. */
+export const ERA_TITLES = ['Version 1.0', 'Patch 2.0 · Colour', 'Patch 3.0 · Depth', 'Patch 4.0 · Ink', 'Patch 5.0 · Light', 'Patch 6.0 · Every version at once'] as const;
 /** The year each generation stands for: when its look was the state of the art. */
 export const ERA_YEARS = [1985, 1991, 1996, 2002, 2013, 2026] as const;
 /** Generation names for sentences and flags (ERA_NAMES are the HUD's capitals). */
@@ -70,7 +64,7 @@ export interface Bubble {
   era: Era;
 }
 
-/** An authored region forced to a generation (ARCHIVE's censor fields). */
+/** An authored region stuck on an older generation (a spot that never finished updating). */
 export interface EraField {
   min: V3;
   max: V3;

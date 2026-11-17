@@ -23,7 +23,7 @@ function Dialogue({ hud }: { hud: HudState }) {
   if (!d) return null;
   return (
     <div className={`dialogue dialogue--${d.speaker.toLowerCase()}`} key={d.id} data-era={hud.era}>
-      <span className="dialogue__who">{d.speaker}</span>
+      <span className="dialogue__who">{d.speaker === 'NOTES' ? `PATCH NOTES · v${hud.era + 1}.0` : d.speaker}</span>
       <span className="dialogue__text">{d.text}</span>
     </div>
   );
@@ -85,7 +85,7 @@ function Wheel({ hud }: { hud: HudState }) {
         );
       })}
       <div className="wheel__hub">
-        <div className="wheel__title">REGRESS</div>
+        <div className="wheel__title">ROLLBACK</div>
         <div className="wheel__hint">{hud.bubbleEra >= 0 ? 'release on the same generation to drop it' : 'pick a generation, release Q'}</div>
       </div>
     </div>
@@ -153,7 +153,7 @@ export function HudView({ hud, static: isStatic = false }: { hud: HudState; stat
         )}
         {hud.regress && (
           <div className={`hud__regress ${hud.bubbleEra >= 0 ? 'on' : ''}`}>
-            <kbd>Q</kbd> {hud.bubbleEra >= 0 ? `Bubble · ${ERA_NAMES[hud.bubbleEra as 0]}` : 'Regress'}
+            <kbd>Q</kbd> {hud.bubbleEra >= 0 ? `Rollback · ${ERA_NAMES[hud.bubbleEra as 0]}` : 'Rollback'}
           </div>
         )}
       </div>

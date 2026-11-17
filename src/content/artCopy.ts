@@ -44,8 +44,8 @@ export const ART_PAGES: ArtPage[] = [
       {
         title: 'Who Pip is',
         body: [
-          "Long ago ARCHIVE, the world's kindly and forgetful caretaker, folded everything down small to keep it safe — then forgot how to unfold it. Pip is the little helper it built to try again.",
-          'Curious, impulsive and brave, he learns the world by bumping into it. Each generation he restores gives ARCHIVE back a little more of its memory.',
+          'The valley updates itself one graphics generation at a time, each time the world wheel on Mount Halo turns. The wheel stuck at version 1.0. Pip, a courier robot drawn in sixteen pixels, carries the missing updates up the mountain.',
+          'Every patch redraws the whole world, and Pip with it. He notices: first that he is square, then orange, then that he has a back, an outline, a shadow, and finally every version of himself at once.',
         ],
         list: [
           'Rounded-square head with a dark screen-face',

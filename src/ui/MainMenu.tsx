@@ -72,7 +72,7 @@ const Icon = {
 
 const HALO_CHECKPOINTS = new Set(['halo', 'thicket', 'relief', 'seal', 'summit']);
 
-/** "The Waking World · 46/65 bits · 2 h ago" for the Continue button. */
+/** "Every Version · 46/65 bits · 2 h ago" for the Continue button. */
 function saveSummary(): string | null {
   const s = loadSave();
   if (!s) return null;

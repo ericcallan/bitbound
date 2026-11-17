@@ -31,7 +31,7 @@ export interface HudState {
   eraKeys: boolean;
   maxCells: number;
   objective: string;
-  dialogue: { speaker: 'ARCHIVE' | 'PIP' | 'SYSTEM'; text: string; id: number } | null;
+  dialogue: { speaker: 'NOTES' | 'PIP' | 'SYSTEM'; text: string; id: number } | null;
   regress: boolean;
   bubbleEra: number;
   wheelOpen: boolean;

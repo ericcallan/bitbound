@@ -748,6 +748,7 @@ export class AudioEngine {
         this.sfx(e.type);
         break;
       case 'line':
+        // the patch notes keep the middle voice; Pip lower, system messages higher
         this.sfx('line', e.text === 'PIP' ? 1 : e.text === 'SYSTEM' ? 2 : 0);
         break;
     }

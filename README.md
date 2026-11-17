@@ -1,6 +1,7 @@
 # Bitbound
 
-A playable browser game about Pip, a small robot restoring a forgotten world one graphical generation at a time.
+A playable browser game about Pip, a small courier robot carrying a stuck world's missing updates, one graphical
+generation at a time.
 Each of the **six generations** (8-bit, 16-bit, Early 3D, Stylized, Modern HD, Beyond) is a chapter, and also a
 puzzle tool. The same world **shifts between a 2D side-scroller and full 3D**.
 
@@ -14,21 +15,34 @@ npm run build          # typecheck + production build
 npm run assets:build   # rebuild every 3D asset from the Blender scripts (needs Blender 5.3)
 ```
 
-## Story: "The world remembers"
+## Story: "Patch Day"
 
-Long ago ARCHIVE, the world's kindly and forgetful caretaker, folded everything down small to keep it safe, then
-forgot how to unfold it. Pip is the little helper it built to try again. With each generation Pip restores,
-ARCHIVE remembers a bit more, and its voice grows from cheerful 8-bit instructions into something warm and
-wistful. There are no villains.
+The valley is a world that updates itself, one graphics generation at a time, each time the world wheel on Mount
+Halo turns. The wheel stuck at version 1.0. Pip, a courier robot drawn in sixteen pixels, carries the missing
+updates up the mountain.
 
-| Ch | Generation | Title |
+- **The world speaks in patch notes:** short, dry changelog lines ("Patch 3.0 installed: depth. Things have backs
+  now."), written in each generation's own style, 8-bit capitals first.
+- **Every puzzle is a "Known issue"** fixed by some version's rules: the broken bridge, the painted stair, light
+  fences, brambles, stones that never finished updating.
+- **Each patch redraws Pip too, and he notices:** square, then orange, a back, an outline, a shadow, and finally
+  every version of himself at once.
+- **Nothing is ever deleted.** Old versions are kept underneath, which is why Pip can **roll back** the world
+  around himself (Q). In the Hidden Chamber are earlier couriers whose updates never arrived. "Mine will."
+
+| Ch | Generation | Patch |
 |---|---|---|
-| 1 | 8-bit | Boot |
-| 2 | 16-bit | Colour |
-| 3 | Early 3D | Depth |
-| 4 | Stylized | Ink |
-| 5 | Modern HD | Light |
-| 6 | Beyond | The Waking World: the Halo Path, solved with Regress |
+| 1 | 8-bit | Version 1.0 |
+| 2 | 16-bit | Patch 2.0 · Colour |
+| 3 | Early 3D | Patch 3.0 · Depth |
+| 4 | Stylized | Patch 4.0 · Ink |
+| 5 | Modern HD | Patch 5.0 · Light |
+| 6 | Beyond | Patch 6.0 · Every version at once: the Halo Path, solved with Rollback |
+
+**Where it goes next.** The map already shows what lies below the valley: Megatower, stuck on 2.0 (a 16-bit
+arcade city), and the Streets Below, on 3.0. Each region is a different era to patch, the earlier couriers can be
+woken as helpers, every new version adds a rule to roll back to, and after the credits: "Patch 7.0: in
+development."
 
 ## Controls
 
@@ -37,7 +51,7 @@ wistful. There are no villains.
 | Move | `WASD` / arrows | Left stick / d-pad |
 | Jump (hold for height) | `Space` / `K` | A |
 | Dimension Shift / interact | `E` | B / X / RB |
-| Regress (hold for the generation wheel; tap to toggle) | `Q` | Y |
+| Rollback (hold for the generation wheel; tap to toggle) | `Q` | Y |
 | Orbit the 3D camera / recentre | Drag with the mouse / `C` | Right stick / stick click |
 | Pick a generation (once unlocked) | `1`–`6` | — |
 | World map / pause | `M` / `Esc` | Back / Start |
@@ -62,7 +76,7 @@ wistful. There are no villains.
 - **Generation flag:** every switch says which generation it is, as "Generation 3 (1996): Early 3D" (8-bit 1985,
   16-bit 1991, Early 3D 1996, Stylized 2002, Modern HD 2013, Beyond 2026), in that generation's own banner style;
   the title's timeline shows the same line.
-- **Older generations inside a newer world** (the Regress bubble, the sleep field): the ground and cliffs stay,
+- **Older generations inside a newer world** (the Rollback bubble, the sleep field): the ground and cliffs stay,
   drawn in that generation's look, so nothing turns see-through.
 - **Sound:** valley ambience, the river, footsteps by surface, and the hidden chamber's reverb.
 

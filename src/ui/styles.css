@@ -2243,7 +2243,7 @@ kbd {
   border: 0;
 }
 
-/* ARCHIVE speaks: a subtitle box styled per generation. */
+/* The world's patch notes and Pip: a subtitle box styled per generation. */
 .dialogue {
   position: absolute;
   left: 50%;
@@ -2321,7 +2321,7 @@ kbd {
   font-family: var(--font-m);
   font-weight: 300;
 }
-.dialogue--archive .dialogue__who {
+.dialogue--notes .dialogue__who {
   color: var(--cyan);
 }
 .dialogue--pip .dialogue__who {
@@ -2330,11 +2330,11 @@ kbd {
 .dialogue--system .dialogue__who {
   color: #b388ff;
 }
-.dialogue[data-era='3'].dialogue--archive .dialogue__who {
+.dialogue[data-era='3'].dialogue--notes .dialogue__who {
   color: #2b2d6e;
 }
 
-/* The Regress wheel. */
+/* The Rollback wheel. */
 .wheel {
   position: absolute;
   left: 50%;

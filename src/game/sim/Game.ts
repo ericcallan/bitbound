@@ -125,7 +125,7 @@ const ERA_KEYS: [Action, Era][] = [
 ];
 
 /** Chapter headings, shown as the HUD objective line. */
-export const CHAPTERS = ['Ch 1 · Boot', 'Ch 2 · Colour', 'Ch 3 · Depth', 'Ch 4 · Ink', 'Ch 5 · Light', 'Ch 6 · The Waking World'];
+export const CHAPTERS = ['Ch 1 · Version 1.0', 'Ch 2 · Colour', 'Ch 3 · Depth', 'Ch 4 · Ink', 'Ch 5 · Light', 'Ch 6 · Every Version'];
 
 export const BUBBLE_RADIUS = 3.0;
 
@@ -197,7 +197,7 @@ export class Game {
   seenAlcove = false;
   bitsCollected = 0;
 
-  // Regress: projecting an older (or full) generation around Pip
+  // Regress (shown to players as Rollback): projecting an older (or full) generation around Pip
   regressEra: Era = 0;
   wheelOpen = false;
   private wheelT = 0;
@@ -1212,7 +1212,7 @@ export class Game {
     if (!this.tutorialJumped && this.tutorialMoved && x > 6 && x < 24 && this.shift.mode === '2d') return { keys: ['Space'], text: 'Jump — hold for height', tone: 'info' };
     if (!this.shift.unlocked && x > 55 && x < 62) return { keys: [], text: 'The bridge is broken. That device is humming…', tone: 'story' };
     if (this.save.regress && x > 114 && x < L.fenceX && !this.bubbleActive && p.pos.y > 8)
-      return { keys: ['Q', '1'], text: 'Hold Q, press 1: project 8-bit around you', tone: 'info' };
+      return { keys: ['Q', '1'], text: 'Hold Q, press 1: roll back to 8-bit around you', tone: 'info' };
     if (this.bubbleActive && x > L.fenceX + 1 && x < 124) return { keys: ['Q'], text: 'Tap Q to drop the bubble', tone: 'info' };
     const halo = this.haloPrompt();
     if (halo !== undefined) return halo;
@@ -1259,7 +1259,7 @@ export class Game {
     if (near(L.reliefGap.x0 - 3, L.reliefGap.x1) && p.pos.y > L.haloY - 1 && bubble?.era !== 3)
       return { keys: ['Q', '4'], text: 'Carved handholds only hold you in the Stylized world', tone: 'info' };
     if (near(L.sleepField.min.x - 1, L.glyphStone.x + 4) && !this.save.glyphsRead && p.pos.y > L.sealY - 1)
-      return { keys: ['Q', '6'], text: 'The stone is asleep in 16-bit — project full detail beside it', tone: 'info' };
+      return { keys: ['Q', '6'], text: 'The stone never updated past 16-bit — roll it forward to full detail', tone: 'info' };
     if (near(L.aqueduct.x0 - 3, L.aqueduct.x0 + 0.5) && p.pos.y > L.sealY - 1) {
       if (this.shift.mode === '3d') return { keys: ['E'], text: 'From the side, the two halves line up — shift to 2D', tone: 'info' };
       return null;

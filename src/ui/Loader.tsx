@@ -8,7 +8,7 @@ const CAP_MS = 15000;
 const LABELS = {
   download: 'Downloading the world',
   unfold: 'Unfolding the world',
-  warm: 'Warming up six generations',
+  warm: 'Installing six generations',
   done: 'Ready',
 };
 

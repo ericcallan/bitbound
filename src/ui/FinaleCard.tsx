@@ -10,8 +10,8 @@ export function FinaleCard() {
   return (
     <div className="finale" data-era={hud.era}>
       <div className="finale__card">
-        <div className="finale__kicker">The world wheel turns</div>
-        <h2 className="finale__title">The Waking World</h2>
+        <div className="finale__kicker">Update complete</div>
+        <h2 className="finale__title">Every Version at Once</h2>
         <div className="finale__stats">
           <div>
             <b>{hud.bits}</b>
@@ -19,17 +19,16 @@ export function FinaleCard() {
           </div>
           <div>
             <b>6</b>
-            <span>generations restored</span>
+            <span>updates delivered</span>
           </div>
           <div>
             <b>PIP</b>
-            <span>helper, unfolded</span>
+            <span>courier, fully updated</span>
           </div>
         </div>
         <p className="finale__teaser">
-          Winter is over. ARCHIVE remembers what it was waiting for, and the valley wakes up in every generation at
-          once. Beyond Mount Halo the rest of the world is still folded small, and something down there is starting
-          to stir.
+          The world wheel turns again, and the valley wakes up in every generation at once. Down past Mount Halo,
+          the rest of the world is still on version 1.0. <em>Update available.</em>
         </p>
         <p className="finale__unlock">
           New: press <kbd>1</kbd>–<kbd>6</kbd> to switch generations anytime. "Keep exploring" stays at the summit.
@@ -44,7 +43,7 @@ export function FinaleCard() {
           >
             Keep exploring
           </button>
-          <ShareButton className="menu__btn" text={`I restored the Waking World in Bitbound, with ${hud.bits}/${hud.totalBits} bits. From 8-bit to beyond:`} />
+          <ShareButton className="menu__btn" text={`I delivered every update in Bitbound, from version 1.0 to Beyond, with ${hud.bits}/${hud.totalBits} bits:`} />
           <button className="menu__btn" onClick={() => (audio.sfx('click'), ui.setMap(true))}>
             World map
           </button>

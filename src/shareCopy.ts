@@ -5,6 +5,6 @@ export const SITE_URL = 'https://bitbound.world';
 export const SHARE = {
   title: 'Bitbound',
   description:
-    'A tiny robot restores a forgotten world one graphics generation at a time — from 8-bit to beyond. Shift between 2D and 3D to find the way.',
+    "A tiny courier robot carries a stuck world's missing updates, one graphics generation at a time — from 8-bit to beyond. Shift between 2D and 3D to find the way.",
   imageAlt: 'Pip, a small orange and white robot, stands on a mossy rock above a valley with a waterfall and a glowing stone ring, under the Bitbound logo.',
 };
