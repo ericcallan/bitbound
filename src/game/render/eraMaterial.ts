@@ -25,6 +25,8 @@ export const eraUniforms = {
   uFieldMax: { value: Array.from({ length: 4 }, () => new THREE.Vector3(0, -999, 0)) },
   uFieldEra: { value: [0, 0, 0, 0] as number[] },
   uTime: { value: 0 },
+  /** The immersive valley: x below which the old box ground is replaced by terrain (0 = not loaded). */
+  uValleyX: { value: -1e9 },
   /** Early-3D vertex snapping grid (in NDC units per half-screen). */
   uSnapRes: { value: new THREE.Vector2(110, 80) },
 };
@@ -58,6 +60,7 @@ uniform vec3 uFieldMin[4];
 uniform vec3 uFieldMax[4];
 uniform float uFieldEra[4];
 uniform float uTime;
+uniform float uValleyX;
 float eraAtWorld(vec3 w) {
   if (uSplit > 0.5) {
     float e = 0.0;
@@ -155,6 +158,13 @@ export interface EraMatOptions {
   physical?: Partial<Pick<THREE.MeshPhysicalMaterial, 'clearcoat' | 'clearcoatRoughness' | 'iridescence' | 'sheen' | 'sheenColor'>>;
   /** Extra vertex displacement GLSL run in world space (receives `vec3 wp`, may modify it). */
   vertexWorld?: string;
+  /**
+   * Old box-world ground inside the immersive valley: hidden (per pixel) wherever the terrain has taken
+   * over, i.e. inside the valley slice in the 3D generations, once the terrain asset has loaded.
+   */
+  hideInValley?: boolean;
+  /** Terrain itself: only drawn in the 3D generations (the retro generations are pixel art). */
+  only3dGenerations?: boolean;
 }
 
 /**
@@ -186,7 +196,15 @@ export function eraMaterial(o: EraMatOptions): THREE.MeshStandardMaterial {
 export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: Partial<EraMatOptions> = {}): T {
   const local = { uPattern: { value: o.pattern ?? 0 }, uFlatBoost: { value: o.flatBoost ?? 1 } };
   const vertexWorld = o.vertexWorld ?? '';
-  m.onBeforeCompile = (shader) => {
+  const discardRule = o.hideInValley
+    ? 'if (vEraWorld.x < uValleyX && eraF > 1.5) discard;'
+    : o.only3dGenerations
+      ? 'if (eraF < 1.5) discard;'
+      : '';
+  // Chain onto any patch already on the material (e.g. the terrain splat shader).
+  const prev = m.onBeforeCompile.bind(m);
+  m.onBeforeCompile = (shader, renderer) => {
+    prev(shader, renderer);
     Object.assign(shader.uniforms, eraUniforms, local);
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\nvarying vec3 vEraWorld;\nuniform vec2 uSnapRes;\n${ERA_GLSL_COMMON}`)
@@ -214,6 +232,7 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
         '#include <color_fragment>',
         `#include <color_fragment>
         float eraF = eraAtWorld(vEraWorld);
+        ${discardRule}
         if (uPattern > 0.5) diffuseColor.rgb = eraPattern(diffuseColor.rgb, vEraWorld, uPattern, eraF);`,
       )
       .replace(
@@ -277,7 +296,9 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
         #include <opaque_fragment>`,
       );
   };
-  m.customProgramCacheKey = () => `era-v2${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}`;
+  const prevKey = m.customProgramCacheKey.bind(m);
+  m.customProgramCacheKey = () =>
+    `${prevKey()}|era-v3${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.only3dGenerations ? '-3g' : ''}`;
   return m;
 }
 

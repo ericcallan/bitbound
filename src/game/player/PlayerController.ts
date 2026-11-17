@@ -2,6 +2,14 @@ import { PHYS, PIP_SIZE, STEP } from '../sim/constants';
 import { clamp, moveToward, v3, type V3 } from '../math';
 import { shiftBox, type AABB, type Axis, type Collider, type World } from '../collision/World';
 
+/** The valley terrain as a pseudo-collider, so 'what am I standing on' stays uniform. */
+export const TERRAIN_GROUND: Collider = { id: 'terrain', kind: 'ground', enabled: true, min: v3(-1e9, -1e9, -1e9), max: v3(1e9, 0, 1e9), delta: v3() };
+/** Highest terrain step Pip walks up without jumping, and the steepest walkable slope (rise/run). */
+const TERRAIN_STEP = 0.45;
+const MAX_SLOPE = 1.1;
+/** Low lips on box ground that 3D walking steps onto (seams where terrain meets old platforms). */
+const BOX_STEP = 0.32;
+
 export type MoveMode = '2d' | '3d' | 'frozen';
 
 export interface MoveIntent {
@@ -205,6 +213,8 @@ export class PlayerController {
       this.ground = g2;
     }
 
+    if (mode === '3d' && this.world.terrain) this.resolveTerrain(b, wasGrounded, dt);
+
     if (this.grounded) {
       if (!wasGrounded) {
         const impact = -this.vel.y;
@@ -227,8 +237,73 @@ export class PlayerController {
     }
   }
 
+  /**
+   * 3D walking on the valley height field: land on it, walk up gentle rises, stick to it going
+   * downhill, refuse cliffs (anything steeper than MAX_SLOPE or a rise beyond TERRAIN_STEP) and slide
+   * off steep ground.
+   */
+  private resolveTerrain(b: AABB, wasGrounded: boolean, dt: number) {
+    let h = this.world.terrainUnder(b);
+    if (h === null) return;
+    if (this.pos.y < h - 1e-4) {
+      const rise = h - this.prevPos.y;
+      const slope = this.world.terrainSlope(this.pos.x, this.pos.z);
+      if (rise > TERRAIN_STEP || (rise > 0.02 && slope > MAX_SLOPE)) {
+        // A wall of earth: undo this step's horizontal movement.
+        const dx = this.prevPos.x - this.pos.x;
+        const dz = this.prevPos.z - this.pos.z;
+        shiftBox(b, 'x', dx);
+        shiftBox(b, 'z', dz);
+        this.pos.x = this.prevPos.x;
+        this.pos.z = this.prevPos.z;
+        this.vel.x *= -0.1;
+        this.vel.z *= -0.1;
+        h = this.world.terrainUnder(b) ?? h;
+      }
+      if (this.pos.y < h) {
+        shiftBox(b, 'y', h - this.pos.y);
+        this.pos.y = h;
+      }
+    }
+    if (this.vel.y > 0) return;
+    const gap = this.pos.y - h;
+    const stick = wasGrounded && !this.jumping ? 0.3 : 0.03;
+    if (gap >= -1e-4 && gap < stick) {
+      const slope = this.world.terrainSlope(this.pos.x, this.pos.z);
+      if (gap > 0) {
+        shiftBox(b, 'y', -gap);
+        this.pos.y = h;
+      }
+      if (slope <= MAX_SLOPE) {
+        if (!this.grounded) {
+          this.grounded = true;
+          this.ground = TERRAIN_GROUND;
+        }
+      } else {
+        // Too steep to stand on: slide down the fall line.
+        const e = 0.25;
+        const T = this.world.terrain!;
+        const gx = ((T(this.pos.x + e, this.pos.z) ?? h) - (T(this.pos.x - e, this.pos.z) ?? h)) / (2 * e);
+        const gz = ((T(this.pos.x, this.pos.z + e) ?? h) - (T(this.pos.x, this.pos.z - e) ?? h)) / (2 * e);
+        this.vel.x -= gx * 18 * dt;
+        this.vel.z -= gz * 18 * dt;
+      }
+    }
+  }
+
   private moveAxis(b: AABB, axis: Axis, d: number, mode: MoveMode) {
-    const r = this.world.sweep(b, axis, d);
+    let r = this.world.sweep(b, axis, d);
+    // 3D: step up onto low lips (where the terrain meets an old platform edge).
+    if (r.hit && mode === '3d' && r.hit.kind !== 'cube' && this.grounded) {
+      const lip = r.hit.max.y - b.min.y;
+      if (lip > 0 && lip <= BOX_STEP) {
+        const up: AABB = { min: { ...b.min, y: b.min.y + lip + 1e-3 }, max: { ...b.max, y: b.max.y + lip + 1e-3 } };
+        if (this.world.isFree(up)) {
+          shiftBox(b, 'y', lip + 1e-3);
+          r = this.world.sweep(b, axis, d - r.moved);
+        }
+      }
+    }
     if (r.hit && r.hit.kind === 'cube' && mode === '3d' && this.grounded) {
       // Push the cube: it moves at most pushSpeed and Pip follows it.
       const remaining = d - r.moved;

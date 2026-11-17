@@ -17,7 +17,12 @@ const LOOK_MAT = {
   hedge: () => eraMaterial({ color: '#2f8f4a', pattern: PATTERN.hedge, roughness: 0.95 }),
   wood: () => sharedEraMaterial('woodSolid', { color: '#a8703f', pattern: PATTERN.wood }),
   metal: () => sharedEraMaterial('metalSolid', { color: '#6e7aa0', pattern: PATTERN.metal, metalness: 0.5 }),
+  // Ground inside the immersive valley: replaced by the terrain in the 3D generations.
+  valleyDirt: () => sharedEraMaterial('valleyDirt', { color: '#9a6440', pattern: PATTERN.dirt, hideInValley: true }),
+  valleyCap: () => sharedEraMaterial('valleyCap', { color: '#52c24a', pattern: PATTERN.grass, roughness: 0.9, hideInValley: true }),
 };
+/** Level ground pieces whose 3D look the valley terrain takes over. */
+const VALLEY_GROUND = new Set(['g1', 'g2', 'g3']);
 
 /** The sun as seen in the sky (and the source of Beyond's light shafts): low, behind the lane. */
 export const SKY_SUN = new THREE.Vector3(-0.38, 0.3, -0.87).normalize();
@@ -206,15 +211,18 @@ export class LevelView {
       return m;
     };
     if (s.look === 'grass') {
+      const valley = VALLEY_GROUND.has(s.id);
+      const dirt = valley ? LOOK_MAT.valleyDirt() : LOOK_MAT.dirt();
+      const capMat = valley ? LOOK_MAT.valleyCap() : LOOK_MAT.grassCap();
       const capH = Math.min(0.32, h * 0.5);
-      const body = mk(new THREE.BoxGeometry(w, h - capH, d), LOOK_MAT.dirt());
+      const body = mk(new THREE.BoxGeometry(w, h - capH, d), dirt);
       body.position.set(cx, min.y + (h - capH) / 2, cz);
-      const cap = mk(new RoundedBoxGeometry(w + 0.08, capH + 0.04, d + 0.08, 2, 0.04), LOOK_MAT.grassCap());
+      const cap = mk(new RoundedBoxGeometry(w + 0.08, capH + 0.04, d + 0.08, 2, 0.04), capMat);
       cap.position.set(cx, max.y - capH / 2 + 0.005, cz);
       this.group.add(body, cap);
       // Chunky grassy overhang lip on the front face in the pixel generations.
       for (let x = min.x + 0.25; x < max.x - 0.2; x += 0.5) {
-        const lip = mk(new THREE.BoxGeometry(0.5, 0.16, 0.06), LOOK_MAT.grassCap());
+        const lip = mk(new THREE.BoxGeometry(0.5, 0.16, 0.06), capMat);
         lip.position.set(x, max.y - capH - 0.06 - (Math.floor(x * 2) % 2) * 0.08, max.z + 0.05);
         this.group.add(lip);
         this.eras.add(lip, E(0, 1), false, lip.position.clone());
@@ -397,7 +405,7 @@ export class LevelView {
     };
     const sparse = new THREE.ConeGeometry(0.035, 0.32, 3);
     sparse.translate(0, 0.16, 0);
-    layer(sparse, eraMaterial({ color: '#5fd05a', roughness: 0.9 }), 26, E(3, 4), 0.6, 0.9);
+    layer(sparse, eraMaterial({ color: '#5fd05a', roughness: 0.9, hideInValley: true }), 26, E(3, 4), 0.6, 0.9);
     // Beyond: thin curved blades, three times denser, swaying in the wind and parting around Pip.
     const blade = new THREE.PlaneGeometry(0.05, 0.36, 1, 3);
     blade.translate(0, 0.18, 0);
@@ -408,7 +416,7 @@ export class LevelView {
       pos.setZ(i, (y / 0.36) * (y / 0.36) * 0.08);
     }
     blade.computeVertexNormals();
-    const dense = eraMaterial({ color: '#63c95a', roughness: 0.7, side: THREE.DoubleSide, vertexWorld: GRASS_WIND });
+    const dense = eraMaterial({ color: '#63c95a', roughness: 0.7, side: THREE.DoubleSide, vertexWorld: GRASS_WIND, hideInValley: true });
     const prev = dense.onBeforeCompile;
     dense.onBeforeCompile = (sh, gl) => {
       sh.uniforms.uPip = LevelView.pipUniform;
@@ -420,7 +428,7 @@ export class LevelView {
 
   /** Water at the bottom of each pit: flat in pixel eras, reflective and rippling in Beyond. */
   private buildWater() {
-    const mat = eraMaterial({ color: '#2a78b8', roughness: 0.06, metalness: 0.0, pattern: PATTERN.water, transparent: true, opacity: 0.92 });
+    const mat = eraMaterial({ color: '#2a78b8', roughness: 0.06, metalness: 0.0, pattern: PATTERN.water, transparent: true, opacity: 0.92, hideInValley: true });
     for (const p of this.level.pits) {
       const water = new THREE.Mesh(new THREE.PlaneGeometry(p.x1 - p.x0, 5.5, 24, 6), mat);
       water.rotation.x = -Math.PI / 2;

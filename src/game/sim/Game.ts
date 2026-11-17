@@ -12,6 +12,7 @@ import { SCRIPT, lineDuration, type Line, type LineId } from '../story/script';
 import { DEATH_Y, LANE_TOLERANCE, MAX_CELLS, STEP } from './constants';
 import type { Action, InputSource } from './Input';
 import { clamp, dist2D, v3, type V3 } from '../math';
+import { valleyCollideHeight, WATER_Y } from '../level/valley';
 
 export type PipAction = 'none' | 'stumble' | 'fistpump' | 'inspect' | 'surprised' | 'dance' | 'hurt' | 'wave';
 export type Expression = 'idle' | 'happy' | 'surprised' | 'panic' | 'dizzy' | 'determined' | 'sleepy' | 'hurt' | 'wonder';
@@ -216,6 +217,8 @@ export class Game {
       this.world.add(s.id, s.kind, s.box, s.enabled ?? true, s.only2d ?? false, s.genMask);
     }
     this.world.genAt = (c: Collider) => this.era.gameEraAtBox(c.min, c.max);
+    // The valley terrain: walkable in 3D inside the finished slice.
+    this.world.terrain = valleyCollideHeight;
     this.movers = this.level.movers.map((m) => {
       const c = this.world.add(m.id, 'platform', {
         min: v3(m.minX - m.halfW, m.y - 0.4, -1),
@@ -476,8 +479,9 @@ export class Game {
       this.persist();
     }
 
-    // Falling out of the world
-    if (p.pos.y < DEATH_Y && this.respawnT < 0) {
+    // Falling out of the world, or into deep river water in the valley
+    const drowned = p.pos.y < WATER_Y - 0.6 && valleyCollideHeight(p.pos.x, p.pos.z) !== null;
+    if ((p.pos.y < DEATH_Y || drowned) && this.respawnT < 0) {
       this.cells -= 1;
       this.emit('hurt', { pos: { ...p.pos } });
       this.beginRespawn();
@@ -503,6 +507,7 @@ export class Game {
       bounds: this.level.bounds,
       raycast: (a, b) => this.world.raycast(a, b, (c) => c.kind !== 'invisible' && c.kind !== 'cube' && c.max.y > a.y - 0.6),
       laneZ: this.shift.laneZ,
+      groundAt: valleyCollideHeight,
     };
   }
 
@@ -1162,7 +1167,8 @@ export class Game {
       if (lc.z > sk.z + 0.3) return { keys: ['A'], text: 'Now push it from its right side toward the wall, onto the yellow arrow', tone: 'info' };
       return { keys: [], text: 'Nudge the lantern onto the yellow arrow', tone: 'info' };
     }
-    if (Math.abs(p.pos.z) > LANE_TOLERANCE && x < 141) return { keys: [], text: 'Return to the glowing lane', tone: 'info' };
+    // Off the path in 3D, Pip is just exploring: no nagging (a refused shift explains itself).
+    if (Math.abs(p.pos.z) > LANE_TOLERANCE) return null;
     if (inAct2) return { keys: ['E'], text: 'Shift to 2D — painted steps are solid when flat', tone: 'info' };
     if (x < 141) return { keys: ['E'], text: 'Shift back to 2D', tone: 'info' };
     return null;

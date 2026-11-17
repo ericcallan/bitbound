@@ -5,6 +5,7 @@ import { EntityViews } from './EntityViews';
 import { Particles } from './Particles';
 import { PostPipeline, type PostFrame, type QualitySetting } from './post/Pipeline';
 import { PixelSprite } from './sprites';
+import { TerrainView } from './terrain';
 import { PipModel } from '../pip/PipModel';
 import { PipGLB } from '../pip/PipGLB';
 import type { Game, GameEvent } from '../sim/Game';
@@ -66,6 +67,8 @@ export class GameView {
   level: LevelView;
   entities: EntityViews;
   pip = new PipModel();
+  /** The immersive valley (Blender terrain) the level sits in. */
+  terrain = new TerrainView();
   /** The Blender-built Pip, used from Modern HD on once its asset has loaded. */
   pipHD = new PipGLB();
   pipSprite = new PixelSprite('pip', 1, 1);
@@ -139,7 +142,7 @@ export class GameView {
     this.options = options;
     this.level = new LevelView(game.level);
     this.entities = new EntityViews(game, this.level.eras);
-    this.scene.add(this.level.group, this.entities.group);
+    this.scene.add(this.level.group, this.entities.group, this.terrain.group);
     this.scene.add(this.pip.root, this.pip.trail, this.pipHD.root, this.pipSprite.sprite, this.particles.mesh);
     this.scene.fog = new THREE.Fog('#bfe3ff', 90, 380);
     this.scene.environment = skyEnvironment(gl);
@@ -207,6 +210,7 @@ export class GameView {
   dispose() {
     this.unsub();
     this.level.dispose();
+    this.terrain.dispose();
     this.post.dispose();
     this.pip.dispose();
     this.pipHD.dispose();
@@ -410,6 +414,10 @@ export class GameView {
       eraUniforms.uFieldEra.value[i] = f?.era ?? 0;
     }
     eraUniforms.uTime.value = t;
+    // Menu/gallery split views show the original level; the immersive valley is for play.
+    if (split) eraUniforms.uValleyX.value = -1e9;
+    else this.terrain.update();
+    this.terrain.group.visible = !split;
 
     // --- lights follow the action
     const keyDir = SUN_DIR;
@@ -531,7 +539,9 @@ export class GameView {
 
     // Lane guide while in 3D (meadow)
     const laneOn = g.shift.unlocked ? clamp(g.shift.blend, 0, 1) : 0;
-    this.level.laneMat.opacity = laneOn * (0.55 + Math.sin(t * 3) * 0.15);
+    // The lane is a quiet cue in the immersive 3D world: faint, brighter only when Pip can flatten here.
+    const onLane = Math.abs(p.pos.z) <= 0.6 && g.shiftStatus === 'ready';
+    this.level.laneMat.opacity = laneOn * (onLane ? 0.22 + Math.sin(t * 3) * 0.06 : 0.05);
     this.level.group.children.forEach((o) => {
       if (o.userData.bridge !== undefined) o.visible = laneOn > 0.01 && (!o.userData.bridge || g.puzzle.state === 'repaired');
     });

@@ -78,6 +78,33 @@ export class World {
    * and Pip's Regress bubble). Colliders with a `genMask` only exist in the generations it lists.
    */
   genAt: ((c: Collider) => number) | null = null;
+  /** Height-field ground for 3D walking (the valley terrain); null where it doesn't apply. */
+  terrain: ((x: number, z: number) => number | null) | null = null;
+
+  /** Highest terrain point under a box's footprint (centre and corners), or null if none. */
+  terrainUnder(b: AABB): number | null {
+    if (!this.terrain) return null;
+    const cx = (b.min.x + b.max.x) / 2;
+    const cz = (b.min.z + b.max.z) / 2;
+    let best: number | null = null;
+    for (const [x, z] of [[cx, cz], [b.min.x, b.min.z], [b.max.x, b.min.z], [b.min.x, b.max.z], [b.max.x, b.max.z]]) {
+      const h = this.terrain(x, z);
+      if (h !== null && (best === null || h > best)) best = h;
+    }
+    return best;
+  }
+
+  /** Terrain slope (rise over run) at a point. */
+  terrainSlope(x: number, z: number): number {
+    if (!this.terrain) return 0;
+    const e = 0.25;
+    const hx0 = this.terrain(x - e, z);
+    const hx1 = this.terrain(x + e, z);
+    const hz0 = this.terrain(x, z - e);
+    const hz1 = this.terrain(x, z + e);
+    if (hx0 === null || hx1 === null || hz0 === null || hz1 === null) return 0;
+    return Math.hypot((hx1 - hx0) / (2 * e), (hz1 - hz0) / (2 * e));
+  }
   /** Testing a hypothetical: override `genAt` while checking whether a bubble change is safe. */
   genOverride: ((c: Collider) => number) | null = null;
 

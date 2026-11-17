@@ -3,7 +3,7 @@ import { clamp, damp, dampAngle, lerp, lerpAngle, smoothstep, v3, wrapAngle, typ
 /** Side-on: a long lens far away along +z reads as a classic flat 2D platformer. */
 const CAM2D = { fov: 13, viewHeight: 9.2, pitch: 0.05, height: 1.45 };
 /** Third-person: behind Pip (looking down +x), wider lens, closer. */
-const CAM3D = { fov: 56, dist: 7.4, pitch: 0.36, height: 0.95, behindYaw: -Math.PI / 2 };
+const CAM3D = { fov: 52, dist: 5.4, pitch: 0.24, height: 1.0, behindYaw: -Math.PI / 2 };
 
 export interface CamPose {
   target: V3;
@@ -26,6 +26,8 @@ export interface CameraContext {
   raycast?: (from: V3, to: V3) => number | null;
   /** Depth of the lane the 2D camera frames. */
   laneZ?: number;
+  /** Ground height under a point (the valley terrain), so the 3D camera never dips underground. */
+  groundAt?: (x: number, z: number) => number | null;
 }
 
 /**
@@ -164,6 +166,10 @@ export class CameraRig {
     this.pos.x = target.x + Math.sin(yaw) * cp * dist;
     this.pos.y = target.y + Math.sin(pitch) * dist;
     this.pos.z = target.z + Math.cos(yaw) * cp * dist;
+    if (ctx.groundAt && s > 0.5) {
+      const g = ctx.groundAt(this.pos.x, this.pos.z);
+      if (g !== null && this.pos.y < g + 0.45) this.pos.y = g + 0.45;
+    }
     this.target = target;
 
     if (this.shake > 0) {

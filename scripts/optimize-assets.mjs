@@ -40,7 +40,8 @@ for (const f of files) {
     resample(),
     weld(),
     reorder({ encoder: MeshoptEncoder }),
-    quantize(),
+    // Terrain is walked on: keep positions to ~5 mm so the surface matches collision.
+    quantize({ quantizePosition: name === 'terrain' ? 16 : 14 }),
     textureCompress({ encoder: sharp, targetFormat: 'webp', resize: [size, size], quality: 88 }),
     meshopt({ encoder: MeshoptEncoder, level: 'medium' }),
   );

@@ -19,6 +19,11 @@ if (!fs.existsSync(BLENDER)) {
 }
 for (const n of names) {
   const t = Date.now();
+  if (n === 'terrain') {
+    // The terrain mesh is built from the game's own height field, and shaded with packed scanned textures.
+    execFileSync('npx', ['vite-node', path.join(ROOT, 'scripts', 'terrain', 'export-valley.ts')], { stdio: 'inherit', cwd: ROOT });
+    execFileSync('node', [path.join(ROOT, 'scripts', 'build-terrain-textures.mjs')], { stdio: 'inherit', cwd: ROOT });
+  }
   console.log(`\n▶ blender create_${n}.py`);
   const out = execFileSync(BLENDER, ['-b', '-P', path.join(ROOT, 'scripts', 'blender', `create_${n}.py`)], { encoding: 'utf8', maxBuffer: 64 << 20 });
   for (const line of out.split('\n')) if (line.startsWith('[pip-assets]') || /Error|Traceback/.test(line)) console.log('  ' + line);
