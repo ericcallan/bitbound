@@ -26,8 +26,10 @@ const SPEC = {
     maxKB: 3000,
     height: [0.8, 1.2],
   },
-  tree: { nodes: ['great_tree'], maxTris: 120000, maxKB: 4000, height: [5, 16] },
-  gateway: { nodes: ['shard_arch'], maxTris: 30000, maxKB: 2500, height: [2, 6] },
+  // roots sink into the ground by design
+  tree: { nodes: ['great_tree', 'meadow_tree'], maxTris: 120000, maxKB: 4000, height: [5, 16], baseTolerance: 0.5 },
+  gateway: { nodes: ['shard_arch', 'ruin_column', 'block_step1', 'block_step2', 'block_float1', 'block_plinth'], maxTris: 40000, maxKB: 2500, height: [2, 6] },
+  vegetation: { nodes: ['grass_clump', 'tall_grass', 'flower_white', 'flower_violet', 'fern'], maxTris: 3000, maxKB: 200, height: [0.3, 1.2] },
   terrain: { nodes: ['valley_terrain'], maxTris: 250000, maxKB: 9000, height: [3, 80] },
 };
 /** Extensions src/game/render/assets.ts can load. */
@@ -73,7 +75,7 @@ for (const f of fs.readdirSync(DIR).filter((x) => x.endsWith('.glb'))) {
     for (const a of spec.animations ?? []) if (!anims.has(a)) errs.push(`missing animation ${a}`);
     if (tris > spec.maxTris) errs.push(`${tris} tris > ${spec.maxTris}`);
     if (kb > spec.maxKB) errs.push(`${kb.toFixed(0)} KB > ${spec.maxKB} KB`);
-    if (Math.abs(b.min[1]) > 0.05 && name !== 'terrain') errs.push(`origin not at base: min y ${b.min[1].toFixed(3)}`);
+    if (Math.abs(b.min[1]) > (spec.baseTolerance ?? 0.05) && name !== 'terrain') errs.push(`origin not at base: min y ${b.min[1].toFixed(3)}`);
     if (name !== 'rocks' && (h < spec.height[0] || h > spec.height[1])) errs.push(`height ${h.toFixed(2)} outside ${spec.height}`);
   } else errs.push('no spec (add one to scripts/validate-assets.mjs)');
   failed += errs.length ? 1 : 0;

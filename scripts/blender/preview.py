@@ -28,10 +28,11 @@ bpy.ops.import_scene.gltf(filepath=os.path.join(C.EXPORT_DIR, f"{name}.glb"))
 roots = [o for o in scene.objects if o.parent is None]
 # spread multiple roots out in a row
 if len(roots) > 1 and all(o.type == "MESH" for o in roots):
-    x = -(len(roots) - 1) * 1.1
+    gap = max(2.2, max(max(o.dimensions.x, o.dimensions.y) for o in roots) * 1.1)
+    x = -(len(roots) - 1) * gap / 2
     for o in roots:
         o.location.x = x
-        x += 2.2
+        x += gap
 if anim:
     for o in scene.objects:
         if o.animation_data and anim in bpy.data.actions:

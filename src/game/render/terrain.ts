@@ -113,7 +113,7 @@ export function terrainMaterial() {
       );
   };
   m.customProgramCacheKey = () => 'terrain-splat-v1';
-  return patchEraMaterial(m, { only3dGenerations: true });
+  return patchEraMaterial(m, { minEra: 2 });
 }
 
 /**
@@ -130,7 +130,7 @@ export class TerrainView {
     const d = VALLEY.z1 - VALLEY.z0;
     this.water = new THREE.Mesh(
       new THREE.PlaneGeometry(VALLEY_COLLIDE.x1 + 12 - VALLEY.x0, d, 64, 48),
-      eraMaterial({ color: '#2a6a8a', roughness: 0.05, metalness: 0, pattern: PATTERN.water, transparent: true, opacity: 0.88, only3dGenerations: true }),
+      eraMaterial({ color: '#2a6a8a', roughness: 0.05, metalness: 0, pattern: PATTERN.water, transparent: true, opacity: 0.88, minEra: 2 }),
     );
     this.water.rotation.x = -Math.PI / 2;
     this.water.position.set((VALLEY.x0 + VALLEY_COLLIDE.x1 + 12) / 2, WATER_Y, (VALLEY.z0 + VALLEY.z1) / 2);

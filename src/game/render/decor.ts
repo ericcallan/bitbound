@@ -27,9 +27,12 @@ export function fillAssetSlots(root: THREE.Object3D) {
     const obj = instanceOf(s.asset, s.node);
     if (!obj) continue;
     g.clear();
-    obj.scale.setScalar(s.scale);
-    obj.rotation.y = s.rotY;
-    g.add(obj);
+    // Scale/rotate a holder: the model's own node transform carries its quantization and must stay.
+    const holder = new THREE.Group();
+    holder.scale.setScalar(s.scale);
+    holder.rotation.y = s.rotY;
+    holder.add(obj);
+    g.add(holder);
     s.filled = true;
   }
 }
@@ -116,10 +119,15 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       tL.add(at(cyl(0.22 * s, 0.3 * s, h, M.trunk(), 4), 0, h / 2, 0));
       tL.add(at(new THREE.Mesh(new THREE.ConeGeometry(1.5 * s, 1.8 * s, 5), M.leaf()), 0, h + 0.3, 0));
       tL.add(at(new THREE.Mesh(new THREE.ConeGeometry(1.05 * s, 1.4 * s, 5), M.leafDark()), 0, h + 1.2 * s, 0));
-      reg.variants(g, [[t8, E(0)], [t16, E(1)], [tL, E(2)], [tM, E(3, 5)]], anchor, false);
+      // Modern HD and Beyond: the Blender trees (the Great Tree where the old one stood tallest).
+      const great = s >= 1.2;
+      const tHD = assetSlot('tree', great ? 'great_tree' : 'meadow_tree', tM.clone(), s * (great ? 0.62 : 0.78), r() * Math.PI * 2);
+      reg.variants(g, [[t8, E(0)], [t16, E(1)], [tL, E(2)], [tM, E(3)], [tHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'bush': {
+      // Modern HD and Beyond: a Blender fern clump instead of the cartoon blob.
+      const fernHD = assetSlot('vegetation', 'fern', new THREE.Group(), 2.2 * s, r() * Math.PI * 2);
       const b8 = new THREE.Group();
       b8.add(at(box(1.6 * s, 0.9 * s, 0.9 * s, M.leaf()), 0, 0.45 * s, 0));
       b8.add(at(box(0.9 * s, 0.5 * s, 0.7 * s, M.leafLight()), 0.2 * s, 1.0 * s, 0));
@@ -135,7 +143,7 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       const bL = new THREE.Group();
       bL.add(at(ico(0.75 * s, M.leaf(), 0), -0.35 * s, 0.55 * s, 0));
       bL.add(at(ico(0.6 * s, M.leafDark(), 0), 0.45 * s, 0.45 * s, 0));
-      reg.variants(g, [[b8, E(0)], [bL, E(2)], [bR, E(1, 5, [2])]], anchor, false);
+      reg.variants(g, [[b8, E(0)], [bL, E(2)], [bR, E(1, 3, [2])], [fernHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'bloomer': {
@@ -256,7 +264,8 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       const moss = sphere(0.3, M.moss(), 8);
       moss.scale.set(1.4, 0.4, 1.4);
       pR.add(at(moss, 0.1, h + 0.2, 0));
-      reg.variants(g, [[p8, E(0)], [pR, E(1, 5)]], anchor, false);
+      const pHD = assetSlot('gateway', 'ruin_column', pR.clone(), s, r() * Math.PI * 2);
+      reg.variants(g, [[p8, E(0)], [pR, E(1, 3)], [pHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'arch': {
@@ -270,7 +279,8 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       aR.add(at(rbox(4.6, 0.7, 0.85, 0.1, M.ruin()), 0, 3.75, 0));
       aR.add(at(box(1.4, 0.18, 0.1, M.rune()), 0, 3.75, 0.43));
       a8.add(at(box(1.4, 0.18, 0.1, M.rune()), 0, 3.75, 0.41));
-      reg.variants(g, [[a8, E(0)], [aR, E(1, 5)]], anchor, false);
+      const aHD = assetSlot('gateway', 'shard_arch', aR.clone());
+      reg.variants(g, [[a8, E(0)], [aR, E(1, 3)], [aHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'rock': {

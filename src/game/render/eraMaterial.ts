@@ -27,6 +27,8 @@ export const eraUniforms = {
   uTime: { value: 0 },
   /** The immersive valley: x below which the old box ground is replaced by terrain (0 = not loaded). */
   uValleyX: { value: -1e9 },
+  /** Pip's position, so wind shaders (grass, ground cover) part around him. */
+  uPip: { value: new THREE.Vector3() },
   /** Early-3D vertex snapping grid (in NDC units per half-screen). */
   uSnapRes: { value: new THREE.Vector2(110, 80) },
 };
@@ -61,6 +63,7 @@ uniform vec3 uFieldMax[4];
 uniform float uFieldEra[4];
 uniform float uTime;
 uniform float uValleyX;
+uniform vec3 uPip;
 float eraAtWorld(vec3 w) {
   if (uSplit > 0.5) {
     float e = 0.0;
@@ -163,8 +166,11 @@ export interface EraMatOptions {
    * over, i.e. inside the valley slice in the 3D generations, once the terrain asset has loaded.
    */
   hideInValley?: boolean;
-  /** Terrain itself: only drawn in the 3D generations (the retro generations are pixel art). */
-  only3dGenerations?: boolean;
+  /**
+   * Lowest generation this surface exists in (per pixel): the terrain is 2 (3D generations only),
+   * scattered Blender vegetation is 4 (Modern HD and Beyond).
+   */
+  minEra?: number;
 }
 
 /**
@@ -198,8 +204,8 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
   const vertexWorld = o.vertexWorld ?? '';
   const discardRule = o.hideInValley
     ? 'if (vEraWorld.x < uValleyX && eraF > 1.5) discard;'
-    : o.only3dGenerations
-      ? 'if (eraF < 1.5) discard;'
+    : o.minEra
+      ? `if (eraF < ${(o.minEra - 0.5).toFixed(1)}) discard;`
       : '';
   // Chain onto any patch already on the material (e.g. the terrain splat shader).
   const prev = m.onBeforeCompile.bind(m);
@@ -298,7 +304,7 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
   };
   const prevKey = m.customProgramCacheKey.bind(m);
   m.customProgramCacheKey = () =>
-    `${prevKey()}|era-v3${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.only3dGenerations ? '-3g' : ''}`;
+    `${prevKey()}|era-v3${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.minEra ? '-me' + o.minEra : ''}`;
   return m;
 }
 

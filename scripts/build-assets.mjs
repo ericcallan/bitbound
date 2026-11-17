@@ -10,7 +10,7 @@ import path from 'node:path';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const BLENDER = process.env.BLENDER ?? '/Applications/Blender.app/Contents/MacOS/Blender';
-const ORDER = ['rocks', 'pip', 'tree', 'gateway', 'terrain'];
+const ORDER = ['rocks', 'pip', 'tree', 'gateway', 'vegetation', 'terrain'];
 const only = process.argv.slice(2);
 const names = (only.length ? only : ORDER).filter((n) => fs.existsSync(path.join(ROOT, 'scripts', 'blender', `create_${n}.py`)));
 if (!fs.existsSync(BLENDER)) {
@@ -19,6 +19,8 @@ if (!fs.existsSync(BLENDER)) {
 }
 for (const n of names) {
   const t = Date.now();
+  if (n === 'tree') execFileSync('node', [path.join(ROOT, 'scripts', 'textures', 'leaf-atlas.mjs')], { stdio: 'inherit', cwd: ROOT });
+  if (n === 'gateway') execFileSync('npx', ['vite-node', path.join(ROOT, 'scripts', 'terrain', 'export-props.ts')], { stdio: 'inherit', cwd: ROOT });
   if (n === 'terrain') {
     // The terrain mesh is built from the game's own height field, and shaded with packed scanned textures.
     execFileSync('npx', ['vite-node', path.join(ROOT, 'scripts', 'terrain', 'export-valley.ts')], { stdio: 'inherit', cwd: ROOT });

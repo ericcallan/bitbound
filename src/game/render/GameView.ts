@@ -6,6 +6,7 @@ import { Particles } from './Particles';
 import { PostPipeline, type PostFrame, type QualitySetting } from './post/Pipeline';
 import { PixelSprite } from './sprites';
 import { TerrainView } from './terrain';
+import { ValleyDressing } from './dressing';
 import { PipModel } from '../pip/PipModel';
 import { PipGLB } from '../pip/PipGLB';
 import type { Game, GameEvent } from '../sim/Game';
@@ -69,6 +70,8 @@ export class GameView {
   pip = new PipModel();
   /** The immersive valley (Blender terrain) the level sits in. */
   terrain = new TerrainView();
+  /** Forest, grass, flowers and rocks scattered over the valley (Modern HD and Beyond). */
+  dressing = new ValleyDressing();
   /** The Blender-built Pip, used from Modern HD on once its asset has loaded. */
   pipHD = new PipGLB();
   pipSprite = new PixelSprite('pip', 1, 1);
@@ -142,7 +145,7 @@ export class GameView {
     this.options = options;
     this.level = new LevelView(game.level);
     this.entities = new EntityViews(game, this.level.eras);
-    this.scene.add(this.level.group, this.entities.group, this.terrain.group);
+    this.scene.add(this.level.group, this.entities.group, this.terrain.group, this.dressing.group);
     this.scene.add(this.pip.root, this.pip.trail, this.pipHD.root, this.pipSprite.sprite, this.particles.mesh);
     this.scene.fog = new THREE.Fog('#bfe3ff', 90, 380);
     this.scene.environment = skyEnvironment(gl);
@@ -418,6 +421,7 @@ export class GameView {
     if (split) eraUniforms.uValleyX.value = -1e9;
     else this.terrain.update();
     this.terrain.group.visible = !split;
+    this.dressing.group.visible = !split;
 
     // --- lights follow the action
     const keyDir = SUN_DIR;

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { eraMaterial, PATTERN, sharedEraMaterial } from './eraMaterial';
+import { eraMaterial, eraUniforms, PATTERN, sharedEraMaterial } from './eraMaterial';
 import { EraSwapRegistry, eras as E } from './eraSwap';
-import { buildDecor, fillAssetSlots, M, type Animated, type AnimCtx } from './decor';
+import { assetSlot, buildDecor, fillAssetSlots, M, type Animated, type AnimCtx } from './decor';
 import { onAssetLoaded, preloadAssets } from './assets';
 import { STAIR, type Level, type SolidDef } from '../level/meadows';
 import type { Era } from '../era/EraSystem';
@@ -23,6 +23,8 @@ const LOOK_MAT = {
 };
 /** Level ground pieces whose 3D look the valley terrain takes over. */
 const VALLEY_GROUND = new Set(['g1', 'g2', 'g3']);
+/** Solid blocks in the valley rebuilt as Blender stone (scripts/blender/create_gateway.py). */
+const VALLEY_BLOCKS = new Set(['step1', 'step2', 'float1', 'plinth']);
 
 /** The sun as seen in the sky (and the source of Beyond's light shafts): low, behind the lane. */
 export const SKY_SUN = new THREE.Vector3(-0.38, 0.3, -0.87).normalize();
@@ -67,7 +69,7 @@ varying vec2 vUv;
 void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 
 /** Wind + Pip-push for Beyond's dense grass (runs in world space, `transformed.y` is blade height). */
-const GRASS_WIND = /* glsl */ `
+export const GRASS_WIND = /* glsl */ `
   float bladeH = clamp(transformed.y / 0.36, 0.0, 1.0);
   vec2 wind = vec2(sin(uTime * 1.7 + wp.x * 0.6 + wp.z * 0.4), cos(uTime * 1.3 + wp.x * 0.3 - wp.z * 0.2)) * 0.11;
   vec2 toPip = wp.xz - uPip.xz;
@@ -95,7 +97,7 @@ export class LevelView {
   private holoRings: THREE.Mesh[] = [];
   private islands: THREE.Object3D[] = [];
   /** Pip's position for grass push (shared uniform). */
-  static pipUniform = { value: new THREE.Vector3() };
+  static pipUniform = eraUniforms.uPip;
 
   constructor(private level: Level) {
     for (const s of level.solids) this.buildSolid(s);
@@ -144,6 +146,22 @@ export class LevelView {
   }
 
   private buildSolid(s: SolidDef) {
+    if (!VALLEY_BLOCKS.has(s.id)) return this.buildSolidInner(s);
+    // Steps, slabs and plinths in the valley: weathered Blender stone, exactly collider-sized, from Modern HD up.
+    const before = this.group.children.length;
+    this.buildSolidInner(s);
+    const old = new THREE.Group();
+    for (const o of this.group.children.splice(before)) old.add(o);
+    const { min, max } = s.box;
+    const anchor = new THREE.Vector3((min.x + max.x) / 2, max.y, (min.z + max.z) / 2);
+    const hd = assetSlot('gateway', `block_${s.id}`, new THREE.Group());
+    hd.position.set(anchor.x, min.y, anchor.z);
+    this.group.add(old, hd);
+    this.eras.add(old, E(0, 3), false, anchor);
+    this.eras.add(hd, E(4, 5), false, anchor);
+  }
+
+  private buildSolidInner(s: SolidDef) {
     if (s.look === 'invisible') return;
     const { min, max } = s.box;
     const w = max.x - min.x;
@@ -417,12 +435,6 @@ export class LevelView {
     }
     blade.computeVertexNormals();
     const dense = eraMaterial({ color: '#63c95a', roughness: 0.7, side: THREE.DoubleSide, vertexWorld: GRASS_WIND, hideInValley: true });
-    const prev = dense.onBeforeCompile;
-    dense.onBeforeCompile = (sh, gl) => {
-      sh.uniforms.uPip = LevelView.pipUniform;
-      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nuniform vec3 uPip;');
-      prev.call(dense, sh, gl);
-    };
     layer(blade, dense, 80, E(5), 0.7, 1.0);
   }
 

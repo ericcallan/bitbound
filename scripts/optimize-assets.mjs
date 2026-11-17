@@ -18,7 +18,7 @@ const SRC = path.join(ROOT, 'assets', 'exports');
 const OUT = path.join(ROOT, 'public', 'assets');
 
 /** Largest texture edge per asset (pixels): sized to how much of the screen the asset ever covers. */
-const TEXTURE_BUDGET = { default: 1024, rocks: 512, pip: 1024, tree: 1024, terrain: 2048 };
+const TEXTURE_BUDGET = { default: 1024, rocks: 512, pip: 1024, tree: 1024, gateway: 1024, terrain: 2048 };
 
 await MeshoptEncoder.ready;
 await MeshoptDecoder.ready;
