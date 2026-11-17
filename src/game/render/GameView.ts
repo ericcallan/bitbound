@@ -200,7 +200,7 @@ export class GameView {
     this.level = new LevelView(game.level);
     this.entities = new EntityViews(game, this.level.eras);
     this.scene.add(this.level.group, this.entities.group, this.terrain.group, this.dressing.group);
-    if (!this.options.title && !this.options.split) {
+    if (!this.options.title) {
       const box = (id: string) => {
         const c = game.world.get(id)!;
         return new THREE.Box3(new THREE.Vector3(c.min.x, c.min.y, c.min.z), new THREE.Vector3(c.max.x, c.max.y, c.max.z));

@@ -61,3 +61,10 @@
   for = "/index.html"
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
+
+# Art & Design pages (dist/art/**/index.html): always revalidate, like the game's page
+[[headers]]
+  for = "/art/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+# Unknown addresses get dist/404.html with a 404 status (Netlify and Vercel both serve it by default).

@@ -8,7 +8,6 @@ import { LEVEL } from '../game/level/meadows';
 import { loadSave } from '../game/save/save';
 import { SPRITES } from '../game/render/sprites';
 import { Portrait } from './Portrait';
-import { galleryStart } from './Gallery';
 import { ShareButton } from './ShareButton';
 import { PixelTitleView } from './title/PixelTitleView';
 
@@ -173,7 +172,7 @@ function PixelPip({ scale = 5 }: { scale?: number }) {
  * The six generations as a timeline of Pip's face, top right. Hovering or focusing one ripples the title
  * scene into that generation; leaving the timeline returns it to the selected one (Beyond until you pick).
  */
-function GenerationTimeline({ shown, selected, onPreview, onSelect }: { shown: Era; selected: Era; onPreview: (e: Era | null) => void; onSelect: (e: Era) => void }) {
+export function GenerationTimeline({ shown, selected, onPreview, onSelect }: { shown: Era; selected: Era; onPreview: (e: Era | null) => void; onSelect: (e: Era) => void }) {
   return (
     <nav className="gen-timeline" aria-label="Graphics generation" onMouseLeave={() => onPreview(null)}>
       <span className="gen-timeline__line" aria-hidden />
@@ -313,7 +312,7 @@ export function MainMenu() {
   const openGallery = (tab: 'pip' | 'world') => {
     wakeAudio();
     audio.sfx('click');
-    galleryStart.tab = tab;
+    ui.setGalleryTab(tab === 'pip' ? 'character' : 'environment');
     ui.setScreen('gallery');
   };
 

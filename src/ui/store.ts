@@ -1,3 +1,4 @@
+import type { ArtTab } from '../content/artCopy';
 import { create } from 'zustand';
 import type { Banner, Expression, Prompt } from '../game/sim/Game';
 import type { Era } from '../game/era/EraSystem';
@@ -61,6 +62,8 @@ function loadSettings(): Settings {
 
 interface UIStore {
   screen: Screen;
+  /** Which Art & Design tab is open (part of the address: /art/, /art/environment/...). */
+  galleryTab: ArtTab;
   session: number;
   paused: boolean;
   mapOpen: boolean;
@@ -69,6 +72,7 @@ interface UIStore {
   hud: HudState;
   fps: number;
   setScreen(s: Screen): void;
+  setGalleryTab(t: ArtTab): void;
   newSession(): void;
   setPaused(p: boolean): void;
   setMap(o: boolean): void;
@@ -79,6 +83,7 @@ interface UIStore {
 
 export const useUI = create<UIStore>((set, get) => ({
   screen: 'menu',
+  galleryTab: 'character',
   session: 0,
   paused: false,
   mapOpen: false,
@@ -116,6 +121,7 @@ export const useUI = create<UIStore>((set, get) => ({
     maxEraUnlocked: 0,
   },
   setScreen: (screen) => set({ screen, paused: false, mapOpen: false, settingsOpen: false }),
+  setGalleryTab: (galleryTab) => set({ galleryTab }),
   newSession: () => set({ session: get().session + 1 }),
   setPaused: (paused) => set({ paused }),
   setMap: (mapOpen) => set({ mapOpen }),

@@ -12,6 +12,7 @@ import { WorldMap } from './ui/WorldMap';
 import { FinaleCard } from './ui/FinaleCard';
 import { Gallery } from './ui/Gallery';
 import { audio } from './game/audio/AudioEngine';
+import { startRouter } from './ui/router';
 
 /** Development-only debug overlay (` to toggle); not part of production builds. */
 const DebugOverlay = import.meta.env.DEV ? lazy(() => import('./dev/DebugOverlay').then((m) => ({ default: m.DebugOverlay }))) : null;
@@ -27,6 +28,7 @@ export function App() {
 
   useEffect(() => {
     if (wrap.current) ensureInput(wrap.current);
+    startRouter();
     setReady(true);
     // Dev builds: ?scenario=<name> starts straight into a fixed, reproducible game state.
     if (import.meta.env.DEV) {

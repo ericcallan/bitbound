@@ -56,11 +56,14 @@ wistful. There are no villains.
   and the terrain, baked from CC0 scans and optimised with glTF Transform; colour textures ship as KTX2.
 - **Modern HD** is late-afternoon daylight under a real HDRI sky; **Beyond** is golden hour under its own sky, with
   relief-mapped ground, cloud shadows and a detailed Pip.
+- **Title screen:** a composed live scene with a generation timeline. 8-bit and 16-bit are their own pixel scenes
+  (`src/ui/title/pixelTitle.ts`: 240 rows in the 8-bit palette only, and 224 rows from the 16-bit tiles and
+  pre-rendered sprites), reached through a mosaic transition; the 3D set stops rendering behind them.
 - **Sound:** valley ambience, the river, footsteps by surface, and the hidden chamber's reverb.
 
 See **docs/GRAPHICS_REPORT.md** for measurements and shortcomings, and **docs/ASSETS.md** for sources, tools and
-licences. In-game: Extras → Environment compares any view across all six generations. Desktop only (keyboard or
-gamepad); phones get a notice.
+licences. **Art & Design** (title screen, or `/art/`) shows Pip in each generation's real renderer, and compares any
+place in the level across all six generations live. Desktop only (keyboard or gamepad); phones get a notice.
 
 ## Hosting, sharing and search
 
@@ -71,15 +74,20 @@ output `dist`).
   and X card tags, a 1200×630 image (`public/og.jpg`) and a square one (`public/og-square.jpg`), the web app
   manifest and icons, and JSON-LD. Every link points at **https://bitbound.world** (set in `src/shareCopy.ts`
   with the copy; a `SITE_URL` environment variable overrides it for a staging test). Regenerate the images from the live title scene with `npm run og` (dev server running).
-- **The Share button** (title screen, end card) opens the system share sheet where there is one, otherwise copies
+- **Routes:** the game is `/`; Art & Design is `/art/`, `/art/environment/`, `/art/interface/` and `/art/map/`
+  (`src/ui/router.ts`; back and forward work). The build writes each art route its own HTML with its own title,
+  description, canonical URL, share tags and image (`public/og-art.jpg`), JSON-LD (a `CollectionPage` with
+  breadcrumbs) and its text, all from `src/content/artCopy.ts`, the same copy the page shows. It also writes
+  `sitemap.xml` and a `404.html` (never indexed) that both hosts serve for unknown addresses.
+- **The Share button** (title screen, end card, Art & Design) opens the system share sheet where there is one, otherwise copies
   the link.
 - **Kept out of search for now:** a `noindex` meta tag, an `X-Robots-Tag: noindex` header from the host config,
   and a robots.txt that blocks search engines and AI crawlers. The link-preview fetchers are allowed, so previews
   still work (they don't index).
-- **Launch:** build with `PUBLIC=1` (drops the meta tag; robots.txt allows everyone) and delete the
+- **Launch:** build with `PUBLIC=1` (drops the meta tags; robots.txt allows everyone and lists the sitemap) and delete the
   `X-Robots-Tag` header from `vercel.json` / `netlify.toml`.
 - **Check a build:** `npm run build && npm run check:share`. It checks every tag, absolute URLs, image sizes and
-  weights, the manifest, and robots.txt.
+  weights, the manifest, robots.txt, each art route's own page, the sitemap and the 404.
 - **After the first deploy** (not verified yet, since there is no public URL), paste the link into
   [opengraph.xyz](https://www.opengraph.xyz), the
   [Facebook Sharing Debugger](https://developers.facebook.com/tools/debug/), the

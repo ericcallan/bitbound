@@ -36,7 +36,7 @@ try {
 }
 
 // the images exist at the declared sizes, small enough for every unfurler
-for (const [f, w, h] of [['og.jpg', 1200, 630], ['og-square.jpg', 1200, 1200], ['icon-192.png', 192, 192], ['icon-512.png', 512, 512], ['apple-touch-icon.png', 180, 180]]) {
+for (const [f, w, h] of [['og.jpg', 1200, 630], ['og-art.jpg', 1200, 630], ['og-square.jpg', 1200, 1200], ['icon-192.png', 192, 192], ['icon-512.png', 512, 512], ['apple-touch-icon.png', 180, 180]]) {
   const p = `${dist}/${f}`;
   if (!fs.existsSync(p)) {
     fails.push(`missing ${f}`);
@@ -64,8 +64,49 @@ if (isPublic) {
   for (const f of ['vercel.json', 'netlify.toml']) ok(/X-Robots-Tag/.test(fs.readFileSync(f, 'utf8')), `${f} should send X-Robots-Tag`);
 }
 
+// every Art & Design route has its own page: its own address, title, image, structured data and text
+const ROUTES = ['/art/', '/art/environment/', '/art/interface/', '/art/map/'];
+const site = meta('property', 'og:url').replace(/\/$/, '');
+const titles = new Set();
+for (const r of ROUTES) {
+  const f = `${dist}${r}index.html`;
+  if (!fs.existsSync(f)) {
+    fails.push(`missing ${f}`);
+    continue;
+  }
+  const h = fs.readFileSync(f, 'utf8');
+  const m = (attr, key) => h.match(new RegExp(`<meta ${attr}="${key.replace(/[:.]/g, '\\$&')}" content="([^"]*)"`))?.[1];
+  ok(h.includes(`<link rel="canonical" href="${site}${r}" />`), `${r}: canonical should be ${site}${r}`);
+  ok(m('property', 'og:url') === `${site}${r}`, `${r}: og:url should be ${site}${r}`);
+  ok(m('property', 'og:image') === `${site}/og-art.jpg` && m('name', 'twitter:image') === `${site}/og-art.jpg`, `${r}: should share og-art.jpg`);
+  const t = h.match(/<title>([^<]*)<\/title>/)?.[1];
+  ok(t && t.includes('Art &amp; Design') && !titles.has(t), `${r}: needs its own title`);
+  titles.add(t);
+  ok(m('property', 'og:title') === t, `${r}: og:title should match the title`);
+  ok(/<noscript>[\s\S]*<h1>[\s\S]*<h2>[\s\S]*<\/noscript>/.test(h), `${r}: page text missing from the HTML`);
+  ok(!/%[A-Z_]+%/.test(h), `${r}: unfilled placeholder`);
+  try {
+    const j = JSON.parse(h.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)[1]);
+    const types = j['@graph'].map((g) => g['@type']);
+    ok(types.includes('CollectionPage') && types.includes('BreadcrumbList'), `${r}: JSON-LD should be a CollectionPage with breadcrumbs`);
+  } catch {
+    fails.push(`${r}: JSON-LD missing or invalid`);
+  }
+  if (isPublic) ok(!/<meta name="robots"/.test(h), `${r}: launch build still has noindex`);
+  else ok(/<meta name="robots" content="noindex/.test(h), `${r}: missing noindex meta tag`);
+}
+
+// the sitemap lists every route (and robots.txt points at it only once the site is public)
+const sitemap = fs.existsSync(`${dist}/sitemap.xml`) ? fs.readFileSync(`${dist}/sitemap.xml`, 'utf8') : '';
+for (const r of ['/', ...ROUTES]) ok(sitemap.includes(`<loc>${site}${r}</loc>`), `sitemap.xml should list ${r}`);
+ok(isPublic === robots.includes('Sitemap:'), isPublic ? 'launch robots.txt should list the sitemap' : 'robots.txt should not list the sitemap while hidden');
+
+// unknown addresses: a plain 404 page that is never indexed
+const nf = fs.existsSync(`${dist}/404.html`) ? fs.readFileSync(`${dist}/404.html`, 'utf8') : '';
+ok(/<meta name="robots" content="noindex/.test(nf), '404.html missing or not noindex');
+
 if (fails.length) {
   console.error('share check FAILED:\n  ' + fails.join('\n  '));
   process.exit(1);
 }
-console.log(`share check ok: ${meta('property', 'og:url')} (${isPublic ? 'public' : 'hidden from search'})`);
+console.log(`share check ok: ${meta('property', 'og:url')} and ${ROUTES.length} art routes (${isPublic ? 'public' : 'hidden from search'})`);

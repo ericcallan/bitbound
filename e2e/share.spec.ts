@@ -28,3 +28,43 @@ test('Share copies the link when there is no share sheet, and says so', async ({
   // the shared link is the game's root, marked as shared, never carrying other parameters
   expect(copied).toMatch(/https?:\/\/[^ ]+\/\?utm_source=share$/);
 });
+
+/** Art & Design has real addresses: each tab opens from its own URL, tabs update it, back and forward work. */
+test('Art & Design routes: open by URL, tabs change the address, back returns to the title', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Art & Design' })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Art & Design' }).click();
+  await expect(page).toHaveURL(/\/art\/$/);
+  await expect(page.getByRole('heading', { name: 'Pip', level: 2 })).toBeVisible();
+  await expect(page).toHaveTitle(/Pip, in six generations/);
+  for (const [tab, path, heading] of [
+    ['Environment', '/art/environment/', 'The world'],
+    ['Interface', '/art/interface/', 'Interface'],
+    ['World Map', '/art/map/', 'World map'],
+  ]) {
+    await page.getByRole('navigation', { name: 'Art & Design sections' }).getByRole('button', { name: tab }).click();
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+    await expect(page.getByRole('heading', { name: heading, level: 2 })).toBeVisible();
+    await page.waitForTimeout(1500);
+  }
+  await page.goBack();
+  await expect(page).toHaveURL(/\/art\/interface\/$/);
+  await page.goBack();
+  await page.goBack();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('button', { name: 'New Game' })).toBeVisible();
+  await page.goForward();
+  await expect(page.getByRole('heading', { name: 'Pip', level: 2 })).toBeVisible();
+  expect(errors, errors.join('\n')).toEqual([]);
+});
+
+test('a deep link opens its tab directly', async ({ page }) => {
+  await page.goto('/art/environment/');
+  await expect(page.getByRole('heading', { name: 'The world', level: 2 })).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('.gallery__tab.is-on')).toHaveText('Environment');
+  await expect(page).toHaveTitle(/One world, six generations/);
+});

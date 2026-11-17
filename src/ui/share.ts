@@ -6,8 +6,8 @@ export type ShareResult = 'shared' | 'copied' | 'cancelled' | 'failed';
  * The address to share: the game's root on bitbound.world (on a local dev server, that server), marked as a shared
  * link, never carrying a dev scenario or any other query.
  */
-export function shareUrl() {
-  const u = new URL(import.meta.env.BASE_URL, import.meta.env.PROD ? SITE_URL : location.origin);
+export function shareUrl(path = '/') {
+  const u = new URL(import.meta.env.BASE_URL.replace(/\/$/, '') + path, import.meta.env.PROD ? SITE_URL : location.origin);
   u.searchParams.set('utm_source', 'share');
   return u.toString();
 }
@@ -16,8 +16,8 @@ export function shareUrl() {
  * Share the game: the system share sheet where the browser has one (Messages, Slack, Mail...), else copy the
  * link (with the text) to the clipboard. The preview itself comes from the page's Open Graph tags.
  */
-export async function shareGame(text = SHARE.description): Promise<ShareResult> {
-  const data = { title: SHARE.title, text, url: shareUrl() };
+export async function shareGame(text = SHARE.description, path = '/', title = SHARE.title): Promise<ShareResult> {
+  const data = { title, text, url: shareUrl(path) };
   if (typeof navigator.share === 'function' && (!navigator.canShare || navigator.canShare(data))) {
     try {
       await navigator.share(data);

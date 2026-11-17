@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useUI, type HudState } from './store';
@@ -12,24 +12,28 @@ import { SKY_SUN } from '../game/render/LevelView';
 import { drawFace, PIP_COLORS } from '../game/pip/face';
 import { makeShowcaseGame } from './session';
 import type { Expression, PipAction } from '../game/sim/Game';
-import { ERA_BLURBS, ERA_NAMES, ERAS, type Era } from '../game/era/EraSystem';
+import { ERA_NAMES, ERAS, type Era } from '../game/era/EraSystem';
 import { audio } from '../game/audio/AudioEngine';
 import { v3 } from '../game/math';
+import { ART_PAGES, artPage, type ArtCard } from '../content/artCopy';
+import { SHARE } from '../shareCopy';
+import { ShareButton } from './ShareButton';
+import { GenerationTimeline } from './MainMenu';
+import { PipGLB } from '../game/pip/PipGLB';
+import { PixelSprite } from '../game/render/sprites';
+import { Sprite16 } from '../game/render/retro/sprites16';
+import { loadHdSky } from '../game/render/sky';
 
-export type GalleryTab = 'pip' | 'world' | 'ui' | 'map';
-type Tab = GalleryTab;
-/** Which tab the gallery opens on (the title screen's "Generations" opens the environment comparison). */
-export const galleryStart: { tab: Tab } = { tab: 'pip' };
-
+/** The Art & Design page, one tab per address (/art/, /art/environment/ ...; see ui/router.ts and content/artCopy.ts). */
 export function Gallery() {
-  const [tab, setTab] = useState<Tab>(galleryStart.tab);
   const ui = useUI();
-  const tabs: [Tab, string][] = [
-    ['pip', 'Character'],
-    ['world', 'Environment'],
-    ['ui', 'Interface'],
-    ['map', 'World Map'],
-  ];
+  const page = artPage(ui.galleryTab);
+  useEffect(() => {
+    document.title = page.title;
+    return () => {
+      document.title = SHARE.title;
+    };
+  }, [page]);
   return (
     <div className="gallery">
       <header className="gallery__head">
@@ -39,20 +43,50 @@ export function Gallery() {
         <h1>
           Bitbound <span>Art &amp; Design</span>
         </h1>
-        <nav>
-          {tabs.map(([id, label]) => (
-            <button key={id} className={`gallery__tab ${tab === id ? 'is-on' : ''}`} onClick={() => (audio.sfx('hover'), setTab(id))}>
-              {label}
+        <nav aria-label="Art & Design sections">
+          {ART_PAGES.map((p) => (
+            <button
+              key={p.id}
+              className={`gallery__tab ${ui.galleryTab === p.id ? 'is-on' : ''}`}
+              aria-current={ui.galleryTab === p.id ? 'page' : undefined}
+              onClick={() => (audio.sfx('hover'), ui.setGalleryTab(p.id))}
+            >
+              {p.label}
             </button>
           ))}
         </nav>
+        <ShareButton className="share-btn--quiet gallery__share" path={page.path} title={page.title} text={page.description} />
       </header>
       <main className="gallery__body">
-        {tab === 'pip' && <CharacterSheet />}
-        {tab === 'world' && <EnvironmentSheet />}
-        {tab === 'ui' && <InterfaceSheet />}
-        {tab === 'map' && <MapSheet />}
+        <header className="sheet__intro">
+          <h2>{page.heading}</h2>
+          <p>{page.intro}</p>
+        </header>
+        {ui.galleryTab === 'character' && <CharacterSheet />}
+        {ui.galleryTab === 'environment' && <EnvironmentSheet />}
+        {ui.galleryTab === 'interface' && <InterfaceSheet />}
+        {ui.galleryTab === 'map' && <MapSheet />}
       </main>
+    </div>
+  );
+}
+
+/** A card from content/artCopy.ts. */
+function CopyCard({ card, wide, children }: { card: ArtCard; wide?: boolean; children?: ReactNode }) {
+  return (
+    <div className={`card ${wide ? 'card--wide' : ''}`}>
+      <h3>{card.title}</h3>
+      {card.body.map((t, i) => (
+        <p key={i}>{t}</p>
+      ))}
+      {card.list && (
+        <ul className="traits">
+          {card.list.map((t) => (
+            <li key={t}>{t}</li>
+          ))}
+        </ul>
+      )}
+      {children}
     </div>
   );
 }
@@ -90,7 +124,12 @@ function PipLineup({ pose }: { pose: (typeof POSES)[number] }) {
   const { gl, camera } = useThree();
   const scene = useMemo(() => new THREE.Scene(), []);
   const post = useMemo(() => new PostPipeline(), []);
+  // each band draws Pip the way that generation does in play: the 8-bit sprite, the pre-rendered 16-bit sprite,
+  // the classic rig for Early 3D and Stylized, and the Blender model for Modern HD and Beyond
   const pips = useMemo(() => ERAS.map(() => new PipModel()), []);
+  const hd = useMemo(() => [new PipGLB(), new PipGLB()], []);
+  const sprite8 = useMemo(() => new PixelSprite('pip', 1.04, 1.04), []);
+  const sprite16 = useMemo(() => new Sprite16('pip_idle'), []);
   const actionT = useRef(0);
   const t = useRef(0);
 
@@ -117,7 +156,15 @@ function PipLineup({ pose }: { pose: (typeof POSES)[number] }) {
     scene.add(dirt);
     pips.forEach((p, i) => {
       p.root.position.x = LINEUP_X[i];
-      scene.add(p.root, p.trail);
+      if (i >= 2 && i <= 3) scene.add(p.root, p.trail);
+    });
+    hd.forEach((h) => scene.add(h.root));
+    sprite8.sprite.visible = true;
+    scene.add(sprite8.sprite, sprite16.sprite);
+    // the modern generations are lit by the game's real sky
+    void loadHdSky(gl, 'day').then((sky) => {
+      scene.environment = sky.env;
+      scene.environmentIntensity = 0.7;
     });
     camera.position.set(0, 1.3, 9.2);
     camera.lookAt(0, 0.55, 0);
@@ -163,8 +210,21 @@ function PipLineup({ pose }: { pose: (typeof POSES)[number] }) {
         time: t.current,
         cameraPos: camera.position,
       };
-      p.update(pp, dt);
-      p.root.rotation.y -= 0.35;
+      if (i === 0) {
+        // the 8-bit sprite: idle, two walk frames, jump; snapped to its pixel grid like in play
+        sprite8.set(pose.air ? 3 : pose.run ? 1 + (Math.floor(t.current * 8) % 2) : 0, false);
+        sprite8.sprite.position.set(LINEUP_X[0], base.y, 0);
+      } else if (i === 1) {
+        sprite16.set(pose.air ? 'pip_jump' : pose.run ? `pip_walk${Math.floor(t.current * 10) % 4}` : 'pip_idle', false);
+        sprite16.sprite.position.set(LINEUP_X[1], base.y, 0);
+      } else if (i >= 4) {
+        const h = hd[i - 4];
+        h.update({ ...pp, heading: Math.PI / 2 - 0.35 }, dt);
+        h.root.position.copy(base);
+      } else {
+        p.update(pp, dt);
+        p.root.rotation.y -= 0.35;
+      }
     });
     const screen = LINEUP_SPLIT.map((x) => new THREE.Vector3(x, 0.5, 0).project(camera).x * 0.5 + 0.5);
     post.render(
@@ -239,30 +299,11 @@ function CharacterSheet() {
         </div>
       </section>
       <section className="sheet__grid">
-        <div className="card">
-          <h3>Pip</h3>
-          <p>
-            A single pixel given consciousness by an ancient machine. Curious, impulsive, brave and easily distracted.
-            He does not understand how the world works — which is exactly why it keeps surprising him.
-          </p>
-          <ul className="traits">
-            <li>Rounded-square head with a dark screen-face</li>
-            <li>Big cyan eyes that carry every emotion</li>
-            <li>Orange &amp; cream body, glowing dimensional core</li>
-            <li>One bouncy antenna — prone to malfunctions</li>
-            <li>Mitten hands, oversized spring boots</li>
-          </ul>
-        </div>
-        <div className="card">
-          <h3>One robot, six generations</h3>
-          <ul className="traits">
-            {ERAS.map((e) => (
-              <li key={e}>
-                <b>{ERA_NAMES[e]}</b> — {ERA_BLURBS[e]}
-              </li>
-            ))}
-          </ul>
-        </div>
+        <CopyCard card={artPage('character').cards[0]} />
+        <CopyCard card={artPage('character').cards[1]} />
+        <CopyCard card={artPage('character').cards[2]}>
+          <img className="card__art" src={`${import.meta.env.BASE_URL}ui/pip_hd.webp`} alt="Pip as built in Blender: orange and cream body, dark screen-face with two eyes, one antenna." />
+        </CopyCard>
         <div className="card">
           <h3>Palette</h3>
           <div className="swatches">
@@ -307,22 +348,31 @@ function CharacterSheet() {
 
 // ------------------------------------------------------------------ environment
 
+/** A side-on 2D view of the lane at x, framed like play (fov 13, 9.2 units tall). */
+const side = (x: number, y: number, dist = 44) => ({ target: v3(x, y, 0), yaw: 0, pitch: 0.05, fov: 13, dist });
+/** The aqueduct's 2D view: the camera's eye at deck height, so the two halves meet on the horizon (as in play). */
+const AQ_DIST = 34.7;
 const VIEWS = [
-  { id: 'field', label: 'Awakening Field', pose: { target: v3(3, 1.6, 0), yaw: 0, pitch: 0.05, fov: 13, dist: 44 } },
+  { id: 'field', label: 'Awakening Field', pose: side(4, 1.6) },
+  { id: 'ruins', label: 'Shard Ruins', pose: side(31, 2.6, 46) },
   { id: 'valley', label: 'Opening Valley (3D)', pose: { target: v3(24, 3.5, -8), yaw: 0.35, pitch: 0.12, fov: 55, dist: 22 } },
-  { id: 'ruins', label: 'Shard Ruins', pose: { target: v3(31, 2.6, 0), yaw: 0, pitch: 0.05, fov: 13, dist: 46 } },
-  { id: 'passage', label: 'Broken Passage', pose: { target: v3(63, 2, 0), yaw: 0, pitch: 0.05, fov: 13, dist: 50 } },
+  { id: 'passage', label: 'Broken Passage', pose: side(57, 2, 46) },
   { id: 'chamber', label: 'Hidden Chamber (3D)', pose: { target: v3(57, 0.6, -5.5), yaw: -0.85, pitch: 0.55, fov: 45, dist: 17 } },
-  { id: 'stair', label: 'Painted Stair', pose: { target: v3(106, 5.2, 0), yaw: 0, pitch: 0.04, fov: 13, dist: 66 } },
-  { id: 'alcove', label: 'Lamp Alcove (3D)', pose: { target: v3(106, 1.5, 3.5), yaw: 0.55, pitch: 0.38, fov: 45, dist: 16 } },
-  { id: 'gate', label: 'Frame Gate (3D)', pose: { target: v3(142, 11, -0.9), yaw: 0.6, pitch: 0.12, fov: 40, dist: 14 } },
+  { id: 'stair', label: 'Painted Stair', pose: side(106, 5.2, 66) },
+  { id: 'plateau', label: 'Plateau', pose: side(138, 11, 46) },
+  { id: 'halo', label: 'Halo Path', pose: side(172, 12.6, 46) },
+  { id: 'aqueduct', label: 'Broken Aqueduct', pose: { target: v3(219, 12.85, 0), yaw: 0, pitch: Math.asin(-0.35 / AQ_DIST), fov: 13, dist: AQ_DIST } },
+  // raised, from in front of the canyon: the aqueduct runs across the frame, so it spans the six-way split
+  { id: 'aqueduct3d', label: 'Broken Aqueduct (3D)', pose: { target: v3(220, 8.5, -1), yaw: 0.02, pitch: 0.3, fov: 46, dist: 30 } },
+  { id: 'summit', label: 'Summit', pose: side(238, 14.4, 46) },
   { id: 'vista', label: 'Grand Vista', pose: { target: v3(60, 4, -10), yaw: 0.34, pitch: 0.14, fov: 42, dist: 42 } },
 ];
 
 function WorldStage({ view, era }: { view: (typeof VIEWS)[number]; era: Era | 'split' }) {
   const { camera, gl } = useThree();
   const game = useMemo(() => makeShowcaseGame(), []);
-  const gv = useMemo(() => new GameView(game, camera as THREE.PerspectiveCamera, gl, { split: true }), [game, camera, gl]);
+  // the valley as in play (terrain, Blender dressing, the aqueduct), not the old box level
+  const gv = useMemo(() => new GameView(game, camera as THREE.PerspectiveCamera, gl, { split: true, immersive: true }), [game, camera, gl]);
   useEffect(() => () => gv.dispose(), [gv]);
   useEffect(() => {
     game.camera.override = { ...view.pose, target: { ...view.pose.target } };
@@ -330,6 +380,9 @@ function WorldStage({ view, era }: { view: (typeof VIEWS)[number]; era: Era | 's
     game.camera.snap(game.cameraContext());
     if (game.puzzle.state === 'broken') game.puzzle.setSolved();
     if (game.stair.state === 'faded' && view.id !== 'stair' && view.id !== 'alcove') game.stair.setSolved();
+    // past the seal door its glyphs are read and it has sunk away
+    game.world.get('sealDoor')!.enabled = false;
+    game.sealOpen = 1;
   }, [game, view]);
   useFrame((_, dt) => {
     gv.options.split = era === 'split';
@@ -369,29 +422,27 @@ function EnvironmentSheet() {
         </div>
       </section>
       <section className="sheet__grid">
-        <div className="card">
-          <h3>One world, six generations</h3>
-          <p>
-            Every view above is the real, playable level. A generation is a rendering treatment over the same geometry:
-            pixel grids and palettes, jittery low-poly polygons, cel shading with ink lines, physically based light, and
-            finally light shafts, ambient occlusion, depth of field and atmosphere.
-          </p>
-        </div>
-        <div className="card">
-          <h3>Patchwork Planet</h3>
-          <p>
-            Cheerful on the surface, ancient underneath. Teal glyphs, abandoned robots, a mural that remembers a
-            staircase, and a vast ring on the horizon — the Frame Engine — hint that the meadow is only the outer layer
-            of something built.
-          </p>
-        </div>
-        <div className="card">
-          <h3>Two lessons of perspective</h3>
-          <p>
-            The Broken Passage teaches that 3D reveals what 2D hides: a chamber behind the scenery. The Painted Stair
-            teaches the reverse: flattened into 2D, a painting of stairs becomes stairs.
-          </p>
-        </div>
+        <CopyCard card={artPage('environment').cards[0]} />
+        <CopyCard card={artPage('environment').cards[1]} />
+        <CopyCard card={artPage('environment').cards[2]} wide>
+          <div className="compare">
+            {[
+              ['aqueduct-2d', 'In 2D, from the side'],
+              ['aqueduct-3d', 'In 3D'],
+            ].map(([f, label]) => (
+              <figure key={f}>
+                <div className="compare__pair">
+                  <img src={`${import.meta.env.BASE_URL}art/${f}-before.jpg`} alt={`The broken aqueduct ${label.toLowerCase()}, before: two stone slabs between bare canyon walls.`} loading="lazy" />
+                  <img src={`${import.meta.env.BASE_URL}art/${f}-after.jpg`} alt={`The broken aqueduct ${label.toLowerCase()}, after: a ruined two-tier aqueduct with water pouring from the break, ivy and waterfalls.`} loading="lazy" />
+                </div>
+                <figcaption>
+                  {label}: before · after
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </CopyCard>
+        <CopyCard card={artPage('environment').cards[3]} wide />
       </section>
     </div>
   );
@@ -402,8 +453,8 @@ function EnvironmentSheet() {
 const SAMPLE: HudState = {
   era: 0,
   cells: 2,
-  bits: 12,
-  totalBits: 44,
+  bits: 23,
+  totalBits: 65,
   shift: 'ready',
   shiftWhy: '',
   mode3d: false,
@@ -440,7 +491,10 @@ function InterfaceSheet() {
           <div key={e} className={`ui-board ui-board--${e}`} data-era={e}>
             <div className="ui-board__label">{ERA_NAMES[e]} HUD</div>
             <div className="ui-board__screen">
-              <HudView static hud={{ ...SAMPLE, era: e, mode3d: e >= 2, expression: BOARD_EXPR[e] }} />
+              <HudView
+                static
+                hud={{ ...SAMPLE, era: e, mode3d: e >= 2, expression: BOARD_EXPR[e], ...(e === 5 ? { shift: 'blocked' as const, shiftWhy: "Can't unfold here", mode3d: false } : {}) }}
+              />
               <div className="hud" data-era={e}>
                 <div className="hud__prompt hud__prompt--info ui-board__prompt">
                   <kbd>E</kbd>
@@ -456,16 +510,25 @@ function InterfaceSheet() {
         ))}
       </section>
       <section className="sheet__grid">
-        <div className="card card--wide">
-          <h3>An interface that evolves with the world</h3>
-          <p>
-            The HUD is one component with six skins, switched by the current generation: blocky 8-bit boxes, colourful
-            bevelled 16-bit console panels, chunky early-3D plastic, comic-ink stylized bubbles, clean modern glass, and
-            Beyond's thin holographic linework. It stays minimal: portrait, energy cells, bits, generation, the
-            dimension-shift state and a single contextual prompt.
-          </p>
-        </div>
+        <CopyCard card={artPage('interface').cards[0]} wide />
+        <CopyCard card={artPage('interface').cards[1]} wide>
+          <figure className="title-shot">
+            <img src={`${import.meta.env.BASE_URL}art/title-screen.jpg`} alt="The Bitbound title screen: the logo and menu on the left, Pip on a mossy rock above a valley with a waterfall and a stone ring." loading="lazy" />
+          </figure>
+          <TimelineDemo />
+        </CopyCard>
       </section>
+    </div>
+  );
+}
+
+/** The title screen's generation timeline, live (picking one here just highlights it). */
+function TimelineDemo() {
+  const [sel, setSel] = useState<Era>(5);
+  const [prev, setPrev] = useState<Era | null>(null);
+  return (
+    <div className="timeline-demo">
+      <GenerationTimeline shown={prev ?? sel} selected={sel} onPreview={setPrev} onSelect={setSel} />
     </div>
   );
 }
@@ -477,15 +540,7 @@ function MapSheet() {
         <WorldMap hud={{ ...SAMPLE, era: 4 }} />
       </section>
       <section className="sheet__grid">
-        <div className="card card--wide">
-          <h3>Connected world concept</h3>
-          <p>
-            The surface (Pixel Meadows → Painted Woods) is bright and readable. The Skybound Isles drift above; Clockwork
-            Hollow and the Forgotten Core spread below, getting stranger and more technological with depth, ending at
-            Beyond the Frame. Diamonds mark upgrades; dashed rooms are undiscovered; iso rooms are hidden 3D spaces —
-            reachable only through depth.
-          </p>
-        </div>
+        <CopyCard card={artPage('map').cards[0]} wide />
       </section>
     </div>
   );

@@ -14,7 +14,7 @@ const ShareIcon = (
  * Share Bitbound: the system share sheet where there is one, else copies the link and says so. The status is
  * announced to screen readers.
  */
-export function ShareButton({ className = '', text, label = 'Share' }: { className?: string; text?: string; label?: string }) {
+export function ShareButton({ className = '', text, label = 'Share', path, title }: { className?: string; text?: string; label?: string; path?: string; title?: string }) {
   const [status, setStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const timer = useRef(0);
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -25,7 +25,7 @@ export function ShareButton({ className = '', text, label = 'Share' }: { classNa
       onClick={async (e) => {
         e.currentTarget.blur();
         audio.sfx('click');
-        const r = await shareGame(text);
+        const r = await shareGame(text, path, title);
         if (r === 'copied' || r === 'failed') {
           setStatus(r);
           window.clearTimeout(timer.current);
