@@ -4,6 +4,7 @@ import { patchEraMaterial } from '../render/eraMaterial';
 import { drawFace, FACE_RES } from './face';
 import type { PipPose } from './PipModel';
 import { clamp, dampAngle, lerpAngle, smoothstep, wrapAngle } from '../math';
+import { valleyCollideHeight } from '../level/valley';
 
 /** Shared by every Beyond shell material: the circuit pulse follows the core. */
 const PULSE = { value: 0 };
@@ -91,6 +92,15 @@ export class PipGLB {
   private shells: { mesh: THREE.Mesh; modern: THREE.Material; beyond: THREE.Material }[] = [];
   private glass: THREE.Mesh | null = null;
   private beyondOn = false;
+  /** Landing squash (0..1, decaying) and its strength. */
+  private squash = 0;
+  private squashAmt = 0;
+  private prevYaw = Math.PI / 2;
+  private lean = new THREE.Vector2();
+  private hipsDrop = 0;
+  /** Each bone's rest transform: restored every frame before the clips, so procedural offsets never pile up
+   * on channels a clip doesn't key. */
+  private rest: { bone: THREE.Bone; p: THREE.Vector3; q: THREE.Quaternion; s: THREE.Vector3 }[] = [];
 
   constructor() {
     this.faceTex.colorSpace = THREE.SRGBColorSpace;
@@ -110,7 +120,11 @@ export class PipGLB {
     this.model = m;
     this.root.add(m);
     m.traverse((o) => {
-      if ((o as THREE.Bone).isBone) this.bones[o.name] = o as THREE.Bone;
+      if ((o as THREE.Bone).isBone) {
+        const b = o as THREE.Bone;
+        this.bones[o.name] = b;
+        this.rest.push({ bone: b, p: b.position.clone(), q: b.quaternion.clone(), s: b.scale.clone() });
+      }
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       mesh.frustumCulled = false;
@@ -206,22 +220,41 @@ export class PipGLB {
 
     // --- base layer: idle / walk / run on the ground, rise / fall in the air
     const speed = Math.hypot(p.vel.x, p.vel.z);
+    const walk = this.actions.get('walk');
+    const run = this.actions.get('run');
+    let runW = 0;
     if (p.grounded) {
       if (speed < 0.35) this.setLoop('idle', 0.25);
-      else if (speed < 4.6) this.setLoop('walk', 0.18);
-      else this.setLoop('run', 0.14);
-      const walk = this.actions.get('walk');
-      const run = this.actions.get('run');
-      walk?.setEffectiveTimeScale(clamp(speed / 2.4, 0.6, 1.8));
-      run?.setEffectiveTimeScale(clamp(speed / 6.6, 0.8, 1.4));
+      else this.setLoop('walk', 0.18);
+      // Walk blends into run by speed (phase-locked, so the feet never skip), instead of switching.
+      runW = this.loop === 'walk' ? smoothstep(3.0, 6.2, speed) : 0;
+      walk?.setEffectiveTimeScale(clamp(speed / 2.4, 0.6, 1.8) * (1 - runW) + clamp(speed / 6.6, 0.8, 1.4) * runW * (walk.getClip().duration / (run?.getClip().duration || 1)));
     } else {
       this.setLoop(p.vel.y > 1.5 ? 'jump_up' : 'fall', p.vel.y > 1.5 ? 0.06 : 0.22);
+    }
+    if (walk && run) {
+      if (runW > 0.001) {
+        if (!run.isRunning()) run.reset().play();
+        run.setEffectiveTimeScale(0);
+        run.time = (walk.time / walk.getClip().duration) * run.getClip().duration;
+        // absolute weights (a fade on the walk layer still scales both through its interpolant)
+        run.setEffectiveWeight(runW);
+        walk.setEffectiveWeight(Math.max(0.001, 1 - runW));
+      } else if (run.isRunning() && this.loop !== 'run') {
+        const left = Math.max(0, run.getEffectiveWeight() - dt * 6);
+        run.setEffectiveWeight(left);
+        if (left <= 0) run.stop();
+        if (this.loop === 'walk') walk.setEffectiveWeight(1);
+      }
     }
     // --- one-shots from events in the pose stream
     if (!p.grounded && this.wasGrounded && p.vel.y > 4) this.play('jump_start', 0.03, 2.4);
     if (p.grounded && !this.wasGrounded) {
       const impact = clamp(-this.prevVel.y / 18, 0, 1);
       if (impact > 0.35) this.play('land', 0.04, 1.2);
+      // squash on landing, by how hard
+      this.squash = 1;
+      this.squashAmt = impact * 0.2;
     }
     if (p.action !== this.lastAction) {
       if (p.action === 'stumble') this.play('brake', 0.06);
@@ -239,6 +272,11 @@ export class PipGLB {
         this.shot = null;
       }
     }
+    for (const r of this.rest) {
+      r.bone.position.copy(r.p);
+      r.bone.quaternion.copy(r.q);
+      r.bone.scale.copy(r.s);
+    }
     this.mixer.update(dt);
 
     // --- procedural layers on top of the clips
@@ -250,6 +288,20 @@ export class PipGLB {
       const b = this.bones[n];
       if (b) b.rotation.x += this.antA * k + glitch;
     }
+    // Lean: bank into turns and tip with acceleration, eased so it reads as weight, not jitter.
+    const yawRate = wrapAngle(this.yaw - this.prevYaw) / Math.max(dt, 1e-3);
+    this.prevYaw = this.yaw;
+    const wantBank = p.grounded ? clamp(-yawRate * 0.05 * clamp(speed / 6, 0, 1), -0.22, 0.22) : 0;
+    const wantTip = p.grounded ? clamp(accel / Math.max(dt, 1e-3) * 0.006, -0.16, 0.16) : 0;
+    this.lean.x += (wantTip - this.lean.x) * Math.min(1, dt * 8);
+    this.lean.y += (wantBank - this.lean.y) * Math.min(1, dt * 8);
+    const spine = this.bones.spine;
+    if (spine) {
+      spine.rotation.x += this.lean.x;
+      spine.rotation.z += this.lean.y;
+    }
+    this.plantFeet(p, dt);
+
     const head = this.bones.head;
     const toCam = Math.atan2(p.cameraPos.x - p.pos.x, p.cameraPos.z - p.pos.z);
     const want = p.lookAtCamera > 0 && speed < 0.5 ? clamp(wrapAngle(toCam - this.yaw), -0.9, 0.9) : 0;
@@ -265,10 +317,54 @@ export class PipGLB {
       if (this.glass) this.glass.visible = beyond;
     }
     this.updateFace(p, dt);
-    this.model!.scale.setScalar(Math.max(0.001, p.assemble));
+    // squash and stretch: squash on landing, stretch while rising fast
+    this.squash = Math.max(0, this.squash - dt * 5);
+    const sq = this.squashAmt * Math.sin(this.squash * Math.PI) - (p.grounded ? 0 : clamp(p.vel.y / 40, 0, 0.07));
+    const a = Math.max(0.001, p.assemble);
+    this.model!.scale.set(a * (1 + sq * 0.5), a * (1 - sq), a * (1 + sq * 0.5));
     this.root.visible = !(p.invuln > 0 && Math.floor(p.time * 18) % 2 === 0);
     this.wasGrounded = p.grounded;
     this.prevVel.copy(p.vel);
+  }
+
+  /**
+   * Feet planted on uneven ground: the body stands at the highest point under it, so on a slope one foot would
+   * hang in the air. Lower the hips to the lower foot's ground and bend the other leg to keep its foot on its
+   * own ground (a symmetric two-bone bend: thigh forward, knee back twice as far, foot level).
+   */
+  private plantFeet(p: PipPose, dt: number) {
+    const hips = this.bones.hips;
+    let want = 0;
+    const bends: [string, number][] = [];
+    if (p.grounded && p.blend > 0.95 && hips) {
+      const drops: number[] = [];
+      const sides = ['L', 'R'];
+      const v = new THREE.Vector3();
+      for (const side of sides) {
+        const foot = this.bones[`foot_${side}`];
+        if (!foot) return;
+        foot.getWorldPosition(v);
+        const g = valleyCollideHeight(v.x, v.z);
+        drops.push(g === null ? 0 : clamp(p.pos.y - g, 0, 0.14));
+      }
+      want = Math.max(...drops);
+      sides.forEach((side, i) => bends.push([side, want - drops[i]]));
+    }
+    this.hipsDrop += (want - this.hipsDrop) * Math.min(1, dt * 12);
+    if (!hips) return;
+    hips.position.y -= this.hipsDrop;
+    const L = 0.2;
+    for (const [side, shorten] of bends) {
+      const s = Math.min(shorten, this.hipsDrop);
+      if (s <= 0.002) continue;
+      const a = Math.acos(clamp((L - s) / L, 0, 1));
+      const thigh = this.bones[`thigh_${side}`];
+      const shin = this.bones[`shin_${side}`];
+      const foot = this.bones[`foot_${side}`];
+      if (thigh) thigh.rotation.x -= a;
+      if (shin) shin.rotation.x += 2 * a;
+      if (foot) foot.rotation.x -= a;
+    }
   }
 
   dispose() {
