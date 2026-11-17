@@ -133,6 +133,12 @@ describe('QA: fuzz', () => {
       if (game.shift.mode === '3d') {
         game.player.teleport(game.level.checkpoints.find((c) => c.id === game.checkpoint)!.pos);
         run(game, 0.3);
+        // arriving at a checkpoint can replay its cinematic (the summit): let it finish first, dismissing the
+        // end card as the player would
+        runUntil(game, (g) => {
+          if (g.finaleCard) g.continueAfterFinale();
+          return !g.cine && g.player.grounded;
+        }, 60);
         game.requestShift();
         run(game, SHIFT_DURATION + 0.2);
       }

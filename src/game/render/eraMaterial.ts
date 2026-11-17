@@ -67,6 +67,10 @@ export const eraUniforms = {
   /** 1 while the 2D view draws 8-bit through the tile renderer (render/retro), which replaces the ground. */
   uRetro2D: { value: 0 },
   uNoiseTex: { value: makeNoiseTexture() },
+  /** Cutaway (3D): scenery inside a narrow cone from Pip to the camera dissolves, so he is never hidden. */
+  uCutCam: { value: new THREE.Vector3() },
+  uCutPip: { value: new THREE.Vector3(0, -999, 0) },
+  uCutOn: { value: 0 },
   /** Early-3D vertex snapping grid (in NDC units per half-screen). */
   uSnapRes: { value: new THREE.Vector2(110, 80) },
 };
@@ -104,6 +108,9 @@ uniform float uValleyX;
 uniform vec3 uPip;
 uniform float uRetro2D;
 uniform sampler2D uNoiseTex;
+uniform vec3 uCutCam;
+uniform vec3 uCutPip;
+uniform float uCutOn;
 float eraAtWorld(vec3 w) {
   if (uSplit > 0.5) {
     float e = 0.0;
@@ -220,7 +227,32 @@ export interface EraMatOptions {
    * bark) the boundary looks the same and every pixel saves the field/bubble/rift lookups.
    */
   vertexEra?: boolean;
+  /**
+   * Scenery that may stand between the 3D camera and Pip (trees, plants, rocks, walls): dissolves with a fine
+   * dither inside a narrow cone from Pip to the camera. Never the terrain (the camera moves instead).
+   */
+  cutaway?: boolean;
 }
+
+/**
+ * The cutaway test, per fragment: inside a cone from just in front of Pip (narrow) to the camera (wider), with a
+ * soft edge resolved by interleaved-gradient dither, so it reads as a clean see-through rather than a hole.
+ */
+const CUTAWAY_GLSL = /* glsl */ `
+if (uCutOn > 0.01) {
+  vec3 ab = uCutCam - uCutPip;
+  float L2 = max(dot(ab, ab), 1e-4);
+  float ct = dot(vEraWorld - uCutPip, ab) / L2;
+  if (ct > 0.0 && ct < 1.0) {
+    float L = sqrt(L2);
+    float d = length(vEraWorld - (uCutPip + ab * ct));
+    float r = mix(0.45, 1.6, clamp(ct * 1.3, 0.0, 1.0));
+    float k = smoothstep(r, r * 0.5, d) * smoothstep(0.7, 1.5, ct * L) * uCutOn;
+    float ign = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+    if (k > ign) discard;
+  }
+}
+`;
 
 /**
  * A standard (or physical) material that renders differently per generation:
@@ -255,6 +287,7 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
     o.hideInValley ? 'if (vEraWorld.x < uValleyX && eraF > 1.5) discard;' : '',
     o.minEra ? `if (eraF < ${(o.minEra - 0.5).toFixed(1)}) discard;` : '',
     o.retroTile ? 'if (uRetro2D > 0.5 && eraF < 1.5) discard;' : '',
+    o.cutaway ? CUTAWAY_GLSL : '',
   ].join('\n');
   // Chain onto any patch already on the material (e.g. the terrain splat shader).
   const prev = m.onBeforeCompile.bind(m);
@@ -366,7 +399,7 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
   };
   const prevKey = m.customProgramCacheKey.bind(m);
   m.customProgramCacheKey = () =>
-    `${prevKey()}|era-v4${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.minEra ? '-me' + o.minEra : ''}${o.retroTile ? '-rt' : ''}${o.vertexEra ? '-ve' : ''}`;
+    `${prevKey()}|era-v4${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.minEra ? '-me' + o.minEra : ''}${o.retroTile ? '-rt' : ''}${o.vertexEra ? '-ve' : ''}${o.cutaway ? '-cut' : ''}`;
   return m;
 }
 

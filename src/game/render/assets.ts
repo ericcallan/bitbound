@@ -123,11 +123,11 @@ function materialRules(m: THREE.MeshStandardMaterial): Partial<EraMatOptions> {
   }
   if (n.startsWith('stone_wall_tri')) {
     projectedStone(m);
-    return {};
+    return { cutaway: true };
   }
   if (n === 'shard_arch_mat' || n === 'ruin_column_mat' || /^block_.*_mat$/.test(n)) {
     mossyStone(m);
-    return {};
+    return { cutaway: true };
   }
   if (n === 'tree_leaves') {
     m.alphaTest = 0.5;
@@ -161,19 +161,19 @@ function materialRules(m: THREE.MeshStandardMaterial): Partial<EraMatOptions> {
         .replace('#include <alphatest_fragment>', 'if (leafAlpha < 0.5) discard;\ndiffuseColor.a = 1.0;');
     };
     m.customProgramCacheKey = () => 'leaf-coverage-v2';
-    return { vertexWorld: LEAF_WIND, minEra: 4, vertexEra: true };
+    return { vertexWorld: LEAF_WIND, minEra: 4, vertexEra: true, cutaway: true };
   }
   if (n.endsWith('_bark')) {
     m.envMapIntensity = 0.6;
-    return { vertexWorld: BARK_SWAY, minEra: 4, vertexEra: true };
+    return { vertexWorld: BARK_SWAY, minEra: 4, vertexEra: true, cutaway: true };
   }
-  if (/^rock_[abc]_mat$/.test(n)) return { minEra: 4, vertexEra: true };
+  if (/^rock_[abc]_mat$/.test(n)) return { minEra: 4, vertexEra: true, cutaway: true };
   if (n === 'vegetation_vc') {
     m.vertexColors = true;
     m.side = THREE.DoubleSide;
     m.roughness = 0.85;
     m.envMapIntensity = 0.5;
-    return { vertexWorld: CLUMP_WIND, minEra: 4, vertexEra: true };
+    return { vertexWorld: CLUMP_WIND, minEra: 4, vertexEra: true, cutaway: true };
   }
   return {};
 }
@@ -253,7 +253,7 @@ export function beyondOnly(m: THREE.Material): THREE.Material {
     copy.copy(src);
     copy.onBeforeCompile = () => {};
     copy.customProgramCacheKey = () => '';
-    c = patchEraMaterial(copy, { vertexWorld: CLUMP_WIND, minEra: 5, vertexEra: true });
+    c = patchEraMaterial(copy, { vertexWorld: CLUMP_WIND, minEra: 5, vertexEra: true, cutaway: true });
     beyondCopies.set(m, c);
   }
   return c;

@@ -527,7 +527,8 @@ export class GameView {
     this.tmp.set(lerp(c.prevTarget.x, c.target.x, a), lerp(c.prevTarget.y, c.target.y, a), lerp(c.prevTarget.z, c.target.z, a));
     cam.lookAt(this.tmp);
     cam.fov = lerp(c.prevFov, c.fov, a);
-    cam.near = 0.3;
+    // the near plane follows a pulled-in chase camera, so Pip is never cut open when it comes close
+    cam.near = clamp(cam.position.distanceTo(this.tmp) * 0.22, 0.06, 0.3);
     cam.far = 900;
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
@@ -624,6 +625,10 @@ export class GameView {
     const pipPos = new THREE.Vector3(lerp(p.prevPos.x, p.pos.x, a), lerp(p.prevPos.y, p.pos.y, a), lerp(p.prevPos.z, p.pos.z, a));
     const shiftBoost = g.shift.transition ? Math.sin((g.shift.transition.t / g.shift.transition.dur) * Math.PI) : 0;
     const pipEra = this.eraAt(new THREE.Vector3(pipPos.x, pipPos.y + p.h * 0.5, pipPos.z));
+    // Cutaway: in 3D, scenery between the camera and Pip dissolves (see CUTAWAY_GLSL); never on the title.
+    eraUniforms.uCutPip.value.set(pipPos.x, pipPos.y + p.h * 0.55, pipPos.z);
+    eraUniforms.uCutCam.value.copy(cam.position);
+    eraUniforms.uCutOn.value = this.title ? 0 : smoothstep(0.5, 1, g.shift.blend);
     const pose = {
       pos: pipPos,
       vel: new THREE.Vector3(p.vel.x, p.vel.y, p.vel.z),
@@ -802,7 +807,8 @@ export class GameView {
     f.time = t;
     // The camera target tracks Pip in play and frames the subject in cinematics/gallery views.
     f.focus.copy(camTarget);
-    f.dof = split ? 0 : g.cine ? 0.6 : g.shift.mode === '2d' ? 0.55 : 0.4;
+    // 2D keeps the depth of field gentle: the walls and ruins just behind the lane are part of the play space.
+    f.dof = split ? 0 : g.cine ? 0.6 : g.shift.mode === '2d' ? 0.28 : 0.4;
     if (this.title) {
       // the title: Pip in focus, the valley only slightly soft
       f.focus.copy(pipPos);

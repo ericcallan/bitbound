@@ -30,7 +30,22 @@ export interface CameraContext {
   groundAt?: (x: number, z: number) => number | null;
   /** 2D: the height the camera's eye should sit at (a 2D-only bridge), or null for the normal framing. */
   alignY?: number | null;
+  /** 2D: framing scale (1 = CAM2D.viewHeight; below 1 frames closer). */
+  zoom2D?: number;
+  /** While airborne: the height of the ground Pip will land on (null when grounded or nothing below). */
+  landingY?: number | null;
 }
+
+/** Offsets (camera right, camera up) of the five occlusion rays at the camera end: centre and a cross. */
+const PROBES: [number, number][] = [
+  [0, 0],
+  [0.4, 0],
+  [-0.4, 0],
+  [0, 0.32],
+  [0, -0.32],
+];
+/** The camera keeps at least this much air between itself and the terrain along its view of Pip. */
+const TERRAIN_CLEARANCE = 0.35;
 
 /** Distance of the 2D camera from the lane (its framing is fixed by CAM2D.fov and viewHeight). */
 const DIST2D = CAM2D.viewHeight / (2 * Math.tan(((CAM2D.fov / 2) * Math.PI) / 180));
@@ -60,6 +75,15 @@ export class CameraRig {
   /** 0..1: how far the 2D camera has dropped to eye level with an aligned deck. */
   alignW = 0;
   private alignY = 0;
+  private zoom2 = 1;
+  /** Extra pitch while the chase view is badly blocked (look over the obstacle instead of through it). */
+  private pitchLift = 0;
+  private liftGoal = 0;
+  private fallPitch = 0;
+  /** Look-ahead of the chase target along the direction of travel. */
+  private lead = v3();
+  /** Occlusion state from the last step, for the debug overlay: fraction of the wanted distance kept (1 = clear). */
+  occlusion = { kept: 1, by: 'none' as 'none' | 'box' | 'terrain', rays: [] as { from: V3; to: V3; hit: number | null }[] };
 
   override: CamPose | null = null;
   overrideW = 0;
@@ -103,10 +127,18 @@ export class CameraRig {
     if (ctx.grounded || pip.y < this.y2 - CAM2D.height * sc - 0.2) this.y2 = damp(this.y2, wantY, 5, dt);
     else this.y2 = damp(this.y2, clamp(this.y2, wantY - 1.2 * sc, wantY + 1.6 * sc), 6, dt);
 
-    // --- 3D chase
-    this.t3.x = damp(this.t3.x, pip.x, 12, dt);
-    this.t3.y = damp(this.t3.y, pip.y + CAM3D.height, 8, dt);
-    this.t3.z = damp(this.t3.z, pip.z, 12, dt);
+    // --- 3D chase: lead a little in the direction of travel; while falling, look down toward the landing.
+    const sp = Math.hypot(vel.x, vel.z);
+    const leadK = Math.min(1.4, sp * 0.18);
+    this.lead.x = damp(this.lead.x, sp > 0.5 ? (vel.x / sp) * leadK : 0, 2.2, dt);
+    this.lead.z = damp(this.lead.z, sp > 0.5 ? (vel.z / sp) * leadK : 0, 2.2, dt);
+    // Over a drop, aim between Pip and the ground below and tilt down, so the landing stays in view.
+    const drop = !ctx.grounded && ctx.landingY != null ? Math.max(0, pip.y - ctx.landingY) : 0;
+    const overDrop = smoothstep(1.2, 4, drop);
+    this.fallPitch = damp(this.fallPitch, overDrop * clamp(0.2 + drop * 0.05, 0, 0.6), 6, dt);
+    this.t3.x = damp(this.t3.x, pip.x + this.lead.x, 12, dt);
+    this.t3.y = damp(this.t3.y, pip.y + CAM3D.height - overDrop * drop * 0.55, 10, dt);
+    this.t3.z = damp(this.t3.z, pip.z + this.lead.z, 12, dt);
     if (blend > 0.98) {
       this.orbitYaw = wrapAngle(this.orbitYaw + ctx.orbit.yaw);
       this.orbitPitch = clamp(this.orbitPitch + ctx.orbit.pitch, -0.28, 0.75);
@@ -129,20 +161,21 @@ export class CameraRig {
     // on the horizon line (a perspective camera only lines up what is at eye height).
     if (ctx.alignY != null) this.alignY = ctx.alignY;
     this.alignW = damp(this.alignW, ctx.alignY != null ? 1 : 0, 2.2, dt);
-    const level2 = Math.asin(clamp((this.alignY - this.y2) / DIST2D, -0.5, 0.5));
+    this.zoom2 = damp(this.zoom2, ctx.zoom2D ?? 1, 2, dt);
+    const level2 = Math.asin(clamp((this.alignY - this.y2) / (DIST2D * this.zoom2), -0.5, 0.5));
     const pitch2 = lerp(CAM2D.pitch, level2, smoothstep(0, 1, this.alignW));
 
     // --- Blend 2D <-> 3D
     const s = blend;
     const yaw3 = wrapAngle(CAM3D.behindYaw + this.orbitYaw);
-    const pitch3 = CAM3D.pitch + this.orbitPitch;
+    const pitch3 = CAM3D.pitch + this.orbitPitch + this.pitchLift + this.fallPitch;
     const fov3 = CAM3D.fov;
     const dist3 = CAM3D.dist;
     let yaw = lerpAngle(0, yaw3, s);
     let pitch = lerp(pitch2, pitch3, smoothstep(0, 1, s));
     let fov = lerp(CAM2D.fov, fov3, s);
     const h3 = 2 * dist3 * Math.tan(((fov3 / 2) * Math.PI) / 180);
-    const viewH = lerp(CAM2D.viewHeight * sc, h3, s);
+    const viewH = lerp(CAM2D.viewHeight * sc * this.zoom2, h3, s);
     let dist = viewH / (2 * Math.tan(((fov / 2) * Math.PI) / 180));
     const laneZ = ctx.laneZ ?? 0;
     const t3 = this.t3;
@@ -165,18 +198,52 @@ export class CameraRig {
     this.pitch = pitch;
     this.fov = fov;
     const cp = Math.cos(pitch);
-    // Third-person camera collision: pull in quickly when a wall is between camera and Pip,
-    // ease back out when it clears.
+    // Third-person camera collision: five rays from Pip toward where the camera wants to be, against the
+    // colliders and the terrain. Pull in quickly when something is in the way (never into it); when even the
+    // unlifted view is badly blocked, lift the camera to look over the obstacle; when Pip is pinned against a
+    // wall, swing round to the clearer side. Ease back out once clear.
     let want = dist;
-    if (ctx.raycast && s > 0.5) {
-      const probe = v3(
-        target.x + Math.sin(yaw) * cp * dist,
-        target.y + Math.sin(pitch) * dist,
-        target.z + Math.cos(yaw) * cp * dist,
-      );
-      const hit = ctx.raycast(target, probe);
-      if (hit !== null) want = Math.max(1.6, dist * hit - 0.4);
+    this.occlusion.rays.length = 0;
+    this.occlusion.by = 'none';
+    const blockedAt = (to: V3) => {
+      const hb = ctx.raycast ? ctx.raycast(target, to) : null;
+      const ht = ctx.groundAt ? terrainHit(target, to, ctx.groundAt) : null;
+      const hit = hb === null ? ht : ht === null ? hb : Math.min(hb, ht);
+      return { hit, by: hit === null ? ('none' as const) : hit === hb ? ('box' as const) : ('terrain' as const) };
+    };
+    const camAt = (y: number, p: number, d: number) => v3(target.x + Math.sin(y) * Math.cos(p) * d, target.y + Math.sin(p) * d, target.z + Math.cos(y) * Math.cos(p) * d);
+    if (s > 0.5 && (ctx.raycast || ctx.groundAt) && !(this.override && this.overrideW > 0.5)) {
+      const right = v3(Math.cos(yaw), 0, -Math.sin(yaw));
+      const up = v3(-Math.sin(yaw) * Math.sin(pitch), Math.cos(pitch), -Math.cos(yaw) * Math.sin(pitch));
+      let kept = 1;
+      for (const [ox, oy] of PROBES) {
+        const c = camAt(yaw, pitch, dist);
+        const to = v3(c.x + right.x * ox + up.x * oy, c.y + right.y * ox + up.y * oy, c.z + right.z * ox + up.z * oy);
+        const { hit, by } = blockedAt(to);
+        this.occlusion.rays.push({ from: { ...target }, to, hit });
+        if (hit !== null && hit < kept) {
+          kept = hit;
+          this.occlusion.by = by;
+        }
+      }
+      // never closer than the obstacle allows: right up to it if need be (the near plane follows)
+      if (kept < 1) want = Math.max(0.4, dist * kept - 0.3);
+      this.occlusion.kept = want / dist;
+      // the lift is decided from the unlifted view, so it can't pump up and down
+      const base = blockedAt(camAt(yaw, pitch - this.pitchLift * smoothstep(0, 1, s), dist)).hit;
+      const baseKept = base ?? 1;
+      this.liftGoal = baseKept < 0.4 ? 0.34 : baseKept > 0.6 ? 0 : this.liftGoal;
+      // pinned against a wall (and not steering): swing round to whichever side is clearer
+      if (want < 1.5 && this.sinceOrbit > 0.6) {
+        const l = blockedAt(camAt(yaw + 0.8, pitch, dist)).hit ?? 1;
+        const r = blockedAt(camAt(yaw - 0.8, pitch, dist)).hit ?? 1;
+        if (Math.max(l, r) > kept + 0.1) this.orbitYaw = wrapAngle(this.orbitYaw + (l >= r ? 1 : -1) * 2.4 * dt);
+      }
+    } else {
+      this.occlusion.kept = 1;
+      this.liftGoal = 0;
     }
+    this.pitchLift = damp(this.pitchLift, this.liftGoal, this.liftGoal > this.pitchLift ? 3 : 1.2, dt);
     this.clipDist = want < this.clipDist ? damp(this.clipDist, want, 25, dt) : damp(this.clipDist, want, 2.5, dt);
     if (s <= 0.5) this.clipDist = dist;
     dist = Math.min(dist, this.clipDist);
@@ -198,6 +265,9 @@ export class CameraRig {
     }
   }
 
+  /** Terrain clearance at the camera's final position (for tests and the debug overlay). */
+  static readonly TERRAIN_CLEARANCE = TERRAIN_CLEARANCE;
+
   /** Converts stick/keys into a world-space direction relative to the camera. */
   relativeInput(ax: number, ay: number) {
     const fx = -Math.sin(this.yaw);
@@ -206,4 +276,18 @@ export class CameraRig {
     const rz = fx;
     return { mx: rx * ax + fx * ay, mz: rz * ax + fz * ay };
   }
+}
+
+/** Fraction along a→b where the terrain first comes within TERRAIN_CLEARANCE of the segment, or null. */
+function terrainHit(a: V3, b: V3, groundAt: (x: number, z: number) => number | null): number | null {
+  const N = 24;
+  for (let i = 1; i <= N; i++) {
+    const t = i / N;
+    const x = a.x + (b.x - a.x) * t;
+    const y = a.y + (b.y - a.y) * t;
+    const z = a.z + (b.z - a.z) * t;
+    const g = groundAt(x, z);
+    if (g !== null && y < g + TERRAIN_CLEARANCE) return (i - 1) / N;
+  }
+  return null;
 }

@@ -206,6 +206,9 @@ export class Game {
   private listeners = new Set<(e: GameEvent) => void>();
   readonly events: GameEvent[] = [];
 
+  /** Ids of solids that fade for the camera (see blocksCamera). */
+  private occluders = new Set<string>();
+
   constructor(
     public input: InputSource,
     save: SaveData | null = null,
@@ -216,6 +219,7 @@ export class Game {
     this.era.fields = [{ ...this.level.sleepField }];
     for (const s of this.level.solids) {
       this.world.add(s.id, s.kind, s.box, s.enabled ?? true, s.only2d ?? false, s.genMask);
+      if (s.occluder) this.occluders.add(s.id);
     }
     this.world.genAt = (c: Collider) => this.era.gameEraAtBox(c.min, c.max);
     // The valley terrain: walkable in 3D inside the finished slice.
@@ -247,6 +251,52 @@ export class Game {
     }
     this.camera.snap(this.cameraContext());
     if (this.cine?.name === 'awakening') this.awakeningCamera(true);
+  }
+
+  /**
+   * Solids the 3D camera must not pass through: everything visible except the walls that fade out when they
+   * come between the camera and Pip (the facade, hedge, mural, alcove walls).
+   */
+  blocksCamera(c: Collider) {
+    return c.kind !== 'invisible' && c.kind !== 'cube' && !this.occluders.has(c.id);
+  }
+
+  /**
+   * A generation change can make a solid appear where Pip already stands (a ripple reaching the brambles he
+   * is walking behind in 16-bit). Step him out to the nearest free side (along the lane in 2D; the lane or
+   * across it in 3D) rather than leave him inside; if there is no room, respawn him safely.
+   */
+  private resolveMaterialized() {
+    const p = this.player;
+    if (this.respawnT >= 0) return;
+    const box = p.box();
+    const c = this.world.colliders.find((k) => k.genMask !== undefined && this.world.active(k) && overlaps(box, k, 0.001));
+    if (!c) return;
+    const hw = (box.max.x - box.min.x) / 2;
+    const cands: V3[] = [v3(c.min.x - hw - 0.01, p.pos.y, p.pos.z), v3(c.max.x + hw + 0.01, p.pos.y, p.pos.z)];
+    if (this.shift.mode === '3d') cands.push(v3(p.pos.x, p.pos.y, c.min.z - hw - 0.01), v3(p.pos.x, p.pos.y, c.max.z + hw + 0.01));
+    cands.sort((a, b) => Math.hypot(a.x - p.pos.x, a.z - p.pos.z) - Math.hypot(b.x - p.pos.x, b.z - p.pos.z));
+    for (const q of cands) {
+      if (Math.hypot(q.x - p.pos.x, q.z - p.pos.z) > 2.5 || !this.world.isFree(p.box(q))) continue;
+      p.pos.x = p.prevPos.x = q.x;
+      p.pos.z = p.prevPos.z = q.z;
+      this.emit('bump', { pos: { ...p.pos } });
+      return;
+    }
+    this.beginRespawn();
+  }
+
+  /** The highest walkable surface under Pip (terrain or solid), for the falling camera; null over the void. */
+  private landingBelow(): number | null {
+    const p = this.player;
+    const b = p.box();
+    let best = this.shift.mode === '3d' ? valleyCollideHeight(p.pos.x, p.pos.z) : null;
+    for (const c of this.world.colliders) {
+      if (!this.world.active(c) || c.kind === 'invisible' && !c.only2d) continue;
+      if (b.min.x >= c.max.x || b.max.x <= c.min.x || b.min.z >= c.max.z || b.max.z <= c.min.z) continue;
+      if (c.max.y <= p.pos.y + 0.02 && (best === null || c.max.y > best)) best = c.max.y;
+    }
+    return best;
   }
 
   /** Back-compat helper: the first moving platform. */
@@ -480,6 +530,8 @@ export class Game {
       this.persist();
     }
 
+    this.resolveMaterialized();
+
     // Falling out of the world, or into deep river water in the valley
     const drowned = p.pos.y < WATER_Y - 0.6 && valleyCollideHeight(p.pos.x, p.pos.z) !== null;
     if ((p.pos.y < DEATH_Y || drowned) && this.respawnT < 0) {
@@ -506,9 +558,12 @@ export class Game {
       orbit,
       recenter: this.input.held('recenter'),
       bounds: this.level.bounds,
-      raycast: (a, b) => this.world.raycast(a, b, (c) => c.kind !== 'invisible' && c.kind !== 'cube' && c.max.y > a.y - 0.6),
+      raycast: (a, b) => this.world.raycast(a, b, (c) => this.blocksCamera(c) && c.max.y > a.y - 0.6),
       laneZ: this.shift.laneZ,
       groundAt: valleyCollideHeight,
+      // Modern HD and Beyond frame the 2D view a little closer: Pip and the detail around him read larger.
+      zoom2D: this.era.displayEra >= 4 ? 0.86 : 1,
+      landingY: this.player.grounded ? null : this.landingBelow(),
       alignY: this.level.align2D.find(([x0, x1]) => this.player.pos.x >= x0 && this.player.pos.x <= x1)?.[2] ?? null,
     };
   }
