@@ -12,7 +12,9 @@
     "assets:build": "node scripts/build-assets.mjs",
     "assets:optimize": "node scripts/optimize-assets.mjs",
     "assets:validate": "node scripts/validate-assets.mjs",
-    "assets:fetch": "python3 scripts/fetch_polyhaven.py"
+    "assets:fetch": "python3 scripts/fetch_polyhaven.py",
+    "test:e2e": "playwright test",
+    "screens": "node scripts/capture-screens.mjs docs/screens/latest"
   },
   "dependencies": {
     "@react-three/fiber": "^9.8.2",

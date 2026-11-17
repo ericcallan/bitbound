@@ -523,10 +523,12 @@ export class GameView {
     return flat;
   }
 
-  update(dt: number) {
+  update(realDt: number) {
     const g = this.game;
-    this.t += dt * this.timeScale;
-    this.lastDt = dt;
+    // a frozen view (dev scenarios, visual baselines) stops every animation it owns
+    const dt = realDt * this.timeScale;
+    this.t += dt;
+    this.lastDt = realDt;
     const t = this.t;
     const a = g.alpha;
     const split = !!this.options.split;

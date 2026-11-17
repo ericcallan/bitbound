@@ -105,6 +105,8 @@ declare global {
 export function bootScenario(sc: { name: string; s: Scenario; freeze: boolean }) {
   if (!session.input) throw new Error('input not ready');
   setSaveWrites(false);
+  // test runs (freeze) render at a fixed quality, so auto-tuning can't change what a baseline sees
+  if (sc.freeze) useUI.getState().updateSettings({ quality: 'high' });
   const s = sc.s;
   const save: SaveData = { ...newSave(), ...s.save, era: s.era };
   const g = new Game(session.input, save, 'play');
