@@ -10,6 +10,7 @@ import { SPRITES } from '../game/render/sprites';
 import { Portrait } from './Portrait';
 import { galleryStart } from './Gallery';
 import { ShareButton } from './ShareButton';
+import { PixelTitleView } from './title/PixelTitleView';
 
 /**
  * Dev only: ?shot=og shows the title scene with just the wordmark and one line, for the link-preview image
@@ -212,10 +213,11 @@ export function MainMenu() {
   const summary = useMemo(() => (hasSave ? saveSummary() : null), [hasSave]);
   const shown = preview ?? selected;
 
-  // The title scene follows the timeline: a ripple from Pip into the shown generation.
+  // The title scene follows the timeline: a ripple from Pip into the shown generation. 8-bit and 16-bit are their
+  // own pixel scenes (PixelTitleView), so the 3D set stays in the last 3D generation behind them.
   useEffect(() => {
     const g = session.menuGame;
-    if (!g) return;
+    if (!g || shown <= 1) return;
     const t = window.setTimeout(() => {
       const p = g.player.pos;
       g.era.start(shown, { x: p.x, y: p.y + 0.8, z: p.z }, 1.6);
@@ -343,6 +345,7 @@ export function MainMenu() {
 
   return (
     <div className={`menu ${leaving ? 'menu--leaving' : ''} ${SHOT ? 'menu--shot' : ''}`}>
+      <PixelTitleView gen={shown <= 1 ? (shown as 0 | 1) : null} />
       <div className="menu__scrim" aria-hidden />
       <div className="menu__panel">
         <h1 className="logo" aria-label="Bitbound">

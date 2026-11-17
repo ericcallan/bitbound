@@ -2798,3 +2798,19 @@ kbd {
   gap: 14px;
   pointer-events: auto;
 }
+
+/* the title's 8-bit and 16-bit scenes (ui/title): whole-pixel scaled, bars fill the rest */
+.pixel-title {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #0d0b1e;
+  visibility: hidden;
+  opacity: 0;
+}
+.pixel-title__canvas {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}

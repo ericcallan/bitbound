@@ -11,7 +11,9 @@ export const session: {
   input: BrowserInput | null;
   /** Dev: ignore player input entirely (frozen scenarios). */
   inputLocked: boolean;
-} = { game: null, menuGame: null, input: null, inputLocked: false };
+  /** The title's 8- or 16-bit pixel scene covers the screen: the 3D title set needn't render. */
+  menuCovered: boolean;
+} = { game: null, menuGame: null, input: null, inputLocked: false, menuCovered: false };
 
 export function ensureInput(el: HTMLElement) {
   if (!session.input) session.input = new BrowserInput(el);

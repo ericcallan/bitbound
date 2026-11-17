@@ -136,3 +136,35 @@ test('perspective shift in the browser: at three known spots, including a refuse
   expect(result).toEqual([null, '3d', null, '2d', 'painted', '2d']);
   expect(problems, problems.join('\n')).toEqual([]);
 });
+
+test('title screen 8-bit and 16-bit are real pixel scenes: native rows, palette-only 8-bit', async ({ page }) => {
+  const problems = watch(page);
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'New Game' })).toBeVisible({ timeout: 30_000 });
+  const frame = async () =>
+    page.evaluate(() => {
+      const c = document.querySelector<HTMLCanvasElement>('.pixel-title__canvas')!;
+      const d = c.getContext('2d')!.getImageData(0, 0, c.width, c.height).data;
+      const colours = new Set<string>();
+      for (let i = 0; i < d.length; i += 4) colours.add(`${d[i]},${d[i + 1]},${d[i + 2]}`);
+      return { w: c.width, h: c.height, colours: [...colours], visible: getComputedStyle(c.parentElement!).visibility };
+    });
+  await page.getByRole('button', { name: 'Show the title scene in 8-BIT' }).click();
+  await page.waitForTimeout(1500);
+  const f8 = await frame();
+  expect(f8.visible).toBe('visible');
+  expect(f8.h).toBe(240);
+  const PALETTE_8 = ['#0d0b1e', '#2b2d6e', '#3a5fcd', '#5ec8f0', '#b4eeff', '#2fd6c3', '#1f8a5a', '#4cc24a', '#a6e05a', '#fff4d6', '#ffcf6b', '#f0862a', '#b8461f', '#6b3a2a', '#8e5bd6', '#c9c3d8'];
+  const pal = new Set(PALETTE_8.map((h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(',')));
+  expect(f8.colours.filter((c) => !pal.has(c))).toEqual([]);
+  await page.getByRole('button', { name: 'Show the title scene in 16-BIT' }).click();
+  await page.waitForTimeout(2000);
+  const f16 = await frame();
+  expect(f16.h).toBe(224);
+  expect(f16.colours.length).toBeGreaterThan(40);
+  // back to a 3D generation: the pixel scene goes away
+  await page.getByRole('button', { name: 'Show the title scene in BEYOND' }).click();
+  await page.waitForTimeout(1200);
+  expect((await frame()).visible).toBe('hidden');
+  expect(problems, problems.join('\n')).toEqual([]);
+});

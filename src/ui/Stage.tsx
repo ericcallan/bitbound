@@ -169,6 +169,10 @@ export function Stage({ game, menu = false }: { game: Game; menu?: boolean }) {
   }, -1);
 
   useFrame((_, dt) => view.update(Math.min(dt, 0.1)), 0);
-  useFrame(() => view.render(gl), 1);
+  useFrame(() => {
+    // the title's pixel scene covers the screen: skip the 3D frame
+    if (menu && session.menuCovered) return;
+    view.render(gl);
+  }, 1);
   return null;
 }
