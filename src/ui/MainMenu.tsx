@@ -66,6 +66,39 @@ interface ButtonDef {
   onClick: () => void;
 }
 
+/** Phones and small touch screens: the game needs a keyboard or gamepad. */
+function isPhoneLike() {
+  try {
+    const coarse = window.matchMedia('(pointer: coarse)').matches && !window.matchMedia('(any-pointer: fine)').matches;
+    return coarse || window.innerWidth < 720;
+  } catch {
+    return false;
+  }
+}
+
+function DesktopNotice({ onContinue }: { onContinue: () => void }) {
+  return (
+    <div className="device-notice" role="dialog" aria-label="Best on desktop">
+      <div className="device-notice__card">
+        <div className="device-notice__icon" aria-hidden>
+          <svg viewBox="0 0 24 24">
+            <rect x="3" y="4" width="18" height="12" rx="2" />
+            <path d="M8 20h8M12 16v4" />
+          </svg>
+        </div>
+        <h2>PIP is built for desktop</h2>
+        <p>It plays with a keyboard or a gamepad, and it needs a larger screen. There are no touch controls yet.</p>
+        <button className="title-btn title-btn--primary device-notice__btn" onClick={onContinue}>
+          <span className="title-btn__text">
+            <span className="title-btn__label">Try anyway</span>
+            <span className="title-btn__meta">Starts on Low quality</span>
+          </span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MenuButton(props: ButtonDef & { index: number }) {
   return (
     <button
@@ -91,6 +124,7 @@ export function MainMenu() {
   const [hasSave, setHasSave] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
+  const [phone, setPhone] = useState(() => isPhoneLike());
   const ui = useUI();
   const nav = useRef<HTMLElement>(null);
   const summary = useMemo(() => (hasSave ? saveSummary() : null), [hasSave]);
@@ -237,6 +271,14 @@ export function MainMenu() {
           ))}
         </nav>
       </div>
+      {phone && (
+        <DesktopNotice
+          onContinue={() => {
+            ui.updateSettings({ quality: 'low' });
+            setPhone(false);
+          }}
+        />
+      )}
       {confirmNew && (
         <div className="overlay" data-era={4} onClick={() => setConfirmNew(false)}>
           <div className="panel" role="dialog" aria-label="Start a new game?" onClick={(e) => e.stopPropagation()}>
