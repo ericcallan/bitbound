@@ -57,19 +57,19 @@ function materialRules(m: THREE.MeshStandardMaterial): Partial<EraMatOptions> {
         .replace('#include <alphatest_fragment>', 'if (leafAlpha < 0.5) discard;\ndiffuseColor.a = 1.0;');
     };
     m.customProgramCacheKey = () => 'leaf-coverage-v2';
-    return { vertexWorld: LEAF_WIND, minEra: 4 };
+    return { vertexWorld: LEAF_WIND, minEra: 4, vertexEra: true };
   }
   if (n.endsWith('_bark')) {
     m.envMapIntensity = 0.6;
-    return { vertexWorld: BARK_SWAY, minEra: 4 };
+    return { vertexWorld: BARK_SWAY, minEra: 4, vertexEra: true };
   }
-  if (/^rock_[abc]_mat$/.test(n)) return { minEra: 4 };
+  if (/^rock_[abc]_mat$/.test(n)) return { minEra: 4, vertexEra: true };
   if (n === 'vegetation_vc') {
     m.vertexColors = true;
     m.side = THREE.DoubleSide;
     m.roughness = 0.85;
     m.envMapIntensity = 0.5;
-    return { vertexWorld: CLUMP_WIND, minEra: 4 };
+    return { vertexWorld: CLUMP_WIND, minEra: 4, vertexEra: true };
   }
   return {};
 }

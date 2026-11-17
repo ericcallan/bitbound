@@ -8,7 +8,7 @@ import { PixelSprite } from './sprites';
 import { TerrainView } from './terrain';
 import { loadHdSky, type HdSkyData } from './sky';
 import { RETRO_ROWS, RetroLayer, TILE_PX } from './retro/RetroLayer';
-import { ValleyDressing } from './dressing';
+import { SHADOW_PROXY_LAYER, ValleyDressing } from './dressing';
 import { PipModel } from '../pip/PipModel';
 import { PipGLB } from '../pip/PipGLB';
 import type { Game, GameEvent } from '../sim/Game';
@@ -181,6 +181,8 @@ export class GameView {
     this.sun.shadow.bias = -0.0006;
     this.sun.shadow.normalBias = 0.03;
     this.sun.shadow.radius = 3;
+    // The shadow camera also sees the dressing's low-detail stand-in casters.
+    this.sun.shadow.camera.layers.enable(SHADOW_PROXY_LAYER);
     this.scene.add(this.hemi, this.sun, this.sun.target);
     this.chamberLight = new THREE.PointLight('#4ff5e6', 6, 14, 1.6);
     this.chamberLight.position.set(57, 2.6, -7.5);
@@ -660,6 +662,10 @@ export class GameView {
     // entirely (not just per pixel) while no such generation can be on screen.
     this.terrain.group.visible = !split && f.maxEra >= 2;
     this.dressing.group.visible = !split && f.maxEra >= 4;
+    if (this.dressing.group.visible) {
+      this.dressing.density = [0.4, 0.7, 1][this.post.activeTier];
+      this.dressing.update(this.camera);
+    }
     f.fade = g.fade;
     f.fadeColor.set(g.fadeWhite ? '#f4fbff' : '#0d0b1e');
     const st = g.shift.transition;

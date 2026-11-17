@@ -59,46 +59,58 @@ export function terrainMaterial() {
         varying vec3 vTerrN;
         float terrRough;
         vec3 terrNormalW;
-        // top-down sample with a second, much larger sample mixed in to hide repetition
+        // Layers with no weight at a pixel are skipped entirely (rock is only on cliffs, path only on the
+        // path...). Sampling inside those branches uses explicit gradients so mip selection stays correct.
+        vec2 gXZx, gXZy, gZYx, gZYy, gXYx, gXYy;
         vec4 topA(sampler2D t, float s) {
-          vec4 a = texture2D(t, vTerrW.xz / s);
-          vec4 b = texture2D(t, vTerrW.xz / (s * 5.7) + 0.37);
+          vec4 a = textureGrad(t, vTerrW.xz / s, gXZx / s, gXZy / s);
+          float s2 = s * 5.7;
+          vec4 b = textureGrad(t, vTerrW.xz / s2 + 0.37, gXZx / s2, gXZy / s2);
           return mix(a, b, 0.32);
         }
-        vec3 topN(sampler2D t, float s) { return texture2D(t, vTerrW.xz / s).xyz * 2.0 - 1.0; }
+        vec3 topN(sampler2D t, float s) { return textureGrad(t, vTerrW.xz / s, gXZx / s, gXZy / s).xyz * 2.0 - 1.0; }
         vec3 triW(vec3 n) { vec3 w = pow(abs(n), vec3(4.0)); return w / (w.x + w.y + w.z); }
         vec4 triA(sampler2D t, float s, vec3 w) {
-          return texture2D(t, vTerrW.zy / s) * w.x + texture2D(t, vTerrW.xz / s) * w.y + texture2D(t, vTerrW.xy / s) * w.z;
+          return textureGrad(t, vTerrW.zy / s, gZYx / s, gZYy / s) * w.x + textureGrad(t, vTerrW.xz / s, gXZx / s, gXZy / s) * w.y + textureGrad(t, vTerrW.xy / s, gXYx / s, gXYy / s) * w.z;
         }`,
       )
       .replace(
         '#include <map_fragment>',
-        `vec3 wn = normalize(vTerrN);
+        `gXZx = dFdx(vTerrW.xz); gXZy = dFdy(vTerrW.xz);
+        gZYx = dFdx(vTerrW.zy); gZYy = dFdy(vTerrW.zy);
+        gXYx = dFdx(vTerrW.xy); gXYy = dFdy(vTerrW.xy);
+        vec3 wn = normalize(vTerrN);
         vec3 tw = triW(wn);
-        vec4 aG = topA(t_grassA, 3.5);
-        vec4 aP = topA(t_pathA, 3.0);
-        vec4 aF = topA(t_forestA, 4.0);
-        vec4 aR = triA(t_rockA, 6.0, tw);
         float wR = vSplat.r, wP = vSplat.g, wF = vSplat.b;
         float wG = max(0.0, 1.0 - wR - wP - wF);
+        const float EPS = 0.004;
+        vec4 aG = vec4(0.0), aR = vec4(0.0), aP = vec4(0.0), aF = vec4(0.0);
+        if (wG > EPS) aG = topA(t_grassA, 3.5);
+        if (wP > EPS) aP = topA(t_pathA, 3.0);
+        if (wF > EPS) aF = topA(t_forestA, 4.0);
+        if (wR > EPS) aR = triA(t_rockA, 6.0, tw);
         // height-aware blend: brighter (taller) texels win near transitions
-        vec4 W = vec4(wG, wR, wP, wF) * pow(vec4(dot(aG.rgb, vec3(0.33)), dot(aR.rgb, vec3(0.33)), dot(aP.rgb, vec3(0.33)), dot(aF.rgb, vec3(0.33))) + 0.35, vec4(3.0));
+        vec4 W = vec4(wG, wR, wP, wF) * step(EPS, vec4(wG, wR, wP, wF)) * pow(vec4(dot(aG.rgb, vec3(0.33)), dot(aR.rgb, vec3(0.33)), dot(aP.rgb, vec3(0.33)), dot(aF.rgb, vec3(0.33))) + 0.35, vec4(3.0));
         W /= max(1e-4, W.x + W.y + W.z + W.w);
         vec4 A = aG * W.x + aR * W.y + aP * W.z + aF * W.w;
         // the scanned grass reads khaki: push it toward a living meadow green, with gentle patchiness
-        float patchy = texture2D(t_grassA, vTerrW.xz / 61.0).g;
+        float patchy = textureGrad(t_grassA, vTerrW.xz / 61.0, gXZx / 61.0, gXZy / 61.0).g;
         A.rgb *= mix(vec3(1.0), mix(vec3(0.5, 0.82, 0.36), vec3(0.62, 0.86, 0.42), patchy), W.x);
         A.rgb *= mix(vec3(1.0), vec3(0.85, 0.95, 0.72), W.w);
         diffuseColor.rgb = A.rgb;
         terrRough = clamp(A.a, 0.35, 1.0);
-        vec3 nG = topN(t_grassN, 3.5), nP = topN(t_pathN, 3.0), nF = topN(t_forestN, 4.0);
-        vec3 nRx = texture2D(t_rockN, vTerrW.zy / 6.0).xyz * 2.0 - 1.0;
-        vec3 nRy = texture2D(t_rockN, vTerrW.xz / 6.0).xyz * 2.0 - 1.0;
-        vec3 nRz = texture2D(t_rockN, vTerrW.xy / 6.0).xyz * 2.0 - 1.0;
+        vec3 pTop = vec3(0.0);
+        if (W.x > EPS) pTop += topN(t_grassN, 3.5) * W.x;
+        if (W.z > EPS) pTop += topN(t_pathN, 3.0) * W.z;
+        if (W.w > EPS) pTop += topN(t_forestN, 4.0) * W.w;
         // whiteout-style perturbation of the geometric world normal
-        vec3 pTop = (nG * W.x + nP * W.z + nF * W.w);
         vec3 pert = vec3(pTop.x, 0.0, pTop.y) * 0.9;
-        pert += (vec3(0.0, nRx.y, nRx.x) * tw.x + vec3(nRy.x, 0.0, nRy.y) * tw.y + vec3(nRz.x, nRz.y, 0.0) * tw.z) * W.y * 1.2;
+        if (W.y > EPS) {
+          vec3 nRx = textureGrad(t_rockN, vTerrW.zy / 6.0, gZYx / 6.0, gZYy / 6.0).xyz * 2.0 - 1.0;
+          vec3 nRy = textureGrad(t_rockN, vTerrW.xz / 6.0, gXZx / 6.0, gXZy / 6.0).xyz * 2.0 - 1.0;
+          vec3 nRz = textureGrad(t_rockN, vTerrW.xy / 6.0, gXYx / 6.0, gXYy / 6.0).xyz * 2.0 - 1.0;
+          pert += (vec3(0.0, nRx.y, nRx.x) * tw.x + vec3(nRy.x, 0.0, nRy.y) * tw.y + vec3(nRz.x, nRz.y, 0.0) * tw.z) * W.y * 1.2;
+        }
         terrNormalW = normalize(wn + pert);`,
       )
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = terrRough;')
@@ -112,7 +124,7 @@ export function terrainMaterial() {
         reflectedLight.directDiffuse *= mix(0.75, 1.0, tao);`,
       );
   };
-  m.customProgramCacheKey = () => 'terrain-splat-v1';
+  m.customProgramCacheKey = () => 'terrain-splat-v2';
   return patchEraMaterial(m, { minEra: 2 });
 }
 

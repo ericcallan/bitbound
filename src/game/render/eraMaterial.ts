@@ -176,6 +176,11 @@ export interface EraMatOptions {
   minEra?: number;
   /** Level ground the 8-bit tile renderer draws itself: hidden wherever a 2D view shows 8-bit. */
   retroTile?: boolean;
+  /**
+   * Resolve the generation per vertex instead of per pixel. For small, dense geometry (leaf cards, grass,
+   * bark) the boundary looks the same and every pixel saves the field/bubble/rift lookups.
+   */
+  vertexEra?: boolean;
 }
 
 /**
@@ -218,7 +223,7 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
     prev(shader, renderer);
     Object.assign(shader.uniforms, eraUniforms, local);
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>\nvarying vec3 vEraWorld;\nuniform vec2 uSnapRes;\n${ERA_GLSL_COMMON}`)
+      .replace('#include <common>', `#include <common>\nvarying vec3 vEraWorld;\n${o.vertexEra ? 'varying float vEraV;' : ''}\nuniform vec2 uSnapRes;\n${ERA_GLSL_COMMON}`)
       .replace(
         '#include <project_vertex>',
         `vec4 eraWp = vec4(transformed, 1.0);
@@ -228,6 +233,7 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
         vec3 wp = (modelMatrix * eraWp).xyz;
         ${vertexWorld}
         vEraWorld = wp;
+        ${o.vertexEra ? 'vEraV = eraAtWorld(wp);' : ''}
         vec4 mvPosition = viewMatrix * vec4(wp, 1.0);
         gl_Position = projectionMatrix * mvPosition;
         // Early 3D: snap vertices to a coarse screen grid for that wobbly, jittery polygon look.
@@ -238,11 +244,11 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
         }`,
       );
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\n${FRAG_HEAD}`)
+      .replace('#include <common>', `#include <common>\n${FRAG_HEAD}\n${o.vertexEra ? 'varying float vEraV;' : ''}`)
       .replace(
         '#include <color_fragment>',
         `#include <color_fragment>
-        float eraF = eraAtWorld(vEraWorld);
+        float eraF = ${o.vertexEra ? 'floor(vEraV + 0.5)' : 'eraAtWorld(vEraWorld)'};
         ${discardRule}
         if (uPattern > 0.5) diffuseColor.rgb = eraPattern(diffuseColor.rgb, vEraWorld, uPattern, eraF);`,
       )
@@ -309,7 +315,7 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
   };
   const prevKey = m.customProgramCacheKey.bind(m);
   m.customProgramCacheKey = () =>
-    `${prevKey()}|era-v3${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.minEra ? '-me' + o.minEra : ''}${o.retroTile ? '-rt' : ''}`;
+    `${prevKey()}|era-v3${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.minEra ? '-me' + o.minEra : ''}${o.retroTile ? '-rt' : ''}${o.vertexEra ? '-ve' : ''}`;
   return m;
 }
 

@@ -88,14 +88,14 @@ def skin_mesh(name, verts, edges):
     return o
 
 
-def foliage(name, tips, rnd, cards_per_tip, mat, centre):
+def foliage(name, tips, rnd, cards_per_tip, mat, centre, size_mul=1.0):
     bm = bmesh.new()
     uv = bm.loops.layers.uv.new("UVMap")
     for co, size in tips:
         for _ in range(cards_per_tip):
             off = Vector((rnd.gauss(0, 0.42), rnd.gauss(0, 0.42), rnd.gauss(0.2, 0.3))) * size
             p = co + off
-            s = rnd.uniform(0.5, 0.78) * size
+            s = rnd.uniform(0.5, 0.78) * size * size_mul
             rot = Matrix.Rotation(rnd.uniform(0, math.tau), 4, "Z") @ Matrix.Rotation(rnd.uniform(-0.9, 0.9), 4, "X")
             # two crossed quads per card so it reads from any angle
             for cross in (0, math.pi / 2):
@@ -137,7 +137,29 @@ def leaf_material():
     return m
 
 
-def make_tree(name, seed, height, spread, cards, bark_size):
+def decimated(o, name, ratio):
+    c = o.copy()
+    c.data = o.data.copy()
+    c.name = name
+    bpy.context.scene.collection.objects.link(c)
+    d = c.modifiers.new("dec", "DECIMATE")
+    d.ratio = ratio
+    C.apply_modifiers(c)
+    return c
+
+
+def join(name, *objs):
+    C.select_only(*objs)
+    bpy.context.view_layer.objects.active = objs[0]
+    bpy.ops.object.join()
+    o = bpy.context.active_object
+    o.name = name
+    return o
+
+
+def make_tree(name, seed, height, spread, cards, bark_size, lod_cards=0, trunk_ratio=1.0):
+    """Returns [tree] or [tree, tree_lod1]. The LOD shares the skeleton and both materials: the trunk
+    decimated, and far fewer, larger foliage cards, for the forest seen from a distance."""
     rnd = random.Random(seed * 7 + 1)
     verts, edges, tips = grow(seed, height, spread)
     wood = skin_mesh(f"{name}_wood", verts, edges)
@@ -167,30 +189,40 @@ def make_tree(name, seed, height, spread, cards, bark_size):
     wood.data.materials.append(C.baked_material(f"{name}_bark", col, rough, nrm))
     zs = [co.z for co, _ in tips]
     centre = Vector((sum(c.x for c, _ in tips) / len(tips), sum(c.y for c, _ in tips) / len(tips), sum(zs) / len(zs)))
-    leaves = foliage(f"{name}_leaves", tips, rnd, max(2, cards // max(1, len(tips))), leaf_material(), centre)
+    leaf_mat = leaf_material()
+    out = []
+    if lod_cards:
+        wood_lod = decimated(wood, f"{name}_lod1_wood", 0.12)
+        leaves_lod = foliage(f"{name}_lod1_leaves", tips, random.Random(seed), max(1, lod_cards // max(1, len(tips))), leaf_mat, centre, 1.9)
+        lod = join(f"{name}_lod1", wood_lod, leaves_lod)
+        C.log(f"{name}_lod1: {C.tri_count(lod)} tris")
+        out.append(lod)
+    if trunk_ratio < 1:
+        # The bark bake already holds the fine relief, so the game trunk can be much lighter.
+        d = wood.modifiers.new("dec", "DECIMATE")
+        d.ratio = trunk_ratio
+        C.apply_modifiers(wood)
+    leaves = foliage(f"{name}_leaves", tips, rnd, max(2, cards // max(1, len(tips))), leaf_mat, centre)
     # one object per tree: wood + leaves joined (two materials), origin at the ground
-    C.select_only(wood, leaves)
-    bpy.context.view_layer.objects.active = wood
-    bpy.ops.object.join()
-    tree = bpy.context.active_object
-    tree.name = name
+    tree = join(name, wood, leaves)
     xs = [v.co.x for v in tree.data.vertices]
     ys = [v.co.y for v in tree.data.vertices]
     zs = [v.co.z for v in tree.data.vertices]
     C.log(f"{name}: {C.tri_count(tree)} tris, {height:.0f}u, {len(tips)} tips, bbox z {min(zs):.2f}..{max(zs):.2f}")
     # origin stays at the trunk base (roots dip slightly below)
-    return tree
+    return [tree, *out]
 
 
 def main():
     C.reset_scene()
     bpy.context.scene.cycles.samples = 32
-    great = make_tree("great_tree", 3, 7.5, 1.05, 1800, 1024)
-    meadow = make_tree("meadow_tree", 11, 4.6, 0.85, 700, 512)
+    [great] = make_tree("great_tree", 3, 7.5, 1.05, 1800, 1024, trunk_ratio=0.3)
+    meadow, meadow_lod = make_tree("meadow_tree", 11, 4.6, 0.85, 700, 512, lod_cards=110, trunk_ratio=0.35)
     meadow.location.x = 8
+    meadow_lod.location.x = 16
     C.save_blend("vegetation/trees.blend")
-    meadow.location.x = 0
-    C.export_glb("tree", [great, meadow])
+    meadow.location.x = meadow_lod.location.x = 0
+    C.export_glb("tree", [great, meadow, meadow_lod])
     C.done()
 
 

@@ -29,7 +29,7 @@ def vc_material(name, rough=0.75):
     return m
 
 
-def blade(bm, col, root, height, width, lean, yaw, c0, c1, segs=4):
+def blade(bm, col, root, height, width, lean, yaw, c0, c1, segs=3):
     """A tapered, curved blade (two-sided by material), coloured root → tip."""
     prev = None
     d = Vector((math.cos(yaw), math.sin(yaw), 0))
@@ -61,7 +61,7 @@ def mesh_from(name, build, mat):
     return o
 
 
-def grass_clump(bm, col, rnd=random.Random(5), n=22, h=0.45, spread=0.18):
+def grass_clump(bm, col, rnd=random.Random(5), n=18, h=0.45, spread=0.18):
     for _ in range(n):
         r = rnd.random() ** 0.5 * spread
         a = rnd.uniform(0, math.tau)

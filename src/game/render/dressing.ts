@@ -18,15 +18,66 @@ interface Placement {
  * the shade. Everything is instanced (one draw call per mesh part). Nothing tall is placed in front of
  * the lane, so the 2D view always stays clear.
  */
+/** Spatial cell width along x: each cell is its own set of instanced meshes, so off-screen cells are culled. */
+const CELL = 16;
+
+interface AddOptions {
+  /** Ground cover: fewer instances with distance (instances are in random order, so thinning is even). */
+  thin?: boolean;
+  /** A lower-detail node of the same asset, drawn instead beyond LOD_DIST. */
+  lod?: string;
+  /** Always the LOD (far hillsides). */
+  farOnly?: boolean;
+  shadow?: boolean;
+}
+
+interface CellMesh {
+  mesh: THREE.InstancedMesh;
+  full: number;
+  thin: boolean;
+  /** 0: always, 1: near only, 2: far only, 3: near only, shadow pass only (a cheap caster for a detailed mesh). */
+  band: 0 | 1 | 2 | 3;
+  shadow: boolean;
+}
+
+const LOD_DIST = 34;
+/** Render layer seen only by the sun's shadow camera: cheap stand-in casters for detailed trees. */
+export const SHADOW_PROXY_LAYER = 1;
+const SHADOW_DIST = 42;
+
 export class ValleyDressing {
   group = new THREE.Group();
   ready = false;
   /** Instance counts by node, for the performance report. */
   counts: Record<string, number> = {};
+  /** Ground-cover density multiplier (quality tiers). */
+  density = 1;
+  private cells: { center: THREE.Vector3; radius: number; meshes: CellMesh[] }[] = [];
+  private cellIndex = new Map<string, number>();
 
   constructor() {
     const need: AssetName[] = ['tree', 'vegetation', 'rocks'];
     Promise.all(need.map(loadAsset)).then(() => this.build());
+  }
+
+  /**
+   * Per frame: thin ground cover and swap tree detail by distance, and keep shadows to nearby cells.
+   * Distance is scaled by the lens, so the long 2D lens (which makes far things look near) isn't thinned
+   * as if it were far away.
+   */
+  update(camera: THREE.PerspectiveCamera) {
+    if (!this.ready) return;
+    const lens = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / Math.tan(THREE.MathUtils.degToRad(26));
+    for (const c of this.cells) {
+      const d = Math.max(0, camera.position.distanceTo(c.center) - c.radius) * lens;
+      const thin = (d < 25 ? 1 : d < 45 ? 0.5 : d < 70 ? 0.25 : 0) * this.density;
+      const near = d < LOD_DIST;
+      for (const m of c.meshes) {
+        m.mesh.count = m.thin ? Math.floor(m.full * thin) : m.full;
+        m.mesh.visible = m.mesh.count > 0 && (m.band === 0 || (m.band === 1 || m.band === 3) === near);
+        m.mesh.castShadow = m.shadow && d < SHADOW_DIST;
+      }
+    }
   }
 
   private slope(x: number, z: number) {
@@ -38,7 +89,18 @@ export class ValleyDressing {
     return GORGES.some(([a, b]) => x > a - 2.5 && x < b + 2.5);
   }
 
-  private add(asset: AssetName, node: string, list: Placement[]) {
+  private cellFor(p: Placement, far: boolean) {
+    const key = `${Math.floor(p.x / CELL)}:${far ? 1 : 0}`;
+    let i = this.cellIndex.get(key);
+    if (i === undefined) {
+      i = this.cells.length;
+      this.cells.push({ center: new THREE.Vector3(), radius: 0, meshes: [] });
+      this.cellIndex.set(key, i);
+    }
+    return { key, i };
+  }
+
+  private instance(asset: AssetName, node: string, list: Placement[], cell: number, thin: boolean, band: 0 | 1 | 2 | 3, shadow: boolean) {
     const src = getAsset(asset)?.scene.getObjectByName(node);
     if (!src || list.length === 0) return;
     getAsset(asset)!.scene.updateMatrixWorld(true);
@@ -58,12 +120,45 @@ export class ValleyDressing {
         m4.multiply(local);
         inst.setMatrixAt(i, m4);
       });
-      inst.castShadow = asset !== 'vegetation';
+      inst.castShadow = shadow;
       inst.receiveShadow = true;
+      if (band === 3) inst.layers.set(SHADOW_PROXY_LAYER);
       inst.computeBoundingSphere();
       this.group.add(inst);
+      this.cells[cell].meshes.push({ mesh: inst, full: list.length, thin, band, shadow });
     }
-    this.counts[node] = list.length;
+  }
+
+  private add(asset: AssetName, node: string, list: Placement[], o: AddOptions = {}) {
+    if (list.length === 0) return;
+    const byCell = new Map<number, Placement[]>();
+    for (const p of list) {
+      const { i } = this.cellFor(p, !!o.farOnly);
+      if (!byCell.has(i)) byCell.set(i, []);
+      byCell.get(i)!.push(p);
+    }
+    const shadow = o.shadow ?? asset !== 'vegetation';
+    for (const [i, ps] of byCell) {
+      if (o.farOnly) this.instance(asset, o.lod ?? node, ps, i, false, 0, shadow);
+      else if (o.lod) {
+        // Near: the detailed tree is drawn, but its shadow comes from the LOD (a fraction of the triangles).
+        this.instance(asset, node, ps, i, false, 1, false);
+        if (shadow) this.instance(asset, o.lod, ps, i, false, 3, true);
+        this.instance(asset, o.lod, ps, i, false, 2, shadow);
+      } else this.instance(asset, node, ps, i, !!o.thin, 0, shadow);
+    }
+    this.counts[node] = (this.counts[node] ?? 0) + list.length;
+  }
+
+  /** Each cell's bounds from its meshes' instance bounds. */
+  private finishCells() {
+    for (const c of this.cells) {
+      const box = new THREE.Box3();
+      for (const m of c.meshes) if (m.mesh.boundingSphere) box.union(new THREE.Box3().setFromCenterAndSize(m.mesh.boundingSphere.center, new THREE.Vector3().setScalar(m.mesh.boundingSphere.radius * 2)));
+      if (box.isEmpty()) continue;
+      box.getCenter(c.center);
+      c.radius = Math.min(CELL, box.getSize(new THREE.Vector3()).length() / 2);
+    }
   }
 
   private build() {
@@ -74,6 +169,7 @@ export class ValleyDressing {
     // --- forest edge: behind the path, on the rising meadow below the cliffs
     const trees: Placement[] = [];
     const greats: Placement[] = [];
+    const hillTrees: Placement[] = [];
     for (let x = x0; x < x1; x += 3.2) {
       for (let row = 0; row < 3; row++) {
         const tx = x + (r() - 0.5) * 2.6;
@@ -87,9 +183,10 @@ export class ValleyDressing {
     for (let i = 0; i < 70; i++) {
       const tx = x0 - 20 + r() * (x1 - x0 + 40);
       const tz = LANE_BACK - 26 - r() * 40;
-      if (this.slope(tx, tz) < 0.6) trees.push({ x: tx, z: tz, scale: 0.8 + r() * 0.7, rot: r() * 6.28, dy: -0.05 });
+      if (this.slope(tx, tz) < 0.6) hillTrees.push({ x: tx, z: tz, scale: 0.8 + r() * 0.7, rot: r() * 6.28, dy: -0.05 });
     }
-    this.add('tree', 'meadow_tree', trees);
+    this.add('tree', 'meadow_tree', trees, { lod: 'meadow_tree_lod1' });
+    this.add('tree', 'meadow_tree', hillTrees, { lod: 'meadow_tree_lod1', farOnly: true, shadow: false });
     this.add('tree', 'great_tree', greats);
 
     // --- ground cover
@@ -122,14 +219,15 @@ export class ValleyDressing {
       }
       if (k > 0.9985 && !onLane && !foreground) rocks[Math.floor(r() * 3)].push({ x, z, scale: 0.5 + r() * 0.9, rot: r() * 6.28, dy: -0.12 });
     }
-    this.add('vegetation', 'grass_clump', grass);
-    this.add('vegetation', 'tall_grass', tall);
-    this.add('vegetation', 'flower_white', flowers[0]);
-    this.add('vegetation', 'flower_violet', flowers[1]);
-    this.add('vegetation', 'fern', ferns);
+    this.add('vegetation', 'grass_clump', grass, { thin: true });
+    this.add('vegetation', 'tall_grass', tall, { thin: true });
+    this.add('vegetation', 'flower_white', flowers[0], { thin: true });
+    this.add('vegetation', 'flower_violet', flowers[1], { thin: true });
+    this.add('vegetation', 'fern', ferns, { thin: true });
     this.add('rocks', 'rock_a', rocks[0]);
     this.add('rocks', 'rock_b', rocks[1]);
     this.add('rocks', 'rock_c', rocks[2]);
+    this.finishCells();
     this.ready = true;
   }
 }

@@ -27,7 +27,7 @@ const SPEC = {
     height: [0.8, 1.2],
   },
   // roots sink into the ground by design
-  tree: { nodes: ['great_tree', 'meadow_tree'], maxTris: 120000, maxKB: 4000, height: [5, 16], baseTolerance: 0.5 },
+  tree: { nodes: ['great_tree', 'meadow_tree', 'meadow_tree_lod1'], maxTris: 120000, maxKB: 4000, height: [5, 16], baseTolerance: 0.5 },
   gateway: { nodes: ['shard_arch', 'ruin_column', 'block_step1', 'block_step2', 'block_float1', 'block_plinth'], maxTris: 40000, maxKB: 2500, height: [2, 6] },
   vegetation: { nodes: ['grass_clump', 'tall_grass', 'flower_white', 'flower_violet', 'fern'], maxTris: 3000, maxKB: 200, height: [0.3, 1.2] },
   terrain: { nodes: ['valley_terrain'], maxTris: 250000, maxKB: 9000, height: [3, 80] },
