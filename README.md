@@ -7,7 +7,9 @@ puzzle tool. The same world **shifts between a 2D side-scroller and full 3D**.
 ```bash
 npm install
 npm run dev            # http://localhost:5173
-npm test               # 92 simulation tests, including a bot that plays new game → ending
+npm test               # 114 simulation tests, including a bot that plays new game → ending
+npm run test:e2e       # 33 browser tests on the real GPU (Playwright): every scenario × generation
+npm run screens        # screenshots of every dev scenario into docs/screens/latest
 npm run build          # typecheck + production build
 npm run assets:build   # rebuild every 3D asset from the Blender scripts (needs Blender 5.3)
 ```
@@ -60,6 +62,16 @@ See **docs/GRAPHICS_REPORT.md** for measurements and shortcomings, and **docs/AS
 licences. In-game: Extras → Environment compares any view across all six generations. Desktop only (keyboard or
 gamepad); phones get a notice.
 
+## Development tools (dev builds only)
+
+- **Scenarios:** `?scenario=aqueduct` (also `start`, `ruins`, `ruins3d`, `chamber`, `stair`, `plateau`,
+  `aqueduct3d`, `aqueductView`, `seal`, `summit`) starts in a fixed state without touching your save. Add
+  `&era=0..5`, `&mode=2d|3d`, `&freeze=1`.
+- **Debug overlay:** the backquote key. Generation, position, velocity, ground, shift eligibility and the exact
+  reason it's blocked, camera obstruction, fps, draw calls; layers for collision boxes, camera rays, the route
+  graph and more.
+- **GPU timing:** `await window.__perf(3)` in the console.
+
 ## Architecture
 
 ```
@@ -81,6 +93,7 @@ src/test/     Vitest suites + a bot that plays the whole game through the real i
 
 ## Verification
 
-`npm test` runs 92 tests: a full bot playthrough, a resume matrix, fuzz, Halo Path rules, valley height-field
-collision across the whole level (no puzzle can be walked round), readability (nothing hides Pip or an enemy),
-and the 8-bit palette and tile limits. See **QA.md** for the browser pass.
+`npm test` runs 114 tests: a full bot playthrough, a resume matrix, fuzz, Halo Path rules, valley height-field
+collision across the whole level (no puzzle can be walked round), readability, the 8-bit palette and tile limits,
+the 3D camera across the whole level, shift feedback, and traversal (every jump checked against Pip's measured
+jump; see **docs/TRAVERSAL.md**). `npm run test:e2e` runs the browser tests. See **QA.md** and **docs/AUDIT.md**.

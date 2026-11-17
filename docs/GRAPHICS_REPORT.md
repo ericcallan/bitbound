@@ -1,4 +1,10 @@
-# Graphics report — Phase 6
+# Graphics report
+
+**Phase 7** (the title screen, camera and shift reliability, level validation, and the broken aqueduct rebuilt as
+the benchmark for Modern HD and Beyond) is reported in **docs/AUDIT.md**, with its measurements. The Phase 6 report
+follows unchanged.
+
+## Phase 6
 
 Phase 5 built the opening valley as a 3D slice and listed what still fell short. Phase 6 worked through that list,
 plus new art direction (Modern HD darker and more advanced, Beyond richer still, 8-bit as a green landscape). Everything

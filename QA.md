@@ -1,8 +1,8 @@
-# QA report: PIP — Beyond the Frame (phase 6)
+# QA report: PIP — Beyond the Frame (phase 7)
 
-Build: `tsc --noEmit` clean, `vite build` clean (one 1.59 MB chunk, 466 KB gzipped).
+Build: `tsc --noEmit` clean, `vite build` clean (one 1.63 MB chunk, 479 KB gzipped).
 
-## 1. Automated coverage (Vitest, headless): 92 / 92 passing
+## 1. Automated coverage: Vitest 114 / 114 (headless), Playwright 33 / 33 (real GPU)
 
 | Suite | What it proves |
 |---|---|
@@ -12,6 +12,10 @@ Build: `tsc --noEmit` clean, `vite build` clean (one 1.59 MB chunk, 466 KB gzipp
 | `chapter6.test.ts` (10) | The Halo Path's generation-rule obstacles |
 | `valley.test.ts` (11) | Lane heights exact for every ground section; every pit a deep gorge; gates can't be walked round; the plateau can't be reached without the Painted Stair; the hidden chamber is reachable; cliffs stop Pip; the camera never goes underground |
 | `readability.test.ts` (3) | No foreground prop covers any enemy patrol, the spawn or a checkpoint (footprints from each prop's largest variant) |
+| `camera.test.ts` (7) | 3D camera across ~1000 spots and four orbits: never under the terrain, inside a solid, or blind to Pip; smooth turning; landing kept in view |
+| `shiftFeedback.test.ts` (7) | Block reasons, the unfold hint, the aqueduct halves meeting on screen, slide limits, refusals |
+| `traversal.test.ts` (7) | Pip measured; the route, every jump, checkpoints, bits and 3D secrets checked against it (docs/TRAVERSAL.md) |
+| `e2e/scenarios.spec.ts` (33, Playwright) | Every scenario × generation: no console/shader/asset errors, non-blank, colour-grid baseline; title screen; shift in the browser |
 | `retro.test.ts` (5) | 8-bit tiles 16×16 in exactly three palette colours; hills/bushes two colours; sprites ≤ 3 colours; palette-only sky and clouds; tiles only from solids that exist in 8-bit |
 
 ## 2. Browser pass (Chrome, M4 Pro, dev server and production build)
@@ -35,7 +39,7 @@ Build: `tsc --noEmit` clean, `vite build` clean (one 1.59 MB chunk, 466 KB gzipp
 | Title screen: layout, focus states, save summary, keyboard navigation | ✅ |
 | Console during all of the above | ✅ no errors |
 
-## 3. Bugs found and fixed in this pass
+## 3. Bugs found and fixed (phase 6; phase 7's are in docs/AUDIT.md §1)
 
 | # | Bug | Fix |
 |---|---|---|

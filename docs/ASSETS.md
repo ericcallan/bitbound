@@ -42,6 +42,8 @@ Tree foliage is an original drawing (`scripts/textures/leaf-atlas.mjs`).
 | `public/assets/vegetation.glb` (grass, flowers, fern, pebbles, twigs, leaf litter, clover, thistle) | `assets/blender/vegetation/ground_cover.blend` | `scripts/blender/create_vegetation.py` |
 | `public/assets/gateway.glb` (arch, column, stone blocks, chamber walls, aqueduct, relief cliff) | `assets/blender/environments/ancient_stone.blend` | `scripts/blender/create_gateway.py` |
 | `public/assets/props.glb` (mushroom cluster, signpost) | `assets/blender/props/scenery_props.blend` | `scripts/blender/create_props.py` |
+| `public/assets/aqueduct.glb` (the two viaduct halves, fallen stones; masonry projected at runtime) | `assets/blender/environments/aqueduct.blend` | `scripts/blender/create_aqueduct.py` (deck sizes from the level's colliders) |
+| `public/ui/pip_hd.webp` (title screen card) | Rendered from `pip.glb` | `scripts/blender/render_ui_art.py`, `scripts/textures/ui-art.mjs` |
 | `public/assets/terrain.glb` | `assets/blender/environments/valley_terrain.blend` | `scripts/blender/create_terrain.py` (heights from `src/game/level/valley.ts`) |
 | `public/assets/textures/*_albedo.ktx2`, `*_normal.webp` | Poly Haven sets above | `scripts/build-terrain-textures.mjs`, `scripts/textures/ktx2.mjs` |
 | `public/assets/sky/{day,golden}_*` | The two HDRIs | `scripts/blender/create_sky.py` |
@@ -62,9 +64,11 @@ Tree foliage is an original drawing (`scripts/textures/leaf-atlas.mjs`).
 | pip.glb | 5,164 KB | 643 KB |
 | rocks.glb | 9,002 KB | 355 KB |
 | props.glb | 1,584 KB | 292 KB |
+| aqueduct.glb | 204 KB | 56 KB |
+| ui/pip_hd.webp | — | 12 KB |
 | vegetation.glb | 75 KB | 35 KB |
 | textures (7 KTX2 colour + 7 WebP normal/height) | — | 5,540 KB |
 | skies (2 × HDR + JPEG + JSON) | — | 824 KB |
 | retro (16-bit tiles, parallax, sprite sheet) | — | 64 KB |
 | Basis transcoder (`public/basis`) | — | 576 KB |
-| **Total** | | **13.7 MB** (budget 15 MB) |
+| **Total** | | **13.8 MB** (budget 15 MB) |
