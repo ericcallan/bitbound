@@ -1,0 +1,3 @@
+# Bitbound is not public yet: no crawling.
+User-agent: *
+Disallow: /
