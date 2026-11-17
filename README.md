@@ -7,7 +7,7 @@ puzzle tool. The same world **shifts between a 2D side-scroller and full 3D**.
 ```bash
 npm install
 npm run dev            # http://localhost:5173
-npm test               # 83 simulation tests, including a bot that plays new game → ending
+npm test               # 92 simulation tests, including a bot that plays new game → ending
 npm run build          # typecheck + production build
 npm run assets:build   # rebuild every 3D asset from the Blender scripts (needs Blender 5.3)
 ```
@@ -42,17 +42,23 @@ wistful. There are no villains.
 
 ## Graphics
 
-- **8-bit is a real tile renderer** (2D only): 16×16 tiles, one 3-colour ground block, a flat sky and plain
-  clouds, about 240 rows at a whole-number pixel scale, and a 3-colour 16×16 Pip sprite (`render/retro/`).
-- **The opening valley is one 3D world** from Early 3D up: continuous terrain, cliffs, a river gorge, forest and
-  meadow you can walk anywhere in.
-- **Blender-built assets** (`scripts/blender/`, sources in `assets/blender/`): the final-generation Pip with an
-  18-bone rig and 11 animations, trees, ground cover, rocks, ancient stone and the terrain. They are baked from
-  CC0 scanned materials and optimised with glTF Transform.
-- **Modern HD and Beyond** are lit by a real HDRI sky with its measured sun direction.
+- **8-bit** (2D only) is a real tile renderer: a green landscape of 16×16, three-colour tiles, flat hills and
+  bushes, plain clouds, exactly 240 rows letterboxed at a whole-number scale, and a 3-colour 16×16 Pip.
+- **16-bit** (2D only): tiles cut from scanned ground materials, three parallax layers over a banded sky, and Pip and
+  the scenery pre-rendered from the Blender models; 224 rows.
+- **One 3D world** from Early 3D up, across the whole level: continuous terrain, cliffs, river gorges, forest and
+  meadow you can walk anywhere in, shaped so no puzzle can be walked round. Early 3D and Stylized have their own
+  terrain looks.
+- **Blender-built assets** (`scripts/blender/`, sources in `assets/blender/`): Pip (18-bone rig, 11 clips plus
+  procedural foot planting, lean and squash), trees with LODs, ground cover and litter, rocks, props, ancient stone
+  and the terrain, baked from CC0 scans and optimised with glTF Transform; colour textures ship as KTX2.
+- **Modern HD** is late-afternoon daylight under a real HDRI sky; **Beyond** is golden hour under its own sky, with
+  relief-mapped ground, cloud shadows and a detailed Pip.
+- **Sound:** valley ambience, the river, footsteps by surface, and the hidden chamber's reverb.
 
-See **docs/GRAPHICS_REPORT.md** for measurements and shortcomings, and **docs/ASSETS.md** for sources and
-licences. In-game: Art & Design → Environment compares any view across all six generations.
+See **docs/GRAPHICS_REPORT.md** for measurements and shortcomings, and **docs/ASSETS.md** for sources, tools and
+licences. In-game: Extras → Environment compares any view across all six generations. Desktop only (keyboard or
+gamepad); phones get a notice.
 
 ## Architecture
 
@@ -66,7 +72,8 @@ src/game/
   era/        EraSystem.ts: generations, ripples, rifts, the Regress bubble, censor fields
   level/      meadows.ts (the level as data), valley.ts (the height field gameplay and art share)
   render/     GameView.ts, LevelView.ts, terrain.ts, dressing.ts, sky.ts, assets.ts (glTF + Meshopt),
-              eraMaterial.ts (per-pixel generation rules), retro/ (8-bit tiles), post/ (composite)
+              textures.ts (KTX2), eraMaterial.ts (per-pixel generation rules), retro/ (8- and 16-bit tile
+              renderers, 16-bit sprites), post/ (composite)
   pip/        PipModel.ts (classic rig), PipGLB.ts (Blender Pip), face.ts
 scripts/      blender/*.py, optimize-assets.mjs, validate-assets.mjs, build-assets.mjs, fetch_polyhaven.py
 src/test/     Vitest suites + a bot that plays the whole game through the real input path
@@ -74,5 +81,6 @@ src/test/     Vitest suites + a bot that plays the whole game through the real i
 
 ## Verification
 
-`npm test` runs 83 tests: a full bot playthrough, a resume matrix, fuzz, Halo Path rules, valley height-field
-collision, and the 8-bit palette and tile limits. See **QA.md** for the browser pass.
+`npm test` runs 92 tests: a full bot playthrough, a resume matrix, fuzz, Halo Path rules, valley height-field
+collision across the whole level (no puzzle can be walked round), readability (nothing hides Pip or an enemy),
+and the 8-bit palette and tile limits. See **QA.md** for the browser pass.

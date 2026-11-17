@@ -1,49 +1,57 @@
-# QA report: PIP — Beyond the Frame (phase 5: Blender assets, immersive valley, 1985 8-bit)
+# QA report: PIP — Beyond the Frame (phase 6)
 
-Build: `tsc --noEmit` clean, `vite build` clean (one 1.49 MB chunk, 427 KB gzipped).
+Build: `tsc --noEmit` clean, `vite build` clean (one 1.5 MB chunk, ~430 KB gzipped).
 
-## 1. Automated coverage (Vitest, headless): 83 / 83 passing
+## 1. Automated coverage (Vitest, headless): 92 / 92 passing
 
 | Suite | What it proves |
 |---|---|
 | controller / shift / puzzle | Physics, shift safety and puzzle rules |
-| `playthrough.test.ts` | A bot plays new game → Halo Path → ending through the real input path |
-| `qa.test.ts` | Resume matrix over every checkpoint, fuzz over 16 seeds, v3 → v4 save migration |
+| `playthrough.test.ts` | A bot plays new game → Halo Path → ending through the real input path, with terrain collision on everywhere in 3D |
+| `qa.test.ts` | Resume matrix over every checkpoint, fuzz over 16 seeds (no interpenetration with the terrain pads or boxes), save migration |
 | `chapter6.test.ts` (10) | The Halo Path's generation-rule obstacles |
-| `valley.test.ts` (6) | Lane heights match the platform tops exactly; gorges respawn; walking off the path and back; rises walkable, cliffs block; shallow stream vs gorge; the 3D camera never goes underground |
-| `retro.test.ts` (4) | One 16×16 ground block in exactly 3 palette colours; sprites ≤ 3 colours; palette-only sky and clouds; tiles only from solids that exist in 8-bit |
+| `valley.test.ts` (11) | Lane heights exact for every ground section; every pit a deep gorge; gates can't be walked round; the plateau can't be reached without the Painted Stair; the hidden chamber is reachable; cliffs stop Pip; the camera never goes underground |
+| `readability.test.ts` (3) | No foreground prop covers any enemy patrol, the spawn or a checkpoint (footprints from each prop's largest variant) |
+| `retro.test.ts` (5) | 8-bit tiles 16×16 in exactly three palette colours; hills/bushes two colours; sprites ≤ 3 colours; palette-only sky and clouds; tiles only from solids that exist in 8-bit |
 
-## 2. Browser pass (Chrome, M4 Pro, dev server)
+## 2. Browser pass (Chrome, M4 Pro, dev server and production build)
 
 | Area | Result |
 |---|---|
-| 8-bit start: flat sky, one ground block, plain clouds, tiny 3-colour Pip, no scenery | ✅ |
-| 8-bit frame read back from WebGL: **0 off-palette pixels** (13 colours on screen); every vertical pixel run a multiple of the scale | ✅ after fix 4 |
-| 8-bit → 16-bit ripple sweeps through tiles and sky | ✅ |
-| Valley in Modern HD / Beyond: full canopies, real sky, sun-matched shadows, river, no backdrop pieces poking through | ✅ after fixes 1–3 |
-| Stylized valley still renders | ✅ (terrain is not toon-shaded; see limitations) |
-| Gallery → Environment: 8-bit tiles and the 3D valley from matched cameras | ✅ |
+| Spawn: Pip visible, no marker in front; enemy e2 patrols clear of the secret bush | ✅ |
+| Performance pass: Beyond overview p95 17.3 → 10.8 ms before the art pass (12.6 ms after it) | ✅ measured |
+| Modern HD vs Beyond from the same camera: both darker, Beyond warm golden hour with litter, moss, glyph flow, cloud shadows | ✅ |
+| Pip in Beyond: clearcoat shell, teal circuit seams, glass display; Modern HD clean | ✅ |
+| Whole level in 3D (passage, Painted Stair, plateau, Halo Path, aqueduct, summit): one continuous world, no floating boxes | ✅ |
+| Hidden chamber: dark with light shafts through the roof, no plants inside | ✅ |
+| Early 3D (chunky low-res terrain) and Stylized (painted) valley looks | ✅ |
+| Scenery props (mushrooms, signpost, HD bloomer) | ✅ |
+| 8-bit: green landscape, frame read back: exactly 240 rows, 0 off-palette pixels | ✅ |
+| 16-bit: tiles, parallax, pre-rendered Pip and scenery; 8 → 16-bit ripple | ✅ |
+| Foot planting on a slope: both soles on the terrain (read back from the bones) | ✅ |
+| Sound: master output peak ≤ 0.37 across idle, walking, near water | ✅ levels only |
+| KTX2 colour textures load and transcode; no console errors | ✅ |
+| Cold load of the production build (localhost): menu 0.42 s, all assets 1.0 s, 11.5 MB | ✅ measured |
+| Title screen: layout, focus states, save summary, keyboard navigation | ✅ |
 | Console during all of the above | ✅ no errors |
 
 ## 3. Bugs found and fixed in this pass
 
 | # | Bug | Fix |
 |---|---|---|
-| 1 | Tree canopies almost bare | The exported leaf material had depth writes off; leaves now write depth, and alpha sharpening runs before any discard |
-| 2 | A bright green dome in the cliff gap | An old backdrop hill poking through the terrain; old hills, deep floor, cliff and waterfall are hidden inside the valley |
-| 3 | Glossy cartoon-blue river under the real sky | Deeper green water with a reduced sky reflection |
-| 4 | Uneven 8-bit rows on odd-sized windows | Half-pixel camera offset so pixel edges fall between screen pixels |
-| 5 | 8-bit drew 4.85 M triangles (valley grass discarded per pixel) | Terrain and dressing are skipped when no 3D/modern generation can be on screen; now 8 k |
-| 6 | Cartoon clouds floating in front of the real sky | Limited to 16-bit … Stylized |
+| 1 | The start checkpoint marker stood in front of the spawn, over Pip | No marker at the spawn; markers behind the path |
+| 2 | Foreground bushes covered four enemy patrols | Moved clear (test added) |
+| 3 | Shadows from full-detail trees cost ~3 ms | LOD stand-ins on a shadow-only layer |
+| 4 | Per-pixel generation lookups on every leaf fragment | Per-vertex generation for foliage |
+| 5 | Beyond's first sun placement put the whole valley in the cliff's shadow | Sun moved to the west |
+| 6 | Pip's Beyond scratches read as white scribbles; seams blew out to white | Gloss-only scratches; sparser, deeper teal seams |
+| 7 | The chamber pad sat 3 cm below its floor box (fuzz caught Pip inside it) | Exact pad height; only the mesh is lowered |
+| 8 | Old ground boxes beyond the slice still drew as bright green slabs | All ground uses the terrain-aware materials |
+| 9 | Big stone walls blurry with one unique bake, and over the size budget | Runtime projected scanned stone |
+| 10 | Pip's procedural offsets accumulated on unkeyed bone channels (hips at −414) | Bones restored to rest before the clips |
+| 11 | Sound-effect reverb routed through the music's reverb (doubled) | Separate room reverb |
+| 12 | Lowering the valley wall made it walkable (test caught it) | Full height kept, moved further back instead |
 
 ## 4. Known limitations
 
-See `docs/GRAPHICS_REPORT.md` → "What still falls short". In short:
-- Beyond is near the 60 fps limit on High in the valley overview (p95 GPU 17.3 ms).
-- The immersive world ends at x ≈ 52.
-- Early 3D and Stylized have no dedicated terrain look.
-- Cartoon props remain in the modern valley.
-- The 8-bit HUD is a DOM pixel-font overlay.
-- 16-bit is still the filter treatment.
-- No full human playthrough in the browser; the complete game is played by the bot.
-- Audio was not judged by ear.
+See `docs/GRAPHICS_REPORT.md` → "What still falls short".

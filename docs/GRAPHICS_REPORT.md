@@ -1,108 +1,115 @@
-# Graphics report — Phase 5 vertical slice
+# Graphics report — Phase 6
 
-Scope: the opening valley (start to the Shard ruins, x ≤ 52) as a full 3D world; Blender-built assets; real
-sky lighting; a true 1985-style 8-bit tile renderer. Everything below was built and checked in this pass. All
-numbers are measured unless marked otherwise.
-
-## Tooling
-
-| Tool | Use |
-|---|---|
-| Blender 5.3 (headless, `-b -P`) | Modelling, rigging, keyframed animation, Cycles baking (colour, roughness, normal, metalness, AO), glTF export. Every asset is a script in `scripts/blender/`, and its `.blend` source is kept in `assets/blender/`. |
-| glTF Transform 4.5 + meshoptimizer + sharp | Dedup, prune, weld, quantise, Meshopt geometry compression, WebP textures (`scripts/optimize-assets.mjs`) |
-| `scripts/validate-assets.mjs` | Scale, origin, up axis, names, material counts, triangle and size budgets, animations present |
-| Poly Haven (CC0) | Scanned materials and the sky HDRI; see `docs/ASSETS.md` |
-
-Not used: Blender MCP (scripts are repeatable and reviewable; a live MCP channel adds nothing), paid tools
-(Substance), WebGPU (every custom shader would need rewriting).
+Phase 5 built the opening valley as a 3D slice and listed what still fell short. Phase 6 worked through that list,
+plus new art direction (Modern HD darker and more advanced, Beyond richer still, 8-bit as a green landscape). Everything
+below was built and checked in this pass; numbers are measured unless marked otherwise.
 
 ## What changed
 
-**Final-generation Pip** (`pip.glb`, Modern HD and Beyond): about 30 modelled parts with bevels and panel
-seams; a 2K painted atlas with baked wear plus a metal map; an 18-bone rig; 11 keyframed actions (idle, walk,
-run, jump start, jump up, fall, land, brake, celebrate, surprise, shift). In game, `pip/PipGLB.ts` crossfades the
-clips and layers procedural motion on top: an antenna spring and head look. The face is still the live canvas
-display behind the faceplate, so every expression works. Early 3D and Stylized keep the procedural rig, so the
-step up is visible.
+**Readability.** Nothing in front of the path hides Pip or an enemy (a test enforces it with footprints measured
+from the largest variant of each prop). Checkpoint markers stand behind the path; none at the spawn point.
 
-**One immersive valley** (Early 3D and up):
-- A continuous terrain from one height function (`level/valley.ts`). Gameplay uses the same function: walking off
-  the path, sheer cliffs, two gorges with a river, drowning.
-- The old floating boxes, backdrop hills and deep floor are hidden per pixel inside the valley.
-- The terrain shader is a four-layer scanned splat (grass, rock, path, forest), height-blended, anti-tiled and
-  triplanar on cliffs.
-- Set dressing, instanced:
-  - 80 meadow trees and 1 Great Tree: skin-modifier trunks with baked scanned bark, about 700 and 1,800 foliage
-    cards;
-  - 7,073 grass clumps, 374 tall tufts, 767 flowers, 338 ferns, 22 rocks.
-- Ancient stone (archway, column, collider-exact blocks) baked from scanned masonry with moss.
-- Wind on leaves, bark and ground cover; ground cover parts around Pip.
+**Performance.** The Blender dressing is split into 16-unit spatial cells (culled per cell), ground cover thins
+with lens-scaled distance (so the long 2D lens keeps full density), distant trees use a 2.7k-triangle LOD and cast
+shadows from it via a shadow-only render layer, trunks were decimated after baking, the terrain skips layers with
+no weight, and foliage resolves its generation per vertex. Beyond's valley overview went from p95 17.3 ms to 10.8 ms
+of GPU time before the art pass below spent part of that headroom.
 
-**Lighting and atmosphere** (Modern HD and Beyond):
-- The Kloofendal HDRI drives image-based lighting and the visible sky.
-- The key light, its shadows and Beyond's light shafts aim at the sun position measured from the HDRI (47.9°
-  elevation).
-- Low ambient fill gives cool, sky-lit shadows. Haze is cooler and nearer.
-- Pollen drifts in Modern HD, light motes in Beyond. Foliage is matte, and the river is deep green water.
+**Modern HD** (late afternoon): lower exposure, firmer contrast, a darker sky, less fill, ambient occlusion, distance
+and height fog, and a close-range detail normal on the ground.
 
-**True 8-bit** (2D only):
-- `render/retro/RetroLayer.ts` draws every 8-bit solid into a world-anchored canvas at 16 px per world unit, using
-  one 16×16 ground block in exactly three colours, plus plain outlined clouds.
-- The composite samples it one 8-bit pixel at a time. The camera frames about 240 rows at a whole-number screen
-  scale and sits on whole pixels.
-- Pip is a 16×16, three-colour sprite with idle, two walk frames and a jump frame. There is no background scenery.
-- The generation of empty sky is the lane's, so an era ripple sweeps from tiles into the next generation in
-  place.
+**Beyond** (golden hour): its own HDRI sky rotated so a low sun sits in the west; warm key over the sky's cool fill;
+golden haze and graded sky; relief-mapped ground near the camera; damp ground by the river; scree, rock and snow on the
+far heights; cloud shadows drifting over everything; Blender ground litter (pebbles, twigs, fallen leaves) and two more
+plants; moss on the ancient stone; light flowing through the glyph inlays; and Pip with a clearcoat shell, fine
+scratches, pulsing teal circuit seams and a glass display.
 
-**Showcase:** Art & Design → Environment shows any view in any generation from the same camera. The new
-"Opening Valley (3D)" view shows the immersive slice.
+**One 3D world for the whole level.** The height field covers x −8 to 254. Off the path the ground keeps each
+section's exact height, so every rise is a sheer rock face (the Painted Stair can't be walked round), raised sections
+drop sheer to the stream, every pit is a gorge across the valley and every gate sits in a rock ridge. Tests prove the
+gates and the plateau can't be bypassed and the hidden chamber is still reachable. Chamber walls, the aqueduct and the
+relief cliff are chipped Blender stone textured at runtime with projected scanned masonry.
+
+**Dark interior.** The hidden chamber has a roof only the sun's shadow camera sees, so daylight falls in as shafts;
+inside, the sky fill fades and the teal machinery glows; sound gains reverb and a low drone.
+
+**Terrain looks per generation.** Early 3D samples the scans at a forced coarse mip and posterises them; Stylized
+uses flat painted colours with soft bands.
+
+**Scenery props.** A Blender mushroom cluster and signpost replace the cartoon ones from Modern HD up; the bloomer
+keeps its face and animation but is rebuilt in detail (tube stem, curled blades, velvet petals, glossy eyes).
+
+**8-bit** is a green landscape: grass-topped earth and stone tiles (16×16, three colours each), flat two-colour
+hills and bushes, plain clouds, blocky trees, and exactly 240 rows at a whole-number scale with letterbox bars
+(read back from the frame: 240 rows, 0 off-palette pixels).
+
+**16-bit** is now real: 24×24 tiles cut from the scanned ground materials and reduced to 12 colours; three painted
+parallax layers over a banded sky; Pip (idle, 4 walk frames, jump) and the scenery pre-rendered from the Blender
+models; 224 rows letterboxed; the camera pulls in from the 8-bit frame on the upgrade ripple.
+
+**Animation.** Procedural layers on the keyframed clips: feet planted on slopes (verified: both soles on the terrain
+across and along a slope), walk blending into run by speed, lean into turns and acceleration, squash and stretch.
+
+**Sound.** Valley ambience (wind, leaves, birds), river loudness by distance to water, footsteps by surface (grass,
+path, stone, wood, water), and the chamber's reverb and drone. Levels checked at the master output (peak ≤ 0.37, no
+clipping); not judged by ear.
+
+**Textures.** Colour maps ship as KTX2 (Basis ETC1S, encoded with the official KTX-Software 4.4.2) and stay compressed
+on the GPU.
+
+**Title screen** redesigned (centred logo, high-contrast buttons with one icon set, save summary on Continue, focus
+states, keyboard and gamepad navigation, entrance motion). Phones see a "built for desktop" notice with "Try anyway".
 
 ## Measurements
 
-Machine: Apple M4 Pro, 24 GB, Chrome, 120 Hz display. Drawing buffer 2259×1065 (DPR 2), quality **High**
-(tier 2, full resolution). GPU time comes from `EXT_disjoint_timer_query_webgl2` around the whole frame (scene,
-shadows and post). Frame time is vsync-locked at 8.33 ms whenever GPU time is under it. Each sample is 4–5 s,
-mean / p95.
+Machine: Apple M4 Pro, Chrome, 120 Hz display, drawing buffer 2259×1065 (DPR 2), quality High. GPU time from
+`EXT_disjoint_timer_query_webgl2` around the whole frame; frame time is vsync-capped at 8.33 ms. Each sample 3 s
+(mean / p95), measured on the dev server (same shaders as production).
 
-| Scene | GPU ms | Frame ms | CPU submit ms | Draw calls | Triangles |
-|---|---:|---:|---:|---:|---:|
-| 8-bit, 2D (start) | 1.52 / 3.05 | 8.33 / 9.3 | 1.32 | 198 | 8 k |
-| 16-bit, 2D | 1.54 / 2.02 | 8.33 / 8.9 | 1.58 | 344 | 41 k |
-| Early 3D, 2D | 3.06 / 3.53 | 8.34 / 9.3 | 1.70 | 260 | 210 k |
-| Modern HD, 2D | 5.54 / 6.64 | 8.34 / 9.3 | 1.94 | 324 | 4.08 M |
-| Modern HD, 3D chase camera | 9.79 / 11.21 | 10.76 / 16.7 | 3.75 | 1,196 | 5.80 M |
-| Beyond, 3D chase camera | 13.31 / 14.36 | 13.11 / 16.8 | 3.95 | 1,207 | 5.88 M |
-| Beyond, 3D valley overview | 15.41 / 17.33 | 13.30 / 17.1 | 2.19 | 381 | 5.44 M |
+| Scene | GPU ms (mean / p95) | Frame ms | Draw calls | Triangles |
+|---|---:|---:|---:|---:|
+| 8-bit, 2D | 2.03 / 3.35 | 8.34 | 241 | 7 k |
+| 16-bit, 2D | 1.44 / 2.58 | 8.33* | 321 | 26 k |
+| Early 3D, 2D · 3D overview · 3D chase | 2.89 · 2.47 · 2.35 | 8.3 | 185–1,147 | 0.30–0.37 M |
+| Stylized, 2D · 3D overview · 3D chase | 2.66 · 2.44 · 2.32 | 8.3 | 236–1,271 | 0.35–0.48 M |
+| Modern HD, 2D | 8.10 / 9.07 | 8.32 | 382 | 1.93 M |
+| Modern HD, 3D valley overview | 9.72 / 10.98 | 8.31 | 559 | 2.23 M |
+| Modern HD, 3D chase | 8.62 / 10.75 | 9.51 | 1,299 | 2.61 M |
+| Beyond, 2D | 10.92 / 12.64 | 8.33 | 333 | 2.14 M |
+| Beyond, 3D valley overview | 11.57 / 12.63 | 10.45 | 595 | 2.35 M |
+| Beyond, 3D chase | 11.54 / 12.72 | 12.57 | 1,557 | 3.31 M |
+| Beyond, plateau · Halo Path · summit (overview) | 11.01 · 10.61 · 10.61 (p95 ≤ 12.6) | ~10 | 338–572 | 1.8–2.3 M |
+| Beyond, hidden chamber | 10.85 / 11.37 | 9.74 | 377 | 1.83 M |
 
-Fixed in this pass: before skipping the terrain and Blender dressing when no 3D or modern generation can be on
-screen, 8-bit drew **4.85 M** triangles (discarded per pixel). It now draws 8 k.
+\* One 16-bit sample read 66 ms per frame; it did not reproduce. A dedicated check (8-bit → 16-bit switch, 4 s,
+every frame recorded) showed no frame over 25 ms, and steady 16-bit runs at 120 fps with 3.8 ms CPU render time.
 
-Load time: on localhost with a warm cache every asset finished within 0.35 s of navigation. That says
-nothing about real network loading and **was not measured** on a cold or throttled connection. Shipped
-assets total 11.5 MB (`docs/ASSETS.md`).
+**Material texture GPU memory:** 30.7 MB measured with KTX2 colour maps (the colour maps take ~2.7 MB of that). The
+same textures uncompressed would be ~61 MB (computed from their sizes, not measured separately).
 
-Production bundle: 1.49 MB JS (427 KB gzipped), one chunk.
+**Loading** (production build, cold cache, localhost): menu interactive at 0.42 s, every asset loaded at 1.0 s,
+11.5 MB transferred. Localhost has no network limit; on a 50 Mbps connection the assets alone would take about 1.9 s
+(computed, not measured). New Game never waits for the HD assets (they preload in the background; 8-bit needs none).
 
-## Critical assessment: what still falls short
+**Shipped assets:** 13.7 MB including the KTX2 transcoder (budget 15 MB); details in `docs/ASSETS.md`.
 
-- **Beyond is at the edge of 60 fps on High** at this resolution: the valley overview's p95 GPU time is 17.3 ms.
-  There's about 5.5 M triangles, mostly instanced grass and foliage cards, each drawn twice (once for shadows),
-  and no distance LOD. Auto quality will drop a tier, but the real fix is a grass/foliage LOD or impostors.
-  Not done.
-- **The immersive world stops at x ≈ 52.** Beyond that the old box world and backdrop remain, with a visible
-  change of style. Rollout is the next milestone, as planned.
-- **Early 3D and Stylized** use the same scanned terrain textures as the modern generations, with era shading
-  on top. They are one world, but the terrain isn't truly low-poly or toon. Planned toon/low-poly terrain
-  variants were not built.
-- **Cartoon props remain in the modern valley:** bloomer flowers, mushrooms, enemy and pickup models are still
-  the old procedural meshes beside scanned assets.
-- **The 8-bit HUD is a DOM overlay in a pixel font**, not drawn into the pixel canvas.
-- **8-bit frame height** is about 240 rows but varies with window height (266 in the measured window, and up to
-  roughly 190–320 on small windows), because the scale is kept a whole number of screen pixels.
-- **In 8-bit, non-ground objects** (the awakening machine, sign, enemies, pickups) are the 3D meshes snapped to
-  the 8-bit grid and palette, not hand-drawn sprites. They read as sprites but are not authored as such.
-- **16-bit was not rebuilt** as a tile renderer. It is still the previous pixel-filter treatment (posterised,
-  with parallax from the real 3D backdrop).
-- **Animation is keyframed by script**, not hand-animated or motion-captured.
-- **No dark interiors yet.** The hidden chamber (x = 57) is outside the slice and keeps its old lighting.
-- KTX2 textures were not used (KTX-Software was unavailable). WebP was used instead.
+## What still falls short
+
+- **Beyond is 0.6 ms over its p95 target.** The performance step reached 10.8 ms; the Beyond art pass (relief
+  mapping, cloud shadows, litter, Pip's shell) brought the valley overview to p95 12.63 ms against a 12 ms target.
+  It still holds 60 fps with room to spare (16.7 ms budget). Medium and Low quality thin ground cover further.
+- **8-bit HUD** is still the crisp pixel-font overlay, now sitting in the letterbox bar rather than drawn into the
+  240-row pixel frame.
+- **8-bit and 16-bit objects:** the machine, sign, bits, enemies and checkpoints are still 3D meshes snapped to the
+  pixel grid and palette (8-bit) or 15-bit colour (16-bit), not authored sprites. The bloomer, flowers and crystals
+  are also snapped meshes in 16-bit. They read as sprites, but aren't drawn as such.
+- **Enemies and pickups** were planned to get physical materials in the modern generations; not done.
+- **The title screen's 3D bands** use the procedural sky, not the real HDRI skies of play.
+- **Normal maps** stay WebP (KTX2 UASTC encoded them at ~1.1 MB each, over the download budget).
+- **The raised sections** of the level stand as mesas with sheer walls. That is what keeps the puzzles intact in 3D,
+  but it can read as blocky from high cameras.
+- **The terrain grid is 0.5 units**, so the gorge edge at x = 135.6 is drawn 0.1 off; collision uses the exact
+  function.
+- **The phone notice** was checked by code review and build only, not rendered on a phone or narrow window.
+- **Sound** was not judged by ear; **animation** is keyframed by script plus procedural layers, not motion capture.
+- **Loading** was measured only on localhost.

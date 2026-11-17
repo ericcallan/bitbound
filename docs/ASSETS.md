@@ -10,16 +10,27 @@ Downloaded by `npm run assets:fetch` (`scripts/fetch_polyhaven.py`) at 2K into `
 
 | Poly Haven ID | Type | Used for |
 |---|---|---|
-| `kloofendal_48d_partly_cloudy_puresky` | HDRI | The real sky in Modern HD and Beyond: lighting (512×256 HDR), panorama, sun direction |
-| `kloppenheim_06_puresky` | HDRI | Evaluated as a golden-hour alternative; **not shipped** |
-| `rock_face_03` | Material | Rocks, valley cliffs (Blender bake + terrain splat) |
-| `mossy_rock` | Material | Moss layer on rocks and ancient stone (Blender bake); moss splat texture |
-| `rough_block_wall` | Material | Shard archway, ruined column, stone blocks (Blender bake); stone splat texture |
-| `bark_brown_02` | Material | Great Tree and meadow tree bark (Blender bake); bark texture |
-| `leafy_grass` | Material | Valley grass (terrain splat) |
-| `forest_leaves_02` | Material | Leaf-litter forest floor (terrain splat). Tree foliage is an original drawing (`scripts/textures/leaf-atlas.mjs`) |
-| `dirt_floor` | Material | Worn footpath (terrain splat) |
+| `kloofendal_48d_partly_cloudy_puresky` | HDRI | Modern HD's sky: image-based lighting (512×256 HDR), panorama, sun direction |
+| `kloppenheim_06_puresky` | HDRI | Beyond's golden-hour sky, rotated so the low sun sits in the west and graded warm |
+| `rock_face_03` | Material | Rocks, cliffs, far scree (Blender bake + terrain splat) |
+| `mossy_rock` | Material | Moss on rocks and ancient stone (Blender bake); moss texture |
+| `rough_block_wall` | Material | Arch, column, blocks (Blender bake); projected stone on walls; 16-bit stone tile |
+| `bark_brown_02` | Material | Tree bark and the signpost (Blender bakes) |
+| `leafy_grass` | Material | Valley grass (terrain splat); 16-bit grass tile |
+| `forest_leaves_02` | Material | Leaf-litter forest floor (terrain splat) |
+| `dirt_floor` | Material | Worn footpath (terrain splat); 16-bit earth tile |
 | `forrest_ground_01` | Material | Downloaded and evaluated; **not used** |
+
+Tree foliage is an original drawing (`scripts/textures/leaf-atlas.mjs`).
+
+## Tools
+
+| Tool | Version | Source | Use |
+|---|---|---|---|
+| Blender | 5.3 | blender.org (installed by the user) | Every 3D asset, bakes, sprite pre-renders, skies |
+| glTF Transform, meshoptimizer, sharp | npm dev dependencies | npm | Optimisation, WebP, tile/sprite reduction |
+| KTX-Software | 4.4.2 | Official KhronosGroup GitHub release `KTX-Software-4.4.2-Darwin-arm64.pkg` (Apple-signed and notarised; SHA-256 `500bd8f9…032c3c`) | Unpacked into `tools/ktx` (gitignored) without installing; encodes the KTX2 colour textures |
+| Basis Universal transcoder | from three 0.187 | `node_modules/three/examples/jsm/libs/basis` → `public/basis` | Runtime KTX2 transcoding |
 
 ## Generated assets (original, this repository)
 
@@ -27,30 +38,33 @@ Downloaded by `npm run assets:fetch` (`scripts/fetch_polyhaven.py`) at 2K into `
 |---|---|---|
 | `public/assets/pip.glb` | `assets/blender/characters/pip.blend` | `scripts/blender/create_pip.py` |
 | `public/assets/rocks.glb` | `assets/blender/props/rocks.blend` | `scripts/blender/create_rocks.py` |
-| `public/assets/tree.glb` | `assets/blender/vegetation/trees.blend` | `scripts/blender/create_tree.py` |
-| `public/assets/vegetation.glb` | `assets/blender/vegetation/ground_cover.blend` | `scripts/blender/create_vegetation.py` |
-| `public/assets/gateway.glb` | `assets/blender/environments/ancient_stone.blend` | `scripts/blender/create_gateway.py` |
+| `public/assets/tree.glb` (Great Tree, meadow tree, meadow tree LOD) | `assets/blender/vegetation/trees.blend` | `scripts/blender/create_tree.py` |
+| `public/assets/vegetation.glb` (grass, flowers, fern, pebbles, twigs, leaf litter, clover, thistle) | `assets/blender/vegetation/ground_cover.blend` | `scripts/blender/create_vegetation.py` |
+| `public/assets/gateway.glb` (arch, column, stone blocks, chamber walls, aqueduct, relief cliff) | `assets/blender/environments/ancient_stone.blend` | `scripts/blender/create_gateway.py` |
+| `public/assets/props.glb` (mushroom cluster, signpost) | `assets/blender/props/scenery_props.blend` | `scripts/blender/create_props.py` |
 | `public/assets/terrain.glb` | `assets/blender/environments/valley_terrain.blend` | `scripts/blender/create_terrain.py` (heights from `src/game/level/valley.ts`) |
-| `public/assets/textures/*.webp` | Poly Haven sets above | `scripts/build-terrain-textures.mjs` |
-| `public/assets/sky/day_*` | Kloofendal HDRI | `scripts/blender/create_sky.py` |
-| 8-bit sprites and the ground block | hand-authored in code | `src/game/render/sprites.ts`, `src/game/render/retro/RetroLayer.ts` |
+| `public/assets/textures/*_albedo.ktx2`, `*_normal.webp` | Poly Haven sets above | `scripts/build-terrain-textures.mjs`, `scripts/textures/ktx2.mjs` |
+| `public/assets/sky/{day,golden}_*` | The two HDRIs | `scripts/blender/create_sky.py` |
+| `public/assets/retro/tiles16.png`, `far16.png`, `mid16.png`, `clouds16.png` | Poly Haven sets (tiles); painted in code (parallax) | `scripts/textures/retro16.mjs` |
+| `public/assets/retro/sprites16.png/.json` | Pre-rendered from the GLBs above | `scripts/blender/render_sprites16.py`, `scripts/textures/sprites16.mjs` |
+| 8-bit sprites, tiles, hills, bushes, clouds | Hand-authored in code | `src/game/render/sprites.ts`, `src/game/render/retro/RetroLayer.ts` |
 
-`npm run assets:build` rebuilds every GLB from the scripts (Blender 5.3, headless), then optimises
-(`scripts/optimize-assets.mjs`, glTF Transform) and validates (`scripts/validate-assets.mjs`).
+`npm run assets:build` rebuilds every GLB from the scripts (Blender, headless), then optimises
+(`scripts/optimize-assets.mjs`) and validates (`scripts/validate-assets.mjs`).
 
 ## Sizes (measured on disk)
 
-| Asset | Raw Blender export | Shipped (optimised) |
+| Asset | Raw Blender export | Shipped |
 |---|---:|---:|
-| gateway.glb | 10,017 KB | 1,726 KB |
-| tree.glb | 6,731 KB | 1,724 KB |
-| terrain.glb | 4,809 KB | 953 KB |
+| gateway.glb | 10,794 KB | 1,935 KB |
+| terrain.glb (whole level) | 7,488 KB | 1,460 KB |
+| tree.glb | 5,576 KB | 1,338 KB |
 | pip.glb | 5,164 KB | 643 KB |
 | rocks.glb | 9,002 KB | 355 KB |
-| vegetation.glb | 32 KB | 16 KB |
-| textures (7 sets × albedo+normal, WebP) | — | 5,876 KB |
-| sky (HDR + JPEG + JSON) | — | 448 KB |
-| **Total shipped** | | **11.5 MB** (budget 15 MB) |
-
-Textures are WebP. KTX2 was planned but KTX-Software was not available through Homebrew on this machine, so
-WebP via `sharp` was used instead. Geometry uses Meshopt compression.
+| props.glb | 1,584 KB | 292 KB |
+| vegetation.glb | 75 KB | 35 KB |
+| textures (7 KTX2 colour + 7 WebP normal/height) | — | 5,540 KB |
+| skies (2 × HDR + JPEG + JSON) | — | 824 KB |
+| retro (16-bit tiles, parallax, sprite sheet) | — | 64 KB |
+| Basis transcoder (`public/basis`) | — | 576 KB |
+| **Total** | | **13.7 MB** (budget 15 MB) |
