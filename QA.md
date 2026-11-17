@@ -10,7 +10,7 @@ Build: `tsc --noEmit` clean, `vite build` clean (one 1.49 MB chunk, 427 KB gzipp
 | `playthrough.test.ts` | A bot plays new game → Halo Path → ending through the real input path |
 | `qa.test.ts` | Resume matrix over every checkpoint, fuzz over 16 seeds, v3 → v4 save migration |
 | `chapter6.test.ts` (10) | The Halo Path's generation-rule obstacles |
-| `valley.test.ts` (6) | Height-field walking, slopes, cliffs as walls, gorges, drowning, shift back to the lane |
+| `valley.test.ts` (6) | Lane heights match the platform tops exactly; gorges respawn; walking off the path and back; rises walkable, cliffs block; shallow stream vs gorge; the 3D camera never goes underground |
 | `retro.test.ts` (4) | One 16×16 ground block in exactly 3 palette colours; sprites ≤ 3 colours; palette-only sky and clouds; tiles only from solids that exist in 8-bit |
 
 ## 2. Browser pass (Chrome, M4 Pro, dev server)
