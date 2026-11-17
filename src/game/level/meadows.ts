@@ -94,6 +94,13 @@ export const DECOR_FOOTPRINT: Record<DecorType, { hw: number; h: number }> = {
   crystal: { hw: 0.75, h: 2.1 },
 };
 
+/**
+ * Solids rebuilt as weathered Blender stone at their exact collider size (scripts/blender/create_gateway.py),
+ * shown from Modern HD up. Solids that fade for the camera or open (facade, hedge, mural, alcove walls,
+ * seal door) keep their own meshes.
+ */
+export const STONE_BLOCKS = ['step1', 'step2', 'float1', 'plinth', 'chamberW', 'chamberE', 'chamberBack', 'ledge', 'devicePedestal', 'aqA', 'aqB', 'cliff'];
+
 const DEPTH_FRONT = 2.5;
 const DEPTH_BACK = -3;
 const BOTTOM = -8;
@@ -221,7 +228,8 @@ export const LEVEL = {
     // Overgrown brambles: in 16-bit they're the foreground layer, and you walk behind them.
     solid('thicket', 'wall', 'hedge', 175, HALO, -3, 176.6, HALO + 4.5, 2.5, { genMask: NOT_16BIT }),
     ...reliefSolids,
-    solid('cliff', 'wall', 'ruin', 184, 0, -3.4, 198, 17, -2.6),
+    // the rock face behind the relief gap, standing from the gorge floor
+    solid('cliff', 'wall', 'ruin', 184, -13, -3.4, 198, 17, -2.6),
     ground('p6', 198, 214, SEAL),
     solid('sealDoor', 'wall', 'ruin', 212.6, SEAL, -3, 213.4, SEAL + 5, 2.5),
     // The broken aqueduct: two halves at different depths that only line up from the side.

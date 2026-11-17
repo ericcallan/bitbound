@@ -151,6 +151,21 @@ def column():
     return c
 
 
+# Small blocks get a unique baked texture; walls and the cliff are too large for one bake to stay sharp, so
+# they keep the chipped geometry and are textured at runtime by projecting the scanned stone from all sides
+# (material "stone_wall_tri", see src/game/render/assets.ts).
+BAKED = {"step1", "step2", "float1", "plinth"}
+
+
+def wall_material():
+    m = bpy.data.materials.get("stone_wall_tri") or bpy.data.materials.new("stone_wall_tri")
+    m.use_nodes = True
+    b = m.node_tree.nodes["Principled BSDF"]
+    b.inputs["Base Color"].default_value = (0.5, 0.48, 0.45, 1)
+    b.inputs["Roughness"].default_value = 0.85
+    return m
+
+
 def blocks():
     p = os.path.join(C.TEX_DIR, "slice_blocks.json")
     data = json.load(open(p))
@@ -159,11 +174,24 @@ def blocks():
         mn, mx = b["min"], b["max"]
         # game (x, y, z) → Blender (x, -z, y), centred on its own origin
         size = (mx["x"] - mn["x"], mx["z"] - mn["z"], mx["y"] - mn["y"])
-        lo, hi = stone_pair(f"block_{b['id']}", size, (0, 0, size[2] / 2), bevel=0.07, chip=0.06, seed=20 + i)
-        o = bake_set(f"block_{b['id']}", [lo], [hi], 512)
+        name = f"block_{b['id']}"
+        if b["id"] in BAKED:
+            lo, hi = stone_pair(name, size, (0, 0, size[2] / 2), bevel=0.07, chip=0.06, seed=20 + i)
+            o = bake_set(name, [lo], [hi], 512)
+        else:
+            # chipped, bevelled geometry, lightly decimated; the scanned stone is applied at runtime
+            lo, hi = stone_pair(name, size, (0, 0, size[2] / 2), bevel=0.07, chip=0.06, seed=20 + i, subdiv=3)
+            bpy.data.objects.remove(lo)
+            o = hi
+            o.name = name
+            d = o.modifiers.new("dec", "DECIMATE")
+            d.ratio = 0.35
+            C.apply_modifiers(o)
+            o.data.materials.clear()
+            o.data.materials.append(wall_material())
         C.origin_to_base(o)
         out.append(o)
-        C.log(f"block_{b['id']}: {size[0]:.2f} x {size[2]:.2f} x {size[1]:.2f}")
+        C.log(f"{name}: {size[0]:.2f} x {size[2]:.2f} x {size[1]:.2f}, {len(o.data.polygons)} faces")
     return out
 
 

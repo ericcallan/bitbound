@@ -61,6 +61,55 @@ function mossyStone(m: THREE.MeshStandardMaterial) {
   m.customProgramCacheKey = () => 'mossy-stone-v1';
 }
 
+/**
+ * Large stone (chamber walls, aqueduct, the relief cliff): the scanned masonry projected from all three axes
+ * at runtime, so it stays sharp at any size without a unique bake; moss on top in Beyond.
+ */
+function projectedStone(m: THREE.MeshStandardMaterial) {
+  const alb = sharedTexture('stone_albedo', true);
+  const nrm = sharedTexture('stone_normal', false);
+  const moss = sharedTexture('moss_albedo', true);
+  m.color.set('#ffffff');
+  m.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, { tStoneA: { value: alb }, tStoneN: { value: nrm }, tMoss: { value: moss } });
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        '#include <common>',
+        `#include <common>
+        uniform sampler2D tStoneA; uniform sampler2D tStoneN; uniform sampler2D tMoss;
+        vec3 stoneW; vec3 stoneGN;
+        vec4 tri(sampler2D t, vec3 p, vec3 w, float s) { return texture2D(t, p.zy / s) * w.x + texture2D(t, p.xz / s) * w.y + texture2D(t, p.xy / s) * w.z; }`,
+      )
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        stoneGN = normalize(cross(dFdx(vEraWorld), dFdy(vEraWorld)));
+        stoneW = pow(abs(stoneGN), vec3(4.0)); stoneW /= stoneW.x + stoneW.y + stoneW.z;
+        vec4 sa = tri(tStoneA, vEraWorld, stoneW, 2.2);
+        diffuseColor.rgb *= sa.rgb;
+        if (eraF > 4.5) {
+          float top = smoothstep(0.45, 0.85, abs(stoneGN.y));
+          float patches = smoothstep(0.42, 0.62, fbm(vEraWorld * 1.4)) * top + smoothstep(0.72, 0.86, fbm(vEraWorld * 2.3)) * 0.35;
+          diffuseColor.rgb = mix(diffuseColor.rgb, texture2D(tMoss, vEraWorld.xz / 1.6).rgb * vec3(0.75, 1.0, 0.62), clamp(patches, 0.0, 1.0) * 0.85);
+        }`,
+      )
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = clamp(tri(tStoneA, vEraWorld, stoneW, 2.2).a, 0.4, 1.0);')
+      .replace(
+        '#include <normal_fragment_maps>',
+        `#include <normal_fragment_maps>
+        {
+          vec3 nx = texture2D(tStoneN, vEraWorld.zy / 2.2).xyz * 2.0 - 1.0;
+          vec3 ny = texture2D(tStoneN, vEraWorld.xz / 2.2).xyz * 2.0 - 1.0;
+          vec3 nz = texture2D(tStoneN, vEraWorld.xy / 2.2).xyz * 2.0 - 1.0;
+          vec3 pert = vec3(0.0, nx.y, nx.x) * stoneW.x + vec3(ny.x, 0.0, ny.y) * stoneW.y + vec3(nz.x, nz.y, 0.0) * stoneW.z;
+          vec3 wn = normalize((vec4(normal, 0.0) * viewMatrix).xyz + pert * 0.9);
+          normal = normalize((viewMatrix * vec4(wn, 0.0)).xyz);
+        }`,
+      );
+  };
+  m.customProgramCacheKey = () => 'projected-stone-v1';
+}
+
 /** Beyond: light flows along the teal glyph inlays instead of a steady glow. */
 function flowingGlyph(m: THREE.MeshStandardMaterial) {
   m.onBeforeCompile = (shader) => {
@@ -81,6 +130,10 @@ function materialRules(m: THREE.MeshStandardMaterial): Partial<EraMatOptions> {
   const n = m.name;
   if (n.startsWith('ancient_glyph')) {
     flowingGlyph(m);
+    return {};
+  }
+  if (n.startsWith('stone_wall_tri')) {
+    projectedStone(m);
     return {};
   }
   if (n === 'shard_arch_mat' || n === 'ruin_column_mat' || /^block_.*_mat$/.test(n)) {

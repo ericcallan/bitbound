@@ -8,7 +8,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { GORGES, LANE_BACK, LANE_FRONT, VALLEY, valleyHeight, valleySplat } from '../../src/game/level/valley';
+import { PADS, TERRAIN_EDGES, VALLEY, valleyHeight, valleySplat } from '../../src/game/level/valley';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
 const OUT = path.join(ROOT, 'assets', 'source-textures', 'valley_grid.json');
@@ -27,13 +27,15 @@ function axis(a: number, b: number, step: number, fine: [number, number, number]
   return [...s].filter((v) => v >= a && v <= b).sort((p, q) => p - q);
 }
 
-// Finer sampling around the playable slice; coarse in the distance.
-const xs = axis(VALLEY.x0, VALLEY.x1, 2, [[-20, 60, 0.5], [60, 260, 1]], [-8, 14, 17, 40, 46.5, 52, ...GORGES.flat()]);
-const zs = axis(VALLEY.z0, VALLEY.z1, 2, [[-40, 40, 0.5]], [LANE_BACK, LANE_FRONT]);
+// Fine sampling over the playable valley; coarse in the distance.
+const xs = axis(VALLEY.x0, VALLEY.x1, 2, [[-20, 270, 0.5]], [...new Set(TERRAIN_EDGES.x)]);
+const zs = axis(VALLEY.z0, VALLEY.z1, 2, [[-24, 34, 0.5], [-40, 40, 1]], [...new Set(TERRAIN_EDGES.z)]);
 const nx = xs.length;
 const nz = zs.length;
 const h = new Float32Array(nx * nz);
-for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) h[j * nx + i] = valleyHeight(xs[i], zs[j]);
+// Pads have their own floor meshes: draw the terrain a hair under them so the two never flicker.
+const underPad = (x: number, z: number) => PADS.some(([x0, x1, z0, z1]) => x >= x0 && x <= x1 && z >= z0 && z <= z1);
+for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) h[j * nx + i] = valleyHeight(xs[i], zs[j]) - (underPad(xs[i], zs[j]) ? 0.03 : 0);
 const splat = new Uint8Array(nx * nz * 3);
 for (let j = 0; j < nz; j++)
   for (let i = 0; i < nx; i++) {

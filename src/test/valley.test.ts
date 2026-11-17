@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { makeGame, run, runUntil } from './helpers';
 import { SHIFT_DURATION } from '../game/sim/constants';
-import { GORGES, LANE_BACK, LANE_FRONT, valleyHeight, WATER_Y } from '../game/level/valley';
+import { GATES, GORGES, LANE_BACK, LANE_FRONT, valleyHeight, WATER_Y } from '../game/level/valley';
+import { LEVEL } from '../game/level/meadows';
 import type { Game } from '../game/sim/Game';
 
 const ready = { awakened: true, shardTaken: true, shiftUnlocked: true, firstShiftDone: true, era: 4 as const, checkpoint: 'start', eraKeys: true };
@@ -81,6 +82,63 @@ describe('The valley (immersive 3D terrain)', () => {
     game.player.teleport({ x: (a + b) / 2, y: 1, z: -8 });
     const died = runUntil(game, (g) => g.events.some((e) => e.type === 'respawn'), 4);
     expect(died).toBe(true);
+  });
+
+  it('along the whole level the terrain matches every ground section top exactly on the lane', () => {
+    const grounds = LEVEL.solids.filter((s) => /^(g|p)\d$/.test(s.id));
+    expect(grounds.length).toBeGreaterThan(10);
+    for (const s of grounds) {
+      for (const t of [0.05, 0.5, 0.95]) {
+        const x = s.box.min.x + (s.box.max.x - s.box.min.x) * t;
+        for (const z of [LANE_BACK, 0, Math.min(LANE_FRONT, s.box.max.z)]) {
+          expect(valleyHeight(x, z), `${s.id} x=${x.toFixed(2)} z=${z}`).toBeCloseTo(s.box.max.y, 5);
+        }
+      }
+    }
+  });
+
+  it('gates sit in rock ridges: nowhere off the lane is low enough to walk round them', () => {
+    for (const [a, b] of GATES) {
+      const x = (a + b) / 2;
+      const top = valleyHeight(x, 0);
+      for (const z of [-30, -12, -5, -3.6, 3.2, 6, 12, 18, 26]) {
+        expect(valleyHeight(x, z), `gate ${a} z=${z}`).toBeGreaterThan(top + 3);
+      }
+    }
+  });
+
+  const raised = { ...ready, era: 4 as const, checkpoint: 'stair', stairRepaired: false };
+
+  it('the plateau cannot be reached in 3D by walking round the Painted Stair', () => {
+    const { game, input } = makeGame(raised);
+    game.player.teleport({ x: 109, y: 0, z: 0 });
+    into3d(game);
+    for (const tz of [-8, 6, 14]) {
+      walkTo(game, input, 109, tz, 5);
+      walkTo(game, input, 116, tz, 5);
+      expect(game.player.pos.x, `z=${tz}`).toBeLessThan(112.5);
+      expect(game.player.pos.y).toBeLessThan(4);
+    }
+  });
+
+  it('a light fence cannot be walked round in 3D', () => {
+    const { game, input } = makeGame({ ...ready, era: 4 as const, checkpoint: 'plateau', stairRepaired: true });
+    into3d(game);
+    const [a] = GATES[0];
+    for (const tz of [-7, 5]) {
+      walkTo(game, input, a - 2, tz, 6);
+      walkTo(game, input, a + 3, tz, 6);
+      expect(game.player.pos.x, `z=${tz}`).toBeLessThan(a);
+    }
+  });
+
+  it('the hidden chamber is still reached through depth in 3D', () => {
+    const { game, input } = makeGame({ ...ready, checkpoint: 'device' });
+    into3d(game);
+    walkTo(game, input, 53.2, -2.0, 6);
+    walkTo(game, input, 56, -7, 6);
+    expect(game.player.pos.z).toBeLessThan(-5);
+    expect(game.player.pos.y).toBeCloseTo(0, 2);
   });
 
   it('the 3D camera never goes underground', () => {

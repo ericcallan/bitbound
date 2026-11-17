@@ -170,7 +170,7 @@ export class ValleyDressing {
   private scatterBeyondDetail(x0: number, x1: number) {
     const r = rng(77);
     const lists: Record<string, Placement[]> = { pebbles: [], twigs: [], leaf_litter: [], clover: [], thistle: [] };
-    for (let i = 0; i < 16000; i++) {
+    for (let i = 0, n = Math.round((x1 - x0) * 210); i < n; i++) {
       const x = x0 + r() * (x1 - x0);
       const z = LANE_BACK - 10 + r() * (LANE_FRONT + 6 - (LANE_BACK - 10));
       if (valleyHeight(x, z) < WATER_Y + 0.1 || this.inGorge(x)) continue;
@@ -193,7 +193,7 @@ export class ValleyDressing {
     if (this.ready) return;
     const r = rng(2026);
     const x0 = -26;
-    const x1 = VALLEY_COLLIDE.x1 - 1;
+    const x1 = 262;
     // --- forest edge: behind the path, on the rising meadow below the cliffs
     const trees: Placement[] = [];
     const greats: Placement[] = [];
@@ -208,7 +208,7 @@ export class ValleyDressing {
       }
     }
     // a scattering on the hillsides beyond the cliffs, for depth
-    for (let i = 0; i < 70; i++) {
+    for (let i = 0; i < Math.round((x1 - x0) * 0.9); i++) {
       const tx = x0 - 20 + r() * (x1 - x0 + 40);
       const tz = LANE_BACK - 26 - r() * 40;
       if (this.slope(tx, tz) < 0.6) hillTrees.push({ x: tx, z: tz, scale: 0.8 + r() * 0.7, rot: r() * 6.28, dy: -0.05 });
@@ -223,7 +223,7 @@ export class ValleyDressing {
     const flowers: [Placement[], Placement[]] = [[], []];
     const ferns: Placement[] = [];
     const rocks: [Placement[], Placement[], Placement[]] = [[], [], []];
-    for (let i = 0; i < 26000; i++) {
+    for (let i = 0, n = Math.round((x1 - x0) * 340); i < n; i++) {
       const x = x0 + r() * (x1 - x0);
       const z = LANE_BACK - 22 + r() * (LANE_FRONT + 16 - (LANE_BACK - 22));
       const h = valleyHeight(x, z);

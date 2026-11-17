@@ -4,7 +4,7 @@ import { eraMaterial, eraUniforms, PATTERN, sharedEraMaterial } from './eraMater
 import { EraSwapRegistry, eras as E } from './eraSwap';
 import { assetSlot, buildDecor, fillAssetSlots, M, type Animated, type AnimCtx } from './decor';
 import { onAssetLoaded, preloadAssets } from './assets';
-import { STAIR, type Level, type SolidDef } from '../level/meadows';
+import { STAIR, STONE_BLOCKS, type Level, type SolidDef } from '../level/meadows';
 import type { Era } from '../era/EraSystem';
 import { rng } from '../math';
 
@@ -21,10 +21,8 @@ const LOOK_MAT = {
   valleyDirt: () => sharedEraMaterial('valleyDirt', { color: '#9a6440', pattern: PATTERN.dirt, hideInValley: true, retroTile: true }),
   valleyCap: () => sharedEraMaterial('valleyCap', { color: '#52c24a', pattern: PATTERN.grass, roughness: 0.9, hideInValley: true, retroTile: true }),
 };
-/** Level ground pieces whose 3D look the valley terrain takes over. */
-const VALLEY_GROUND = new Set(['g1', 'g2', 'g3']);
 /** Solid blocks in the valley rebuilt as Blender stone (scripts/blender/create_gateway.py). */
-const VALLEY_BLOCKS = new Set(['step1', 'step2', 'float1', 'plinth']);
+const VALLEY_BLOCKS = new Set(STONE_BLOCKS);
 
 /** The sun as seen in the sky (and the source of Beyond's light shafts): low, behind the lane. */
 export const SKY_SUN = new THREE.Vector3(-0.38, 0.3, -0.87).normalize();
@@ -232,7 +230,8 @@ export class LevelView {
       return m;
     };
     if (s.look === 'grass') {
-      const valley = VALLEY_GROUND.has(s.id);
+      // All ground: the valley terrain takes over its look from Early 3D up.
+      const valley = s.kind === 'ground';
       const dirt = valley ? LOOK_MAT.valleyDirt() : LOOK_MAT.dirt();
       const capMat = valley ? LOOK_MAT.valleyCap() : LOOK_MAT.grassCap();
       const capH = Math.min(0.32, h * 0.5);
@@ -497,12 +496,13 @@ export class LevelView {
       cone.position.set(-60 + i * 22 + r() * 10, h / 2 - 8, -160 - r() * 60);
       cone.rotation.y = r() * 3;
       this.group.add(cone);
-      this.eras.add(cone, E(1, 5), false);
+      // Modern HD and Beyond have the valley's own mountains under a real sky.
+      this.eras.add(cone, E(1, 3), false);
       const cap = new THREE.Mesh(new THREE.ConeGeometry(h * 0.8 * 0.25, h * 0.25, cone.geometry.parameters.radialSegments), snow);
       cap.position.set(cone.position.x, cone.position.y + h * 0.375, cone.position.z);
       cap.rotation.y = cone.rotation.y;
       this.group.add(cap);
-      this.eras.add(cap, E(1, 5), false);
+      this.eras.add(cap, E(1, 3), false);
     }
     // Floating islands with waterfalls — teasing the Skybound Isles.
     for (let i = 0; i < 10; i++) {
@@ -528,7 +528,8 @@ export class LevelView {
       }
       this.islands.push(g);
       this.group.add(g);
-      this.eras.add(g, E(1, 5), false);
+      // 16-bit only: from Early 3D on the valley's mountains stand where they float.
+      this.eras.add(g, E(1), false);
     }
     // Clouds
     for (let i = 0; i < 24; i++) {
