@@ -15,7 +15,7 @@ import type { Game, GameEvent } from '../sim/Game';
 import { MAX_RIFTS, type Era } from '../era/EraSystem';
 import { segmentHitsBox } from '../collision/World';
 import { STAIR, stairStep } from '../level/meadows';
-import { clamp, lerp, smoothstep } from '../math';
+import { clamp, lerp, rng, smoothstep } from '../math';
 
 /** Direction toward the key light used for shading (front-lit so the 2D lane always reads). */
 const SUN_DIR = new THREE.Vector3(-0.45, 0.85, 0.55).normalize();
@@ -90,6 +90,8 @@ export class GameView {
   /** The real sky in use this frame (null: the older generations' procedural sky). */
   private hdSky: HdSkyData | null = null;
   private hdActive = false;
+  /** 0..1: how far the camera focus is inside the hidden chamber. */
+  private indoor = 0;
   /** The 8-bit tile renderer (2D only). */
   private retro: RetroLayer;
   /** 0..1: how far the 2D camera is locked to whole 8-bit pixels. */
@@ -191,6 +193,22 @@ export class GameView {
     this.chamberLight = new THREE.PointLight('#4ff5e6', 6, 14, 1.6);
     this.chamberLight.position.set(57, 2.6, -7.5);
     this.scene.add(this.chamberLight);
+    // The hidden chamber's broken roof, seen only by the sun's shadow camera: daylight falls in as shafts
+    // through the gaps while the 3D camera still looks in from above.
+    const L = game.level.chamber;
+    const roof = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+    const r = rng(57);
+    for (let x = L.min.x - 0.6; x < L.max.x + 0.6; ) {
+      const w = 1.2 + r() * 1.6;
+      const gap = 0.35 + r() * 0.6;
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5, L.max.z - L.min.z + 1.6), roof);
+      slab.position.set(x + w / 2, L.max.y + 0.6 + r() * 0.3, (L.min.z + L.max.z) / 2 + (r() - 0.5) * 0.8);
+      slab.rotation.y = (r() - 0.5) * 0.12;
+      slab.castShadow = true;
+      slab.layers.set(SHADOW_PROXY_LAYER);
+      this.scene.add(slab);
+      x += w + gap;
+    }
 
     // Early 3D has no shadow maps: a classic blob shadow keeps Pip grounded.
     this.blob = new THREE.Mesh(
@@ -513,7 +531,12 @@ export class GameView {
     this.sun.position.copy(camTarget).addScaledVector(keyDir, 45);
     this.sun.target.position.copy(camTarget);
     eraUniforms.uSunView.value.copy(keyDir).transformDirection(cam.matrixWorldInverse);
-    this.chamberLight.intensity = 5 + Math.sin(t * 2) * 1.2 + (g.puzzle.plateLatched ? 4 : 0);
+    // Inside the hidden chamber the sky's fill fades, light comes in as shafts through the roof, and the
+    // teal machinery glows.
+    const C = g.level.chamber;
+    const inside = camTarget.x > C.min.x && camTarget.x < C.max.x && camTarget.z > C.min.z - 0.5 && camTarget.z < C.max.z - 0.4 ? 1 : 0;
+    this.indoor += (inside - this.indoor) * Math.min(1, dt * 2.5);
+    this.chamberLight.intensity = (5 + Math.sin(t * 2) * 1.2 + (g.puzzle.plateLatched ? 4 : 0)) * (1 + this.indoor * 1.6);
     // Lighting rig per generation at the camera focus: the real sky carries the ambient light from Modern HD
     // up (warm sun, cool sky-lit shadows); older generations keep the even, front-lit rig.
     const rig = golden
@@ -526,6 +549,9 @@ export class GameView {
         ? { hemi: 0.4, env: 0.5, sun: 3.6, color: '#ffe2b8', sky: '#cfeeff', ground: '#6c8a4a' }
         : { hemi: 0.85, env: 0.55, sun: 2.7, color: '#fff0d8', sky: '#cfeeff', ground: '#6c8a4a' };
     const k = Math.min(1, dt * 2);
+    const fill = 1 - this.indoor * 0.8;
+    rig.hemi *= fill;
+    rig.env *= fill;
     this.hemi.intensity += (rig.hemi - this.hemi.intensity) * k;
     this.hemi.color.lerp(new THREE.Color(rig.sky), k);
     this.hemi.groundColor.lerp(new THREE.Color(rig.ground), k);

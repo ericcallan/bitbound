@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { beyondOnly, getAsset, loadAsset, type AssetName } from './assets';
-import { GORGES, LANE_BACK, LANE_FRONT, VALLEY_COLLIDE, valleyHeight, valleySplat, WATER_Y } from '../level/valley';
+import { GORGES, LANE_BACK, LANE_FRONT, PADS, valleyHeight, valleySplat, WATER_Y } from '../level/valley';
 import { rng } from '../math';
 
 interface Placement {
@@ -91,6 +91,11 @@ export class ValleyDressing {
     return GORGES.some(([a, b]) => x > a - 2.5 && x < b + 2.5);
   }
 
+  /** Interiors (the hidden chamber) stay clear of plants and trees. */
+  private indoors(x: number, z: number, margin = 0.6) {
+    return PADS.some(([x0, x1, z0, z1]) => x > x0 - margin && x < x1 + margin && z > z0 - margin && z < z1 + margin);
+  }
+
   private cellFor(p: Placement, far: boolean) {
     const key = `${Math.floor(p.x / CELL)}:${far ? 1 : 0}`;
     let i = this.cellIndex.get(key);
@@ -173,7 +178,7 @@ export class ValleyDressing {
     for (let i = 0, n = Math.round((x1 - x0) * 210); i < n; i++) {
       const x = x0 + r() * (x1 - x0);
       const z = LANE_BACK - 10 + r() * (LANE_FRONT + 6 - (LANE_BACK - 10));
-      if (valleyHeight(x, z) < WATER_Y + 0.1 || this.inGorge(x)) continue;
+      if (valleyHeight(x, z) < WATER_Y + 0.1 || this.inGorge(x) || this.indoors(x, z)) continue;
       const s = this.slope(x, z);
       if (s > 0.8) continue;
       const [rock, path, forest] = valleySplat(x, z, s);
@@ -202,7 +207,7 @@ export class ValleyDressing {
       for (let row = 0; row < 3; row++) {
         const tx = x + (r() - 0.5) * 2.6;
         const tz = LANE_BACK - 6.5 - row * 3.4 - r() * 2.2;
-        if (this.inGorge(tx) || this.slope(tx, tz) > 0.7 || r() < 0.25) continue;
+        if (this.inGorge(tx) || this.indoors(tx, tz, 2.5) || this.slope(tx, tz) > 0.7 || r() < 0.25) continue;
         if (row === 1 && r() < 0.12) greats.push({ x: tx, z: tz - 1.5, scale: 0.75 + r() * 0.2, rot: r() * 6.28, dy: -0.05 });
         else trees.push({ x: tx, z: tz, scale: 0.7 + r() * 0.5, rot: r() * 6.28, dy: -0.05 });
       }
@@ -227,7 +232,7 @@ export class ValleyDressing {
       const x = x0 + r() * (x1 - x0);
       const z = LANE_BACK - 22 + r() * (LANE_FRONT + 16 - (LANE_BACK - 22));
       const h = valleyHeight(x, z);
-      if (h < WATER_Y + 0.15 || this.inGorge(x)) continue;
+      if (h < WATER_Y + 0.15 || this.inGorge(x) || this.indoors(x, z)) continue;
       const s = this.slope(x, z);
       if (s > 0.9) continue;
       const [rock, path, forest] = valleySplat(x, z, s);
