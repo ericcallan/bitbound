@@ -14,7 +14,9 @@
     "assets:validate": "node scripts/validate-assets.mjs",
     "assets:fetch": "python3 scripts/fetch_polyhaven.py",
     "test:e2e": "playwright test",
-    "screens": "node scripts/capture-screens.mjs docs/screens/latest"
+    "screens": "node scripts/capture-screens.mjs docs/screens/latest",
+    "og": "node scripts/capture-og.mjs",
+    "check:share": "node scripts/check-share.mjs"
   },
   "dependencies": {
     "@react-three/fiber": "^9.8.2",

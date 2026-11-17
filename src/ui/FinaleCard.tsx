@@ -1,6 +1,7 @@
 import { useUI } from './store';
 import { session } from './session';
 import { audio } from '../game/audio/AudioEngine';
+import { ShareButton } from './ShareButton';
 
 export function FinaleCard() {
   const ui = useUI();
@@ -43,6 +44,7 @@ export function FinaleCard() {
           >
             Keep exploring
           </button>
+          <ShareButton className="menu__btn" text={`I restored the Waking World in Bitbound, with ${hud.bits}/${hud.totalBits} bits. From 8-bit to beyond:`} />
           <button className="menu__btn" onClick={() => (audio.sfx('click'), ui.setMap(true))}>
             World map
           </button>

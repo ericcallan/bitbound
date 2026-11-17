@@ -30,4 +30,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-r
 fs.writeFileSync('public/favicon.svg', svg);
 await sharp(Buffer.from(svg), { density: 600 }).resize(32, 32, { kernel: 'nearest' }).png().toFile('public/favicon-32.png');
 await sharp(Buffer.from(svg), { density: 1200 }).resize(180, 180, { kernel: 'nearest' }).png().toFile('public/apple-touch-icon.png');
-console.log('public/favicon.svg, favicon-32.png, apple-touch-icon.png');
+// the web app manifest's icons (home screens, share sheets); 512 doubles as the maskable icon (the tile fills it)
+await sharp(Buffer.from(svg), { density: 1200 }).resize(192, 192, { kernel: 'nearest' }).png().toFile('public/icon-192.png');
+await sharp(Buffer.from(svg), { density: 2400 }).resize(512, 512, { kernel: 'nearest' }).png().toFile('public/icon-512.png');
+console.log('public/favicon.svg, favicon-32.png, apple-touch-icon.png, icon-192.png, icon-512.png');

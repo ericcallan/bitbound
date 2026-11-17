@@ -9,6 +9,13 @@ import { loadSave } from '../game/save/save';
 import { SPRITES } from '../game/render/sprites';
 import { Portrait } from './Portrait';
 import { galleryStart } from './Gallery';
+import { ShareButton } from './ShareButton';
+
+/**
+ * Dev only: ?shot=og shows the title scene with just the wordmark and one line, for the link-preview image
+ * (scripts/capture-og.mjs).
+ */
+const SHOT = import.meta.env.DEV && new URLSearchParams(location.search).get('shot') === 'og';
 
 function wakeAudio() {
   audio.init();
@@ -197,7 +204,7 @@ export function MainMenu() {
   const [hasSave, setHasSave] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
-  const [phone, setPhone] = useState(() => isPhoneLike());
+  const [phone, setPhone] = useState(() => !SHOT && isPhoneLike());
   const [selected, setSelected] = useState<Era>(5);
   const [preview, setPreview] = useState<Era | null>(null);
   const ui = useUI();
@@ -335,7 +342,7 @@ export function MainMenu() {
   ];
 
   return (
-    <div className={`menu ${leaving ? 'menu--leaving' : ''}`}>
+    <div className={`menu ${leaving ? 'menu--leaving' : ''} ${SHOT ? 'menu--shot' : ''}`}>
       <div className="menu__scrim" aria-hidden />
       <div className="menu__panel">
         <h1 className="logo" aria-label="Bitbound">
@@ -354,6 +361,7 @@ export function MainMenu() {
           <span className="logo__rule" aria-hidden>
             <i />
           </span>
+          {SHOT && <span className="logo__tagline">From 8-bit to beyond.</span>}
         </h1>
         <nav className="title-menu" ref={nav} aria-label="Main menu">
           {buttons.map((b, i) => (
@@ -422,7 +430,10 @@ export function MainMenu() {
             <kbd className="pad">A</kbd> Select
           </span>
         </span>
-        <span className="menu__footer-meta">v0.7 · Preview build · Best with keyboard or gamepad</span>
+        <span className="menu__footer-row">
+          <ShareButton className="share-btn--quiet" label="Share Bitbound" />
+          <span className="menu__footer-meta">v0.7 · Preview build · Best with keyboard or gamepad</span>
+        </span>
       </footer>
     </div>
   );

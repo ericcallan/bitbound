@@ -2,19 +2,64 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bitbound</title>
-    <!-- not public yet: keep search engines and crawlers out (see also public/robots.txt) -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>%SHARE_TITLE%</title>
+    <meta name="description" content="%SHARE_DESCRIPTION%" />
+    <!-- share:private — removed by the build when PUBLIC=1 (see vite.config.ts). Keeps search engines out; link
+         previews don't index, so they still work. -->
     <meta name="robots" content="noindex, nofollow, noarchive" />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="canonical" href="%SITE_URL%/" />
+    <meta name="application-name" content="Bitbound" />
+    <meta name="apple-mobile-web-app-title" content="Bitbound" />
+    <meta name="theme-color" content="#1d3550" />
+    <meta name="color-scheme" content="dark" />
+
+    <!-- Open Graph: Slack, iMessage and SMS previews, Discord, LinkedIn, Facebook, WhatsApp, Telegram -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Bitbound" />
+    <meta property="og:title" content="%SHARE_TITLE%" />
+    <meta property="og:description" content="%SHARE_DESCRIPTION%" />
+    <meta property="og:url" content="%SITE_URL%/" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image" content="%SITE_URL%/og.jpg" />
+    <meta property="og:image:secure_url" content="%SITE_URL%/og.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="%SHARE_IMAGE_ALT%" />
+    <!-- a square image for apps that show square thumbnails (listed second, so the wide one is the default) -->
+    <meta property="og:image" content="%SITE_URL%/og-square.jpg" />
+    <meta property="og:image:type" content="image/jpeg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="1200" />
+    <meta property="og:image:alt" content="%SHARE_IMAGE_ALT%" />
+
+    <!-- X / Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="%SHARE_TITLE%" />
+    <meta name="twitter:description" content="%SHARE_DESCRIPTION%" />
+    <meta name="twitter:image" content="%SITE_URL%/og.jpg" />
+    <meta name="twitter:image:alt" content="%SHARE_IMAGE_ALT%" />
+
+    <!-- icons and the web app manifest -->
+    <link rel="icon" href="%BASE%favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="%BASE%favicon-32.png" type="image/png" sizes="32x32" />
+    <link rel="apple-touch-icon" href="%BASE%apple-touch-icon.png" />
+    <link rel="manifest" href="%BASE%site.webmanifest" />
+
+    <script type="application/ld+json">%SHARE_JSONLD%</script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Pixelify+Sans:wght@500;700&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <h1>Bitbound</h1>
+      <p>%SHARE_DESCRIPTION%</p>
+      <p>Bitbound needs JavaScript and WebGL 2, and plays with a keyboard or a gamepad.</p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

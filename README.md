@@ -62,6 +62,30 @@ See **docs/GRAPHICS_REPORT.md** for measurements and shortcomings, and **docs/AS
 licences. In-game: Extras → Environment compares any view across all six generations. Desktop only (keyboard or
 gamepad); phones get a notice.
 
+## Hosting, sharing and search
+
+Deploys to **Vercel** or **Netlify** as a static site (`vercel.json`, `netlify.toml`; build `npm run build`,
+output `dist`).
+
+- **Link previews** (Slack, iMessage and SMS, X, Discord, LinkedIn, Facebook, WhatsApp, Telegram): Open Graph
+  and X card tags, a 1200×630 image (`public/og.jpg`) and a square one (`public/og-square.jpg`), the web app
+  manifest and icons, and JSON-LD. Absolute URLs are filled in at build time from `SITE_URL`, or the host's own
+  production address if that isn't set. **Set `SITE_URL` for a custom domain.** The copy lives in
+  `src/shareCopy.ts`. Regenerate the images from the live title scene with `npm run og` (dev server running).
+- **The Share button** (title screen, end card) opens the system share sheet where there is one, otherwise copies
+  the link.
+- **Kept out of search for now:** a `noindex` meta tag, an `X-Robots-Tag: noindex` header from the host config,
+  and a robots.txt that blocks search engines and AI crawlers. The link-preview fetchers are allowed, so previews
+  still work (they don't index).
+- **Launch:** build with `PUBLIC=1` (drops the meta tag; robots.txt allows everyone) and delete the
+  `X-Robots-Tag` header from `vercel.json` / `netlify.toml`.
+- **Check a build:** `npm run build && npm run check:share`. It checks every tag, absolute URLs, image sizes and
+  weights, the manifest, and robots.txt.
+- **After the first deploy** (not verified yet, since there is no public URL), paste the link into
+  [opengraph.xyz](https://www.opengraph.xyz), the
+  [Facebook Sharing Debugger](https://developers.facebook.com/tools/debug/), the
+  [LinkedIn Post Inspector](https://www.linkedin.com/post-inspector/), a Slack message and Messages.
+
 ## Development tools (dev builds only)
 
 - **Scenarios:** `?scenario=aqueduct` (also `start`, `ruins`, `ruins3d`, `chamber`, `stair`, `plateau`,
