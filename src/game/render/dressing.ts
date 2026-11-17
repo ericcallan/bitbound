@@ -108,17 +108,19 @@ export class ValleyDressing {
       const [rock, path, forest] = valleySplat(x, z, s);
       const grassW = 1 - rock - path - forest;
       const onLane = z > LANE_BACK + 0.4 && z < LANE_FRONT - 0.4;
+      // Between the path and the 2D camera nothing may grow tall enough to hide Pip or an enemy.
+      const foreground = z > LANE_FRONT - 0.4 && z < LANE_FRONT + 5;
       const k = r();
       if (onLane && k < 0.85) continue; // keep the walkway readable
       if (forest > 0.5) {
         if (k < 0.08) ferns.push({ x, z, scale: 0.8 + r() * 0.7, rot: r() * 6.28 });
         else if (k < 0.2) grass.push({ x, z, scale: 0.7 + r() * 0.4, rot: r() * 6.28 });
       } else if (grassW > 0.45) {
-        if (k < 0.55) grass.push({ x, z, scale: 0.75 + r() * 0.6, rot: r() * 6.28 });
+        if (k < 0.55) grass.push({ x, z, scale: foreground ? 0.6 + r() * 0.3 : 0.75 + r() * 0.6, rot: r() * 6.28 });
         else if (k < 0.62 && z < LANE_BACK) tall.push({ x, z, scale: 0.8 + r() * 0.5, rot: r() * 6.28 });
         else if (k < 0.64) flowers[r() < 0.6 ? 0 : 1].push({ x, z, scale: 0.45 + r() * 0.25, rot: r() * 6.28 });
       }
-      if (k > 0.9985 && !onLane) rocks[Math.floor(r() * 3)].push({ x, z, scale: 0.5 + r() * 0.9, rot: r() * 6.28, dy: -0.12 });
+      if (k > 0.9985 && !onLane && !foreground) rocks[Math.floor(r() * 3)].push({ x, z, scale: 0.5 + r() * 0.9, rot: r() * 6.28, dy: -0.12 });
     }
     this.add('vegetation', 'grass_clump', grass);
     this.add('vegetation', 'tall_grass', tall);

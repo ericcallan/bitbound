@@ -248,8 +248,11 @@ export class EntityViews {
 
     // --- Checkpoints
     for (const cp of L.checkpoints) {
+      // The start is where Pip appears: no marker there. The rest stand behind the path, so a respawning
+      // Pip is never hidden behind one.
+      if (cp.id === 'start') continue;
       const g = new THREE.Group();
-      g.position.set(cp.pos.x, cp.pos.y, 1.6);
+      g.position.set(cp.pos.x, cp.pos.y, -1.6);
       const big = cp.id === 'beacon';
       const ped = new THREE.Mesh(new RoundedBoxGeometry(big ? 1.2 : 0.6, big ? 0.8 : 0.5, big ? 1.2 : 0.6, 2, 0.06), M.ruin());
       ped.position.y = big ? 0.4 : 0.25;

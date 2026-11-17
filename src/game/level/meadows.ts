@@ -73,6 +73,27 @@ export interface DecorDef {
   seed?: number;
 }
 
+/**
+ * Footprint of each decor type at scale 1: half-width along x and height, the largest over every
+ * generation's variant (measured from the built meshes in the browser, rounded up). Used to keep
+ * anything in front of the path from hiding Pip or an enemy.
+ */
+export const DECOR_FOOTPRINT: Record<DecorType, { hw: number; h: number }> = {
+  machine: { hw: 0.8, h: 3.1 },
+  sign: { hw: 0.6, h: 1.2 },
+  tree: { hw: 2.5, h: 7.1 },
+  bloomer: { hw: 0.8, h: 2.6 },
+  flowers: { hw: 0.9, h: 0.65 },
+  mushroom: { hw: 0.35, h: 0.7 },
+  bush: { hw: 1.45, h: 1.4 },
+  pillar: { hw: 0.7, h: 3.1 },
+  arch: { hw: 2.4, h: 4.2 },
+  rock: { hw: 1.0, h: 0.85 },
+  statue: { hw: 0.65, h: 2.0 },
+  gear: { hw: 1.05, h: 1.05 },
+  crystal: { hw: 0.75, h: 2.1 },
+};
+
 const DEPTH_FRONT = 2.5;
 const DEPTH_BACK = -3;
 const BOTTOM = -8;
@@ -220,7 +241,7 @@ export const LEVEL = {
 
   enemies: [
     { id: 'e1', x: 24, y: 1, minX: 19.5, maxX: 28 },
-    { id: 'e2', x: 43, y: 0, minX: 41, maxX: 45.6 },
+    { id: 'e2', x: 41.6, y: 0, minX: 40.4, maxX: 42.4 },
     { id: 'e3', x: 76, y: 0, minX: 74, maxX: 78.5 },
     { id: 'e4', x: 129, y: PLATEAU, minX: 127, maxX: 130.6 },
     { id: 'e5', x: 139, y: PLATEAU, minX: 137, maxX: 140.2 },
@@ -231,7 +252,7 @@ export const LEVEL = {
     [18.5, 1.6], [19.5, 1.6], [21.6, 3.8], [22.4, 3.8], [23.2, 3.8], [26.5, 1.6], [27.5, 1.6], [30, 1.6],
     [41.5, 0.6],
     // Hidden behind the foreground bush
-    [43.6, 0.6], [44.4, 0.6], [45.2, 0.6],
+    [44.4, 0.6], [45, 0.6], [45.6, 0.6],
     [49.5, 1.7], [53, 0.6], [54, 0.6],
     [65, 1.0], [67, 1.4], [69, 1.0],
     [74, 0.6], [75, 0.6], [79, 0.6],
@@ -371,24 +392,24 @@ export const LEVEL = {
     { type: 'flowers', pos: v3(1, 0, -1.2), seed: 1 },
     { type: 'flowers', pos: v3(16.5, 0, 1.4), seed: 2 },
     { type: 'flowers', pos: v3(20, 1, -1.1), seed: 3 },
-    { type: 'flowers', pos: v3(29, 1, 1.2), seed: 4 },
+    { type: 'flowers', pos: v3(32.2, 1, 1.2), seed: 4 },
     { type: 'flowers', pos: v3(42, 0, -1.2), seed: 5 },
     { type: 'flowers', pos: v3(73.5, 0, -1.1), seed: 6 },
     { type: 'flowers', pos: v3(86, 0, -1.3), seed: 7 },
     { type: 'flowers', pos: v3(92, 0, 1.2), seed: 8 },
     { type: 'flowers', pos: v3(104, 0, 7.4), seed: 9 },
-    { type: 'flowers', pos: v3(127.5, PLATEAU, 1.1), seed: 10 },
+    { type: 'flowers', pos: v3(127.5, PLATEAU, -1.2), seed: 10 },
     { type: 'flowers', pos: v3(148, PLATEAU, 1.2), seed: 11 },
     { type: 'mushroom', pos: v3(-3.5, 0, -1.0), seed: 1 },
     { type: 'mushroom', pos: v3(37.5, 1, 1.3), seed: 2 },
     { type: 'mushroom', pos: v3(55.5, 0, 1.5), seed: 3 },
     { type: 'mushroom', pos: v3(109.5, 0, 7.8), seed: 4 },
-    // The secret: a big foreground bush hides three bits on the lane
-    { type: 'bush', pos: v3(44.4, 0, 1.75), scale: 1.6, seed: 1 },
+    // The secret: a big foreground bush hides three bits on the lane (clear of e2's patrol)
+    { type: 'bush', pos: v3(45.0, 0, 1.75), scale: 1.15, seed: 1 },
     { type: 'bush', pos: v3(-4.6, 0, 1.9), scale: 0.9, seed: 2 },
-    { type: 'bush', pos: v3(26, 1, 1.9), scale: 1.0, seed: 3 },
-    { type: 'bush', pos: v3(78, 0, 1.9), scale: 1.1, seed: 4 },
-    { type: 'bush', pos: v3(140.5, PLATEAU, 1.9), scale: 1.0, seed: 5 },
+    { type: 'bush', pos: v3(30.2, 1, 1.9), scale: 1.0, seed: 3 },
+    { type: 'bush', pos: v3(83.4, 0, 1.9), scale: 1.1, seed: 4 },
+    { type: 'bush', pos: v3(146, PLATEAU, 1.9), scale: 1.0, seed: 5 },
     { type: 'pillar', pos: v3(30.8, 1, -1.8), scale: 1.1, seed: 1 },
     { type: 'pillar', pos: v3(35.3, 1, -1.8), scale: 0.75, seed: 2 },
     { type: 'pillar', pos: v3(99.2, 0, -2.2), scale: 1.4, seed: 3 },
