@@ -66,12 +66,12 @@ describe('The valley (immersive 3D terrain)', () => {
   it('walks up gentle rises behind the path but is stopped by the cliffs', () => {
     const { game, input } = makeGame(ready);
     into3d(game);
-    walkTo(game, input, 4, -40, 14);
+    // where Pip wakes the valley opens out, with the wall far back behind meadow hills
+    walkTo(game, input, 4, -90, 28);
     const p = game.player;
-    // well behind the path, on a hillside, but nowhere near the cliff tops
-    expect(p.pos.z).toBeLessThan(-6);
-    expect(p.pos.z).toBeGreaterThan(-25);
-    expect(p.pos.y).toBeLessThan(valleyHeight(p.pos.x, -30) - 3);
+    expect(p.pos.z).toBeLessThan(-20);
+    expect(p.pos.z).toBeGreaterThan(-62);
+    expect(p.pos.y).toBeLessThan(valleyHeight(p.pos.x, -66) - 2.5);
     expect(Number.isFinite(p.pos.y)).toBe(true);
   });
 

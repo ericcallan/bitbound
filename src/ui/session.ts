@@ -32,7 +32,8 @@ export function canContinue() {
 /** Attract-mode world for the title screen: Pip idling where pixels meet polygons. */
 export function makeMenuGame() {
   const g = new Game(new NullInput(), null, 'menu');
-  g.camera.override = { target: v3(4.4, 1.15, -0.4), yaw: 0.3, pitch: 0.1, fov: 30, dist: 11 };
+  // Wide and low: the logo and menu sit in the sky, the six generations stand along the ground below.
+  g.camera.override = { target: v3(4.8, 2.75, -0.6), yaw: 0.1, pitch: 0.06, fov: 30, dist: 15 };
   g.camera.overrideW = 1;
   g.camera.overrideGoal = 1;
   g.camera.snap(g.cameraContext());

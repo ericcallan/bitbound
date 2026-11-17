@@ -164,15 +164,23 @@ export function valleyHeight(x: number, z: number): number {
     const d = LANE_BACK - z;
     const n = fbm(x * 0.07, z * 0.07);
     const fine = fbm(x * 0.35, z * 0.35);
+    // Where Pip wakes the valley opens out: the wall stands far back behind rolling meadow hills.
+    const open = 1 - smoothstep(20, 34, x);
+    const wallAt = 15.5 + open * 40;
+    // in the open meadow the wall is lower but sheerer (still far too steep to climb)
+    const wallH = (10 + n * 8) * (1 - 0.5 * open);
+    const wallW = 3 - 1.5 * open;
     h =
       top +
       0.5 * smoothstep(0, 4, d) +
       2.2 * smoothstep(4, 13, d) +
       fine * 0.5 * smoothstep(1, 6, d) +
+      open * (1.6 + n * 3) * smoothstep(14, 30, d) +
       // a sheer rock wall: the valley side Pip can't climb
-      (10 + n * 8) * smoothstep(15.5, 18.5, d + fbm(x * 0.12, 7) * 2.5) +
+      wallH * smoothstep(wallAt, wallAt + wallW, d + fbm(x * 0.12, 7) * 2.5 * (1 - open * 0.7)) +
       n * 4 * smoothstep(6, 16, d) +
-      (16 + fbm(x * 0.02, z * 0.02) * 30) * smoothstep(30, 80, d);
+      // far mountains, kept low behind the opening meadow so it looks out over rolling hills
+      (16 + fbm(x * 0.02, z * 0.02) * 30) * smoothstep(30 + open * 18, 80, d) * (1 - 0.7 * (1 - smoothstep(20, 46, x)));
   } else {
     // In front: a meadow sloping down to a stream, then rising to a rock band and far hills. Raised sections
     // end in a sheer drop to the stream, so the stream is never a way round.

@@ -24,6 +24,8 @@ const SPLIT_SCREEN = [1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6];
 export interface ViewOptions {
   /** Menu/gallery: split the screen into six generation bands. */
   split?: boolean;
+  /** With `split`: show the immersive valley (terrain, Blender dressing) in its bands, as in play. */
+  immersive?: boolean;
 }
 
 const envCache = new WeakMap<THREE.WebGLRenderer, THREE.Texture>();
@@ -481,8 +483,8 @@ export class GameView {
       eraUniforms.uFieldEra.value[i] = f?.era ?? 0;
     }
     eraUniforms.uTime.value = t;
-    // Menu/gallery split views show the original level; the immersive valley is for play.
-    if (split) eraUniforms.uValleyX.value = -1e9;
+    // The gallery's split view shows the original level; the menu shows the valley as it is in play.
+    if (split && !this.options.immersive) eraUniforms.uValleyX.value = -1e9;
     else this.terrain.update();
 
     // --- lights follow the action. From Modern HD up the real sky lights the scene and sets the sun.
@@ -678,8 +680,9 @@ export class GameView {
     f.maxEra = split ? 5 : Math.max(f.eraFrom, f.eraTo, bub ? bub.era : 0, fieldMax);
     // The valley terrain exists from Early 3D up and its Blender dressing from Modern HD up: skip them
     // entirely (not just per pixel) while no such generation can be on screen.
-    this.terrain.group.visible = !split && f.maxEra >= 2;
-    this.dressing.group.visible = !split && f.maxEra >= 4;
+    const valley = !split || !!this.options.immersive;
+    this.terrain.group.visible = valley && f.maxEra >= 2;
+    this.dressing.group.visible = valley && f.maxEra >= 4;
     if (this.dressing.group.visible) {
       this.dressing.density = [0.4, 0.7, 1][this.post.activeTier];
       this.dressing.update(this.camera);
@@ -697,7 +700,7 @@ export class GameView {
     f.time = t;
     // The camera target tracks Pip in play and frames the subject in cinematics/gallery views.
     f.focus.copy(camTarget);
-    f.dof = g.cine ? 0.6 : g.shift.mode === '2d' ? 0.55 : 0.4;
+    f.dof = split ? 0 : g.cine ? 0.6 : g.shift.mode === '2d' ? 0.55 : 0.4;
     // The real sky replaces the procedural dome (set after the level's era swaps have run this frame),
     // and light shafts aim at the sky's actual sun.
     this.level.skyMesh.visible = this.level.skyMesh.visible && !this.hdActive;

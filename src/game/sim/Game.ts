@@ -237,7 +237,7 @@ export class Game {
     this.applySave(this.save);
 
     if (mode === 'menu') {
-      this.player.teleport(v3(4.2, 0, 0));
+      this.player.teleport(v3(2.2, 0, 0));
       this.player.dir = 1;
       this.era.set(0);
     } else if (!this.save.awakened) {

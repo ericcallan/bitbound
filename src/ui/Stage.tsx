@@ -61,7 +61,7 @@ function changed(a: HudState, b: HudState) {
 export function Stage({ game, menu = false }: { game: Game; menu?: boolean }) {
   const { camera, gl } = useThree();
   const view = useMemo(() => {
-    return new GameView(game, camera as THREE.PerspectiveCamera, gl, { split: menu });
+    return new GameView(game, camera as THREE.PerspectiveCamera, gl, { split: menu, immersive: menu });
   }, [game, camera, gl, menu]);
   const last = useRef<HudState | null>(null);
   const fpsAcc = useRef({ t: 0, n: 0 });

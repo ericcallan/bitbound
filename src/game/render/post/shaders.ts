@@ -374,7 +374,8 @@ vec3 modern(vec2 uv, float d) {
   if (d < 0.99999) {
     vec3 w = worldOf(uv, d);
     float vd = viewDistOf(d);
-    float fog = (1.0 - exp(-max(vd - 18.0, 0.0) * 0.0075)) * exp(-max(w.y + 1.0, 0.0) * 0.045) * 0.62;
+    // distance haze at every height (so far peaks recede), thicker in the low ground
+    float fog = (1.0 - exp(-max(vd - 18.0, 0.0) * 0.0075)) * mix(0.55, 1.0, exp(-max(w.y + 1.0, 0.0) * 0.045)) * 0.7;
     col = mix(col, vec3(0.3, 0.38, 0.48), fog);
   }
   if (uHasBloom > 0.5) col += texture2D(tBloom, uv).rgb * 0.22;
@@ -423,7 +424,7 @@ vec3 beyond(vec2 uv, float d) {
   if (d < 0.99999) {
     vec3 w = worldOf(uv, d);
     float beyondFocus = max(0.0, vd - uFocusDist * 0.6);
-    float fog = (1.0 - exp(-beyondFocus * 0.008)) * exp(-max(w.y + 2.0, 0.0) * 0.05) * 0.36;
+    float fog = (1.0 - exp(-beyondFocus * 0.008)) * mix(0.6, 1.0, exp(-max(w.y + 2.0, 0.0) * 0.05)) * 0.42;
     col = mix(col, haze + uSunColor * rays * 0.6, fog);
   } else {
     // the sky: deep blue overhead, a warm band along the horizon, a glow around the sun
@@ -495,7 +496,7 @@ void main() {
     float m = 1.0;
     for (int i = 0; i < 5; i++) m = min(m, abs(uv.x - uSplitScreen[i]));
     float seam = exp(-pow(m * uRes.x * 0.25, 2.0));
-    col += vec3(0.4, 1.0, 0.95) * seam * (0.3 + 0.2 * sin(uTime * 3.0 + uv.y * 30.0));
+    col += vec3(0.75, 0.95, 1.0) * seam * (0.14 + 0.05 * sin(uTime * 3.0 + uv.y * 30.0));
   }
   col += uFlash * vec3(0.8, 1.0, 1.0);
   col = mix(col, uFadeColor, uFade);
