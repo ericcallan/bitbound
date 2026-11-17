@@ -76,7 +76,8 @@ export class LevelView {
   group = new THREE.Group();
   eras = new EraSwapRegistry();
   /** Generation-masked laser walls; GameView shows them only where they exist. */
-  lasers: { obj: THREE.Object3D; id: string }[] = [];
+  /** Generation-masked solids; GameView tells each one whether its collider exists right now. */
+  masked: { id: string; set: (on: boolean, t: number) => void }[] = [];
   occluders: Occluder[] = [];
   private anims: Animated[] = [];
   private clouds: THREE.Object3D[] = [];
@@ -140,24 +141,56 @@ export class LevelView {
     const cx = (min.x + max.x) / 2;
     const cy = (min.y + max.y) / 2;
     const cz = (min.z + max.z) / 2;
-    if (s.look === 'laser') {
-      // ARCHIVE's fence: horizontal beams between two posts. Beams are too fine to exist in 8-bit.
-      const beamMat = eraMaterial({ color: '#400008', emissive: '#ff3344', emissiveIntensity: 4, transparent: true, opacity: 0.8 });
-      const postMat = eraMaterial({ color: '#3d4152', roughness: 0.35, metalness: 0.8, pattern: PATTERN.metal });
+    if (s.look === 'beam') {
+      // An old light fence: threads of warm light strung between carved posts. Too fine for 8-bit.
+      const beamMat = eraMaterial({ color: '#5a3a10', emissive: '#ffcf6b', emissiveIntensity: 3, transparent: true, opacity: 0.85 });
+      const postMat = eraMaterial({ color: '#c9b99e', pattern: PATTERN.ruin, roughness: 0.85 });
+      const glyphMat = eraMaterial({ color: '#0f5e57', emissive: '#2fd6c3', emissiveIntensity: 1.6 });
       const beams = new THREE.Group();
-      for (let y = min.y + 0.3; y < max.y; y += 0.45) {
-        const b = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, d), beamMat);
+      for (let y = min.y + 0.35; y < max.y - 0.1; y += 0.42) {
+        const b = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, d - 0.3, 6), beamMat);
+        b.rotation.x = Math.PI / 2;
         b.position.set(cx, y, cz);
         beams.add(b);
       }
       this.group.add(beams);
-      for (const z of [min.z, max.z]) {
-        const post = new THREE.Mesh(new THREE.BoxGeometry(w + 0.1, h + 0.2, 0.18), postMat);
-        post.position.set(cx, cy + 0.1, z);
-        post.castShadow = true;
-        this.group.add(post);
+      for (const z of [min.z + 0.15, max.z - 0.15]) {
+        const post = new THREE.Mesh(new RoundedBoxGeometry(0.42, h + 0.3, 0.42, 2, 0.06), postMat);
+        post.position.set(cx, cy + 0.15, z);
+        post.castShadow = post.receiveShadow = true;
+        const band = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.1, 0.44), glyphMat);
+        band.position.set(cx, max.y - 0.3, z);
+        this.group.add(post, band);
       }
-      this.lasers.push({ obj: beams, id: s.id });
+      this.masked.push({
+        id: s.id,
+        set: (on, t) => {
+          beams.visible = on;
+          beamMat.emissiveIntensity = 2.6 + Math.sin(t * 3 + cx) * 0.5;
+        },
+      });
+      return;
+    }
+    if (s.look === 'relief') {
+      // A carved handhold: always visible as a worn carving, solid (and bright) only when Stylized.
+      const mat = eraMaterial({ color: '#d8c8a8', pattern: PATTERN.ruin, roughness: 0.9, transparent: true });
+      const ink = eraMaterial({ color: '#2b2d6e', emissive: '#8e5bd6', emissiveIntensity: 0.4, transparent: true });
+      const slab = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, 0.08), mat);
+      slab.position.set(cx, cy, cz);
+      slab.castShadow = slab.receiveShadow = true;
+      // carved spiral motif on the front face
+      const motif = new THREE.Mesh(new THREE.TorusGeometry(Math.min(w, h) * 0.32, 0.03, 6, 20), ink);
+      motif.position.set(cx, cy, max.z + 0.01);
+      this.group.add(slab, motif);
+      this.masked.push({
+        id: s.id,
+        set: (on, t) => {
+          mat.opacity = on ? 1 : 0.32 + Math.sin(t * 2 + cx) * 0.06;
+          mat.depthWrite = on;
+          ink.opacity = mat.opacity;
+          ink.emissiveIntensity = on ? 1.4 : 0.3;
+        },
+      });
       return;
     }
     const mk = (geo: THREE.BufferGeometry, mat: THREE.Material) => {
@@ -194,7 +227,8 @@ export class LevelView {
         mat = eraMaterial({ color: '#d8c8a8', pattern: PATTERN.ruin, roughness: 0.9 });
         break;
       case 'hedge':
-        mat = LOOK_MAT.hedge();
+        // A masked hedge needs its own material so it can fade on its own.
+        mat = s.genMask !== undefined ? eraMaterial({ color: '#2f8f45', pattern: PATTERN.hedge, roughness: 0.85, transparent: true }) : LOOK_MAT.hedge();
         break;
       case 'wood':
         mat = LOOK_MAT.wood();
@@ -220,6 +254,21 @@ export class LevelView {
       }
       this.group.add(grp);
       this.eras.add(grp, E(1, 5), true, new THREE.Vector3(cx, cy, cz));
+      if (s.genMask !== undefined) {
+        // Brambles over the path: in 16-bit they're the foreground layer, drawn see-through.
+        const mats = [mat, ...lm];
+        for (const m of mats) m.transparent = true;
+        this.masked.push({
+          id: s.id,
+          set: (on) => {
+            for (const m of mats) {
+              m.opacity = on ? 1 : 0.38;
+              m.depthWrite = on;
+            }
+          },
+        });
+        return;
+      }
       this.occluders.push({ box: { min: new THREE.Vector3(min.x, min.y, min.z), max: new THREE.Vector3(max.x, max.y + 1, max.z + 0.5) }, mats: [mat, ...lm], opacity: 1 });
       return;
     }

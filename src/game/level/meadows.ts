@@ -8,9 +8,11 @@ import type { Era } from '../era/EraSystem';
  *
  * Act 1 (x < 100): the Broken Passage — 3D reveals what 2D hides.
  * Act 2 (x ≥ 100): the Painted Stair — 2D makes solid what 3D shows is only paint.
+ * Chapter 6 (x ≥ 153): the Halo Path — the same strip climbs to the world wheel on Mount Halo,
+ * and each obstacle answers to a different generation's rules (Regress).
  */
 
-export type Look = 'grass' | 'dirt' | 'stone' | 'ruin' | 'hedge' | 'wood' | 'metal' | 'mural' | 'laser' | 'concrete' | 'glass' | 'neon' | 'graffiti' | 'invisible';
+export type Look = 'grass' | 'dirt' | 'stone' | 'ruin' | 'hedge' | 'wood' | 'metal' | 'mural' | 'beam' | 'relief' | 'invisible';
 
 export interface SolidDef {
   id: string;
@@ -124,8 +126,33 @@ const stairSolids: SolidDef[] = Array.from({ length: STAIR.count }, (_, i) => {
 
 const PLATEAU = 9;
 
+const gens = (...eras: Era[]): number => eras.reduce<number>((m, e) => m | (1 << e), 0);
+/** Thin things — light fences — were never drawn in 8-bit. */
+export const NOT_8BIT = gens(1, 2, 3, 4, 5);
+/** Foreground scenery: a separate layer in 16-bit, so you can pass behind it there. */
+export const NOT_16BIT = gens(0, 2, 3, 4, 5);
+/** Carved pictures only hold you up where painted things are real. */
+export const ONLY_STYLIZED = gens(3);
+
+// ---------------------------------------------------------------- Chapter 6: the Halo Path
+const HALO = 10.5;
+const SEAL = 12.5;
+/** Carved handholds across the cliff gap (solid only in a Stylized bubble). */
+export const RELIEFS = [
+  { x0: 186.2, x1: 188.6, top: 11.1 },
+  { x0: 190.8, x1: 193.2, top: 11.7 },
+  { x0: 195.4, x1: 197.8, top: 12.3 },
+];
+const reliefSolids: SolidDef[] = RELIEFS.map((r, i) => ({
+  id: `relief${i}`,
+  kind: 'platform',
+  look: 'relief',
+  box: makeBox(r.x0, r.top - 0.35, -1.0, r.x1, r.top, 1.0),
+  genMask: ONLY_STYLIZED,
+}));
+
 export const LEVEL = {
-  bounds: { minX: -8, maxX: 153 },
+  bounds: { minX: -8, maxX: 254 },
 
   solids: [
     // Scene 1 — A Pixel Awakens
@@ -163,13 +190,27 @@ export const LEVEL = {
     ...stairSolids,
     // The plateau — Modern HD platforming toward the Frame Gate
     ground('p1', 112, 121, PLATEAU),
-    // ARCHIVE's laser fence: it only exists from 16-bit up. An 8-bit Regress bubble walks through it.
-    solid('fence', 'wall', 'laser', 117.4, PLATEAU, -3, 117.8, PLATEAU + 4.5, 2.5, { genMask: 0b111110 }),
+    // An old light fence: thin threads of light only exist from 16-bit up, so an 8-bit bubble walks through.
+    solid('fence', 'wall', 'beam', 117.4, PLATEAU, -3, 117.8, PLATEAU + 4.5, 2.5, { genMask: NOT_8BIT }),
     ground('p2', 126, 133, PLATEAU),
-    ground('p3', 135.6, 153, PLATEAU),
+    ground('p3', 135.6, 166, PLATEAU),
+    // Chapter 6 — the Halo Path
+    solid('beam1', 'wall', 'beam', 160.0, PLATEAU, -3, 160.4, PLATEAU + 4.5, 2.5, { genMask: NOT_8BIT }),
+    ground('p5', 166, 184, HALO),
+    // Overgrown brambles: in 16-bit they're the foreground layer, and you walk behind them.
+    solid('thicket', 'wall', 'hedge', 175, HALO, -3, 176.6, HALO + 4.5, 2.5, { genMask: NOT_16BIT }),
+    ...reliefSolids,
+    solid('cliff', 'wall', 'ruin', 184, 0, -3.4, 198, 17, -2.6),
+    ground('p6', 198, 214, SEAL),
+    solid('sealDoor', 'wall', 'ruin', 212.6, SEAL, -3, 213.4, SEAL + 5, 2.5),
+    // The broken aqueduct: two halves at different depths that only line up from the side.
+    solid('aqA', 'platform', 'stone', 214, SEAL - 1, -6.2, 220, SEAL, -4.6),
+    solid('aqB', 'platform', 'stone', 220, SEAL - 1, 4.6, 226, SEAL, 6.2),
+    solid('aqLane', 'platform', 'invisible', 214, SEAL - 0.3, -0.45, 226, SEAL, 0.45, { only2d: true }),
+    ground('p7', 226, 254, SEAL),
     // World edges
     solid('edgeL', 'invisible', 'invisible', -9, BOTTOM, -30, -8, 40, 30),
-    solid('edgeR', 'invisible', 'invisible', 153, BOTTOM, -30, 154, 40, 30),
+    solid('edgeR', 'invisible', 'invisible', 254, BOTTOM, -30, 255, 40, 30),
   ] as SolidDef[],
 
   movers: [
@@ -198,6 +239,10 @@ export const LEVEL = {
     [88, 0.6], [92, 0.6], [96, 0.6],
     [stairStep(1).x0 + 0.55, stairStep(1).top + 0.6], [stairStep(6).x0 + 0.55, stairStep(6).top + 0.6],
     [115, 9.6], [117, 9.6], [119, 9.6], [123.5, 11.2], [129.5, 11.2], [134.3, 10.6], [138.5, 9.6], [144, 9.6],
+    // Chapter 6
+    [155, 9.6], [158, 9.6], [162, 9.6], [168, 11.1], [171, 11.1], [178, 11.1], [181, 11.1],
+    [RELIEFS[1].x0 + 1.2, RELIEFS[1].top + 0.6], [RELIEFS[2].x0 + 1.2, RELIEFS[2].top + 0.6],
+    [201, 13.1], [204, 13.1], [216, 13.4], [220, 13.4], [224, 13.4], [230, 13.1], [236, 13.1],
   ]
     .map(([x, y], i) => ({ id: `b${i}`, pos: v3(x, y, 0) }))
     .concat([
@@ -211,6 +256,9 @@ export const LEVEL = {
       // Lamp alcove (3D only)
       { id: 'c5', pos: v3(101.2, 0.6, 7.6) },
       { id: 'c6', pos: v3(110.8, 0.6, 7.6) },
+      // Halo Path secrets: the end of each broken aqueduct half (3D only)
+      { id: 'c7', pos: v3(215, SEAL + 0.6, -5.4) },
+      { id: 'c8', pos: v3(225, SEAL + 0.6, 5.4) },
     ]),
 
   checkpoints: [
@@ -221,6 +269,11 @@ export const LEVEL = {
     { id: 'stair', pos: v3(98, 0, 0) },
     { id: 'plateau', pos: v3(114, PLATEAU, 0) },
     { id: 'gate', pos: v3(143.5, PLATEAU, 0) },
+    { id: 'halo', pos: v3(156, PLATEAU, 0) },
+    { id: 'thicket', pos: v3(170, HALO, 0) },
+    { id: 'relief', pos: v3(181.5, HALO, 0) },
+    { id: 'seal', pos: v3(200, SEAL, 0) },
+    { id: 'summit', pos: v3(229, SEAL, 0) },
   ] as CheckpointDef[],
 
   spawn: v3(2, 0, 0),
@@ -247,8 +300,21 @@ export const LEVEL = {
   deadPixel: v3(38, 16, -30),
   gate: v3(142, PLATEAU, 0),
   gateX: 141.6,
-  finaleX: 147.5,
   plateauY: PLATEAU,
+
+  // Chapter 6
+  haloX: 148,
+  beamX: 160.2,
+  thicketX: 175.8,
+  reliefGap: { x0: 184, x1: 198 },
+  /** The glyph stone sleeps inside a 16-bit field; full fidelity makes it readable. */
+  glyphStone: v3(208, SEAL, -2.2),
+  sleepField: { min: v3(203.5, SEAL - 1, -4), max: v3(212.4, SEAL + 8, 3), era: 1 as Era },
+  aqueduct: { x0: 214, x1: 226, y: SEAL },
+  wheel: v3(246, SEAL, -1.6),
+  summitX: 242.5,
+  haloY: HALO,
+  sealY: SEAL,
 
   /** Water at the bottom of each pit. */
   pits: [
@@ -257,6 +323,8 @@ export const LEVEL = {
     { x0: 62, x1: 72, y: -5.5 },
     { x0: 121, x1: 126, y: -5.5 },
     { x0: 133, x1: 135.6, y: -5.5 },
+    { x0: 184, x1: 198, y: -5.5 },
+    { x0: 214, x1: 226, y: -5.5 },
   ],
 
   /** Where generation rifts drift once the world reaches Beyond. */
@@ -271,6 +339,9 @@ export const LEVEL = {
     { x: 118, y: 10.4, z: -0.8, r: 2.6, era: 0 as Era },
     { x: 131, y: 10.6, z: -1.0, r: 2.4, era: 3 as Era },
     { x: 146, y: 10.4, z: -0.6, r: 3.0, era: 1 as Era },
+    { x: 168, y: 11.6, z: -1.2, r: 2.6, era: 2 as Era },
+    { x: 202, y: 13.6, z: -1.4, r: 2.4, era: 3 as Era },
+    { x: 236, y: 13.8, z: -1.0, r: 2.8, era: 0 as Era },
   ],
 
   decor: [
@@ -332,10 +403,24 @@ export const LEVEL = {
     { type: 'statue', pos: v3(57.0, 0, -10.9), seed: 2, scale: 1.25 },
     { type: 'gear', pos: v3(55.8, 2.3, -11.45), scale: 1.2, seed: 1 },
     { type: 'gear', pos: v3(58.6, 2.0, -11.45), scale: 0.8, seed: 2 },
-    // Beyond the Frame overlook
+    // Beyond the Frame Gate: the Halo Path
     { type: 'crystal', pos: v3(145.5, PLATEAU, -2.0), scale: 1.2, seed: 1 },
     { type: 'crystal', pos: v3(151, PLATEAU, -1.6), scale: 1.6, seed: 2 },
-    { type: 'statue', pos: v3(152.2, PLATEAU, -2.6), seed: 3, scale: 1.6 },
+    { type: 'tree', pos: v3(155, PLATEAU, -2.4), scale: 1.2, seed: 14 },
+    { type: 'flowers', pos: v3(163, PLATEAU, 1.2), seed: 12 },
+    { type: 'tree', pos: v3(169, HALO, -2.5), scale: 1.35, seed: 15 },
+    { type: 'bloomer', pos: v3(172.5, HALO, -2.0), seed: 9, scale: 1.2 },
+    { type: 'rock', pos: v3(180, HALO, -2.2), scale: 1.1, seed: 5 },
+    { type: 'mushroom', pos: v3(182.5, HALO, 1.4), seed: 5 },
+    { type: 'pillar', pos: v3(199.5, SEAL, -2.2), scale: 1.2, seed: 5 },
+    { type: 'flowers', pos: v3(205, SEAL, 1.2), seed: 13 },
+    { type: 'pillar', pos: v3(211.6, SEAL, -2.2), scale: 1.3, seed: 6 },
+    { type: 'tree', pos: v3(229, SEAL, -2.4), scale: 1.25, seed: 16 },
+    { type: 'flowers', pos: v3(233, SEAL, 1.2), seed: 14 },
+    { type: 'bloomer', pos: v3(238, SEAL, -2.0), seed: 10, scale: 1.3 },
+    { type: 'arch', pos: v3(241.5, SEAL, -2.4), seed: 2 },
+    { type: 'statue', pos: v3(251, SEAL, -2.6), seed: 3, scale: 1.6 },
+    { type: 'crystal', pos: v3(249, SEAL, -1.6), scale: 1.4, seed: 3 },
   ] as DecorDef[],
 };
 

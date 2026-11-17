@@ -46,10 +46,6 @@ export interface PostFrame {
   fieldMin: THREE.Vector3[];
   fieldMax: THREE.Vector3[];
   fieldEra: number[];
-  /** City at night: dark fog, flat night sky in 8-bit, no sun shafts. */
-  night: boolean;
-  /** Rain on the lens (0..1). */
-  rain: number;
 }
 
 const rt = (w: number, h: number, type: THREE.TextureDataType = THREE.HalfFloatType) => {
@@ -178,9 +174,7 @@ export class PostPipeline {
       uFieldMin: { value: Array.from({ length: 4 }, () => new THREE.Vector3(0, -999, 0)) },
       uFieldMax: { value: Array.from({ length: 4 }, () => new THREE.Vector3(0, -999, 0)) },
       uFieldEra: { value: [0, 0, 0, 0] },
-      uNight: { value: 0 },
-      uRain: { value: 0 },
-      uCrack: { value: 0 },
+
     });
     this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.comp);
     this.quad.frustumCulled = false;
@@ -294,7 +288,7 @@ export class PostPipeline {
     }
     // --- Light shafts (Beyond)
     let doRays = false;
-    if (beyond && tier.rays && !f.night) {
+    if (beyond && tier.rays) {
       const sp = camera.position.clone().addScaledVector(f.sunDir, 400).project(camera);
       const inFront = new THREE.Vector3().copy(f.sunDir).dot(camera.getWorldDirection(new THREE.Vector3())) > -0.1;
       if (inFront) {
@@ -339,8 +333,7 @@ export class PostPipeline {
       (u.uFieldMax.value as THREE.Vector3[])[i].copy(f.fieldMax[i]);
       (u.uFieldEra.value as number[])[i] = f.fieldEra[i];
     }
-    u.uNight.value = f.night ? 1 : 0;
-    u.uRain.value = f.rain;
+
     this.pass(gl, this.comp, null);
   }
 

@@ -3,7 +3,7 @@ import { Game } from '../game/sim/Game';
 import { ScriptedInput, makeGame, run, runUntil } from './helpers';
 import { Bot } from './bot';
 import { STEP, SHIFT_DURATION } from '../game/sim/constants';
-import { newSave, migrateV1, type SaveData } from '../game/save/save';
+import { newSave, migrateV1, migrateV3, type SaveData } from '../game/save/save';
 import { overlaps } from '../game/collision/World';
 import type { Action } from '../game/sim/Input';
 import { rng } from '../game/math';
@@ -42,19 +42,17 @@ const CHECKPOINT_SAVES: [string, Partial<SaveData>, string][] = [
   ],
 ];
 
-/** City checkpoints: the save, and the bot goal to resume from. */
-const CITY = {
+const HALO = {
   awakened: true, shardTaken: true, era: 5 as const, shiftUnlocked: true, firstShiftDone: true, bridgeRepaired: true,
-  beaconLit: true, stairRepaired: true, gatePassed: true, regress: true, vergeEntered: true, zone: 'verge' as const,
+  beaconLit: true, stairRepaired: true, gatePassed: true, regress: true,
 };
-const CITY_SAVES: [string, Partial<SaveData>, string][] = [
-  ['roof', { ...CITY, checkpoint: 'roof' }, 'emitter'],
-  ['street', { ...CITY, checkpoint: 'street', emitter: true, defeated: ['c1', 'c2'] }, 'market'],
-  ['shutter', { ...CITY, checkpoint: 'shutter', emitter: true, shutterOpen: true, defeated: ['c1', 'c2', 'c3', 'c4', 'e1', 'e2', 't1', 't2'] }, 'shutterFight'],
-  ['climb', { ...CITY, checkpoint: 'climb', emitter: true, shutterOpen: true, defeated: ['c1', 'c2', 'c3', 'c4', 'e1', 'e2', 't1', 't2', 'e3', 'c5'] }, 'toLane'],
-  ['bridge', { ...CITY, checkpoint: 'bridge', emitter: true, shutterOpen: true, defeated: ['c1', 'c2', 'c3', 'c4', 'e1', 'e2', 't1', 't2', 'e3', 'c5', 'c6', 'c7'] }, 'plaza'],
-  ['plaza', { ...CITY, checkpoint: 'plaza', emitter: true, shutterOpen: true, defeated: ['c1', 'c2', 'c3', 'c4', 'e1', 'e2', 't1', 't2', 'e3', 'c5', 'c6', 'c7'] }, 'plaza'],
-  ['door', { ...CITY, checkpoint: 'door', emitter: true, shutterOpen: true, codeRead: true, defeated: ['c1', 'c2', 'c3', 'c4', 'e1', 'e2', 't1', 't2', 'e3', 'c5', 'c6', 'c7', 'e4', 'e5', 'e6', 'c8', 's1'] }, 'door'],
+/** Halo Path checkpoints (Chapter 6): all resume in the bot's 'finish' phase. */
+const HALO_SAVES: [string, Partial<SaveData>, string][] = [
+  ['halo', { ...HALO, checkpoint: 'halo' }, 'finish'],
+  ['thicket', { ...HALO, checkpoint: 'thicket' }, 'finish'],
+  ['relief', { ...HALO, checkpoint: 'relief' }, 'finish'],
+  ['seal', { ...HALO, checkpoint: 'seal' }, 'finish'],
+  ['summit', { ...HALO, checkpoint: 'summit', glyphsRead: true }, 'finish'],
 ];
 
 /** Pip must never end a step inside a solid (ignoring the enemies, which aren't solids). */
@@ -69,10 +67,7 @@ function assertInvariants(g: Game, where: string) {
     if (overlaps(box, c, 0.02)) throw new Error(`${where}: Pip inside ${c.id} at ${JSON.stringify(p.pos)} mode=${g.shift.mode}`);
   }
   if (p.pos.y < -30) throw new Error(`${where}: fell forever at ${JSON.stringify(p.pos)}`);
-  if (g.cells > g.maxCells) throw new Error(`${where}: more cells than the form allows`);
-  for (const h of g.combat.hostiles) {
-    if (!Number.isFinite(h.pos.x + h.pos.y + h.pos.z)) throw new Error(`${where}: hostile ${h.def.id} non-finite`);
-  }
+  if (g.cells > g.maxCells) throw new Error(`${where}: more cells than allowed`);
   const cube = g.puzzle.cubeCenter;
   const ch = g.level.chamber;
   if (cube.x < ch.min.x - 0.01 || cube.x > ch.max.x + 0.01 || cube.z < ch.min.z - 0.01 || cube.z > ch.max.z + 0.01) {
@@ -86,8 +81,8 @@ function assertInvariants(g: Game, where: string) {
 }
 
 describe('QA: resume matrix', () => {
-  for (const [id, save, phase] of CHECKPOINT_SAVES) {
-    it(`continues from the meadow "${id}" checkpoint and finishes the game`, () => {
+  for (const [id, save, phase] of [...CHECKPOINT_SAVES, ...HALO_SAVES]) {
+    it(`continues from the "${id}" checkpoint and finishes the game`, () => {
       const input = new ScriptedInput();
       const game = new Game(input, { ...newSave(), ...save });
       expect(game.checkpoint).toBe(id);
@@ -96,28 +91,13 @@ describe('QA: resume matrix', () => {
       const ok = runUntil(game, () => bot.phase === 'done', 900, (g) => bot.tick(g, STEP));
       expect(ok, `${bot.log.join('\n')}\nend ${JSON.stringify(game.player.pos)}`).toBe(true);
       expect(game.save.finished).toBe(true);
-      expect(game.epilogue).toBe(true);
-    });
-  }
-  for (const [id, save, goal] of CITY_SAVES) {
-    it(`continues from the city "${id}" checkpoint and finishes the game`, () => {
-      const input = new ScriptedInput();
-      const game = new Game(input, { ...newSave(), ...save });
-      expect(game.zone).toBe('verge');
-      expect(game.checkpoint).toBe(id);
-      expect(game.player.form).toBe('adult');
-      const bot = new Bot(input);
-      bot.startVergeAt(goal, game);
-      const ok = runUntil(game, () => bot.phase === 'done', 600, (g) => bot.tick(g, STEP));
-      expect(ok, `${bot.log.join('\n')}\nend ${JSON.stringify(game.player.pos)} cells=${game.cells}`).toBe(true);
-      expect(game.save.finished).toBe(true);
     });
   }
 });
 
 describe('QA: fuzz', () => {
-  const ACTIONS: Action[] = ['jump', 'shift', 'era1', 'era2', 'era3', 'era4', 'era5', 'era6', 'fire', 'aim', 'dash', 'regress', 'altFire'];
-  const STARTS = [...CHECKPOINT_SAVES.map((c) => c[1]), ...CITY_SAVES.map((c) => c[1])];
+  const ACTIONS: Action[] = ['jump', 'shift', 'era1', 'era2', 'era3', 'era4', 'era5', 'era6', 'regress'];
+  const STARTS = [...CHECKPOINT_SAVES.map((c) => c[1]), ...HALO_SAVES.map((c) => c[1])];
   for (const seed of Array.from({ length: 16 }, (_, i) => i + 1)) {
     it(`random input stays within invariants and the game stays completable (seed ${seed})`, () => {
       const r = rng(seed * 7919);
@@ -136,11 +116,7 @@ describe('QA: fuzz', () => {
           if (r() < 0.6) input.press('jump');
           if (r() < 0.25) input.press('shift');
           if (r() < 0.05) input.press(ACTIONS[2 + Math.floor(r() * 6)]);
-          if (r() < 0.4) input.press('fire');
-          if (r() < 0.2) input.press('aim');
-          if (r() < 0.15) input.press('dash');
           if (r() < 0.15) input.press('regress');
-          if (r() < 0.1) input.press('altFire');
           input.orbitYaw = (r() - 0.5) * 0.4;
           input.orbitPitch = (r() - 0.5) * 0.2;
         }
@@ -153,14 +129,14 @@ describe('QA: fuzz', () => {
       for (const a of ACTIONS) input.release(a);
       input.x = input.y = 0;
       runUntil(game, (g) => !g.cine && !g.shift.busy, 30);
-      if (game.zone === 'meadows' && game.shift.mode === '3d') {
+      if (game.shift.mode === '3d') {
         game.player.teleport(game.level.checkpoints.find((c) => c.id === game.checkpoint)!.pos);
         run(game, 0.3);
         game.requestShift();
         run(game, SHIFT_DURATION + 0.2);
       }
-      // The meadow can always be flattened back to 2D; the city is native 3D.
-      expect(game.shift.mode).toBe(game.zone === 'meadows' ? '2d' : '3d');
+      // The world can always be flattened back to 2D from a checkpoint.
+      expect(game.shift.mode).toBe('2d');
     });
   }
 });
@@ -288,17 +264,28 @@ describe('QA: edge cases', () => {
     expect(game.time).toBe(t);
   });
 
-  it('v1 saves migrate through to the v3 timeline', () => {
+  it('v1 saves migrate through to the v4 timeline', () => {
     const v1 = { version: 1, checkpoint: 'beacon', era: 2, awakened: true, shardTaken: true, shiftUnlocked: true, firstShiftDone: true, bridgeRepaired: true, bits: ['b0'], finished: true, eraKeys: true, visited: [] };
     const m = migrateV1(v1);
-    expect(m.version).toBe(3);
+    expect(m.version).toBe(4);
     expect(m.era).toBe(4);
     expect(m.beaconLit).toBe(true);
     expect(m.regress).toBe(true);
-    expect(m.zone).toBe('meadows');
     expect(m.finished).toBe(false);
     const g = new Game(new ScriptedInput(), m);
     expect(g.checkpoint).toBe('beacon');
     expect(g.puzzle.state).toBe('repaired');
+  });
+
+  it('v3 saves from the old city resume at the Frame Gate with the Halo Path ahead', () => {
+    const v3 = { ...newSave(), version: 3, zone: 'verge', vergeEntered: true, checkpoint: 'plaza', era: 5, gatePassed: true, emitter: true, finished: true, eraKeys: true, visited: ['field', 'roof', 'market'] } as unknown as Record<string, unknown>;
+    const m = migrateV3(v3);
+    expect(m.version).toBe(4);
+    expect(m.checkpoint).toBe('gate');
+    expect(m.finished).toBe(false);
+    expect(m.visited).toEqual(['field']);
+    expect('emitter' in m).toBe(false);
+    const g = new Game(new ScriptedInput(), m);
+    expect(g.checkpoint).toBe('gate');
   });
 });

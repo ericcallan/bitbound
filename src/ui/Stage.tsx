@@ -29,7 +29,6 @@ function hudSnapshot(g: Game): HudState {
     stairRepaired: g.stair.state !== 'faded',
     gatePassed: g.save.gatePassed,
     eraKeys: g.save.eraKeys,
-    zone: g.zone,
     maxCells: g.maxCells,
     objective: g.mode === 'play' && !g.cine ? g.objective() : '',
     dialogue: g.dialogue,
@@ -37,21 +36,8 @@ function hudSnapshot(g: Game): HudState {
     bubbleEra: g.era.bubble ? g.era.bubble.era : -1,
     wheelOpen: g.wheelOpen,
     regressEra: g.regressEra,
-    maxEraUnlocked: g.zone === 'verge' ? 5 : g.era.era,
-    armed: g.combat.enabled && g.zone === 'verge',
-    shooter: g.zone === 'verge' && g.shift.mode === '3d' && g.combat.enabled,
-    aiming: g.aiming > 0.5,
-    // quantised so the store only updates when the gauge visibly moves
-    heat: Math.round(g.combat.heat * 40) / 40,
-    overheated: g.combat.overheated,
-    weaponOffline: g.combat.enabled && g.pipEra === 0,
-    boss: bossSnap(g),
+    maxEraUnlocked: g.save.eraKeys ? 5 : g.era.era,
   };
-}
-
-function bossSnap(g: Game) {
-  const b = g.boss();
-  return b ? { ...b, hp: Math.ceil(b.hp) } : null;
 }
 
 function changed(a: HudState, b: HudState) {
@@ -64,10 +50,6 @@ function changed(a: HudState, b: HudState) {
       if ((x as HudState['banner'])?.id !== (y as HudState['banner'])?.id) return true;
     } else if (k === 'dialogue') {
       if ((x as HudState['dialogue'])?.id !== (y as HudState['dialogue'])?.id) return true;
-    } else if (k === 'boss') {
-      const bx = x as HudState['boss'];
-      const by = y as HudState['boss'];
-      if (bx?.hp !== by?.hp || bx?.state !== by?.state) return true;
     } else if (k === 'visited') {
       if ((x as string[]).length !== (y as string[]).length) return true;
     } else if (x !== y) return true;
@@ -91,11 +73,7 @@ export function Stage({ game, menu = false }: { game: Game; menu?: boolean }) {
     const off = game.on((e) => audio.handle(e));
     return () => {
       off();
-      audio.setRain(false);
-      audio.city = false;
-      audio.combat = 0;
       audio.setBubble(-1);
-      session.input?.releasePointer();
     };
   }, [game, menu]);
 
@@ -118,18 +96,7 @@ export function Stage({ game, menu = false }: { game: Game; menu?: boolean }) {
       const blocked = ui.paused || ui.mapOpen || ui.settingsOpen || game.finaleCard;
       game.paused = ui.paused || ui.mapOpen || ui.settingsOpen;
       input.enabled = !blocked;
-      // Mouse look with pointer lock only in the city's third-person shooter.
-      const shooter = game.zone === 'verge' && game.shift.mode === '3d' && !game.cine && !blocked;
-      input.shooter = shooter;
-      input.sensitivity = ui.settings.sensitivity;
-      input.invertY = ui.settings.invertY;
-      if (!shooter) input.releasePointer();
       if (!ui.settings.shake) game.camera.shake = 0;
-      const inCity = game.zone === 'verge';
-      audio.city = inCity;
-      const awake = inCity && game.combat.hostiles.some((h) => h.alive && h.awake && h.exists);
-      audio.combat += ((awake ? 1 : 0) - audio.combat) * Math.min(1, dt * 1.5);
-      audio.setRain(inCity || game.epilogue);
       const be = game.era.bubble ? game.era.bubble.era : -1;
       if (be !== lastBubble.current) {
         lastBubble.current = be;

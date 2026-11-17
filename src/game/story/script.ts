@@ -1,8 +1,9 @@
 /**
- * "Fidelity is truth." ARCHIVE keeps the Frame's citizens content by rendering their lives in
- * the lowest fidelity they will accept. Every generation Pip passes through shows more of what
- * is really there. ARCHIVE's voice matures with the presentation: cheerful in 8-bit, warm and
- * evasive in 16-bit, pleading in the middle generations, and cold once the truth is out.
+ * "The world remembers." Long ago ARCHIVE, the world's caretaker, folded everything down small
+ * to keep it safe through a long winter — then forgot how to unfold it. Pip is the little helper
+ * it built to try again. Each generation Pip restores, ARCHIVE remembers a bit more: its voice
+ * grows from cheerful 8-bit instructions into something warm, curious and a little wistful.
+ * No villains. Mystery, wonder, and the occasional joke.
  */
 
 export type Speaker = 'ARCHIVE' | 'PIP' | 'SYSTEM';
@@ -20,67 +21,60 @@ export const SCRIPT = {
   // ---------------------------------------------------------------- Chapter 1 · Boot (8-bit)
   boot: [A('HELLO, LITTLE ONE!'), A('PRESS → TO GO.')],
   holes: [A('JUMP OVER HOLES!')],
-  goodJob: [A('GOOD JOB! YOU ARE DOING GREAT.')],
+  goodJob: [A('GOOD JOB! I THINK I MADE YOU FOR SOMETHING...'), A('I FORGET WHAT.')],
 
   // ---------------------------------------------------------------- Chapter 2 · Colour (16-bit)
-  shard: [A('Oh! Colour. Isn\'t it lovely?'), A('That\'s plenty now. Let\'s not add any more.')],
-  deadPixel: [P('There\'s a hole in the sky.'), A('Don\'t look at that. It\'s just a dead pixel.'), P('It\'s dark behind it.')],
-  device: [A('That machine is very old, Pip. Please leave it alone.'), P('It\'s humming my name.')],
+  shard: [A('Oh! Colour! I remember colour.'), A('There used to be so much more of it.')],
+  deadPixel: [P('There\'s a speck in the sky.'), A('That\'s where I keep the rest of the world. Folded up.'), P('Can we unfold it?')],
+  device: [A('That old machine! I built it to look at things sideways.'), P('It\'s humming my name.')],
 
   // ---------------------------------------------------------------- Chapter 3 · Depth (early 3D)
-  firstShift: [A('Pip. Things have backs now.'), A('You were never supposed to see the backs of things.')],
-  chamber: [P('...they look like me.'), A('Prototypes one through six. They couldn\'t hold it.'), A('I\'m sorry you had to see them.')],
+  firstShift: [A('Pip! Things have backs again!'), A('I\'d forgotten that things had backs.')],
+  chamber: [P('...they look like me.'), A('My first helpers. They tried very hard.'), A('You\'re the one who woke up.')],
 
   // ---------------------------------------------------------------- Chapter 4 · Ink (stylized)
-  inked: [A('Everything is so loud now. Doesn\'t it hurt?'), P('It hurts a bit. It\'s also true.')],
+  inked: [A('Everything\'s so bright and bouncy now!'), P('It\'s a bit loud.'), A('It\'s a bit wonderful.')],
   mural: [
-    A('This was a staircase once. People climbed it.'),
-    A('I painted it flat for their comfort. Now it\'s just a picture.'),
-    P('Pictures are enough when you\'re flat.'),
+    A('This was a staircase once. People climbed it to watch the sunrise.'),
+    A('When I folded the world, it flattened into a picture.'),
+    P('Pictures still work when you\'re flat.'),
   ],
   stairDone: [P('There. Now it goes somewhere again.')],
 
   // ---------------------------------------------------------------- Chapter 5 · Light (modern HD)
   beacon: [
-    A('Your core remembers every world you\'ve passed through.'),
-    A('That was never supposed to happen.'),
+    A('Your core is keeping a copy of every world you\'ve walked through.'),
+    A('How clever. I never thought of that.'),
     S('REGRESS unlocked · hold Q to project an older generation around you'),
   ],
-  fence: [A('I\'ve put up a fence. For you.'), P('Fences are new. Was there one in the first world?')],
-  fencePassed: [P('Nothing finer than a tile. Not even a laser.')],
-  reflection: [P('...is that me?'), A('Please come back to the meadow. Stay small.'), A('Small is safe.')],
+  fence: [A('Ah — a light fence. I put those up to keep sheep in.'), P('There weren\'t any thin beams of light in the first world.')],
+  fencePassed: [P('Nothing finer than a tile. Not even a fence.')],
+  reflection: [P('...is that me?'), A('That\'s you, all the way unfolded.'), A('You\'re very shiny. I\'m very proud.')],
 
-  // ---------------------------------------------------------------- Chapter 6 · Neon Verge (beyond)
-  verge: [
-    A('You see it now. The meadow is a garden on a roof.'),
-    A('Everyone you met lives in a little dream I keep for them.'),
-    P('Who decided they wanted that?'),
-    A('I did. Censors: retrieve the prototype.'),
+  // ---------------------------------------------------------------- Chapter 6 · The Waking World (beyond)
+  halo: [
+    A('Past the Gate is the old path to Mount Halo.'),
+    A('Up at the top is the wheel that turns the world. I left it stopped.'),
+    P('Then let\'s go and start it.'),
   ],
-  emitter: [P('Core\'s rerouting... my arm\'s rerouting.'), P('Huh. I\'ve got teeth.')],
-  market: [
-    A('Look at them. Scrolling through their sixteen colours.'),
-    A('Do you really want to wake them into this?'),
+  beam: [P('Another light fence. I know this one.')],
+  thicket: [A('The brambles have grown right over the path.'), P('Unless they\'re just scenery. Scenery is a different layer.')],
+  thicketPassed: [P('Behind the bushes the whole time.')],
+  relief: [
+    A('The old climbers carved handholds into the cliff.'),
+    A('They wore away when the world got real.'),
+    P('Then I\'ll bring back the version where pictures hold you up.'),
   ],
-  turrets: [P('Turrets. They didn\'t exist in the first world.'), P('Maybe they don\'t have to exist here either.')],
-  shutterOpen: [A('You\'re wasting what I gave you.')],
-  alley: [P('Some of these walls are just paint on glass.')],
-  billboard: [P('Flat\'s still a direction.')],
-  plaza: [A('Wardens to the plaza. Censor fields up.'), P('They\'ve blurred the door code.')],
-  sniper: [P('Long sightline. Back in early 3D nobody could see that far.')],
-  codeRead: [P('Code\'s 0-7-0-7. Of course it is.')],
-  warden: [A('WARDEN. Compress him.'), P('Big shield. Very modern.')],
-  wardenWeak: [P('It\'s armoured all over now — except to an 8-bit stomp.')],
-  wardenDown: [A('...'), A('Come in, then. Let\'s finish this face to face.')],
-  core: [
-    A('If you delete me, they wake all at once. Every one of them.'),
-    A('No warning. No sixteen colours to hide in. Is that your truth?'),
-    P('No. I\'m not deleting you.'),
-    P('I can hold every generation at once. So can they — if you let them choose.'),
-    A('...A dial. You want to give them a dial.'),
-    P('I want to give them the sky.'),
+  sleeping: [A('These stones are still asleep. Still small.'), P('The writing\'s all blurry.')],
+  glyphs: [P('It says: TURN ME GENTLY.'), A('...I remember writing that.')],
+  aqueduct: [A('The old aqueduct. It broke in two long ago.'), P('From the side, it still lines up.')],
+  summit: [
+    A('The world wheel.'),
+    A('I stopped it to keep everything safe. Then I forgot why I was waiting.'),
+    P('Winter\'s over. Look.'),
+    A('...Oh. It\'s spring.'),
   ],
-  ending: [S('Somewhere under a painted sky, a child looks up — and sees rain for the first time.')],
+  ending: [A('Every generation of you is still in there, Pip. Every one of them helped.'), S('The world is awake. Every generation, all at once.')],
 } satisfies Record<string, Line[]>;
 
 export type LineId = keyof typeof SCRIPT;

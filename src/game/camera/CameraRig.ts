@@ -24,16 +24,9 @@ export interface CameraContext {
   bounds: { minX: number; maxX: number };
   /** Fraction along target->camera where geometry blocks the view (3D camera clipping). */
   raycast?: (from: V3, to: V3) => number | null;
-  /** Adult form: over-the-shoulder shooter camera (aim 0..1 zooms in). */
-  shoulder?: { aim: number } | null;
-  /** Size multiplier for 2D framing (the adult form is twice as tall). */
-  scale?: number;
   /** Depth of the lane the 2D camera frames. */
   laneZ?: number;
 }
-
-/** Over-the-shoulder shooter camera for the adult form. */
-const SHOULDER = { dist: 3.5, aimDist: 1.9, fov: 62, aimFov: 44, height: 1.62, side: 0.62, aimSide: 0.78 };
 
 /**
  * One perspective camera for both modes. The shift is a continuous dolly-zoom + 90° orbit:
@@ -56,12 +49,7 @@ export class CameraRig {
   orbitPitch = 0;
   private sinceOrbit = 99;
   private clipDist = 100;
-  /** Shooter camera: absolute yaw/pitch driven by mouse look. */
-  lookYaw = -Math.PI / 2;
-  lookPitch = 0.12;
-  /** Current camera pitch (for aiming rays). */
   pitch = 0;
-  recoil = 0;
 
   override: CamPose | null = null;
   overrideW = 0;
@@ -72,7 +60,7 @@ export class CameraRig {
 
   snap(ctx: CameraContext) {
     this.x2 = clamp(ctx.pip.x, ctx.bounds.minX + 7, ctx.bounds.maxX - 7);
-    this.y2 = ctx.pip.y + CAM2D.height * (ctx.scale ?? 1);
+    this.y2 = ctx.pip.y + CAM2D.height;
     this.t3 = v3(ctx.pip.x, ctx.pip.y + CAM3D.height, ctx.pip.z);
     this.look = 0;
     this.step(1 / 120, ctx);
@@ -94,7 +82,7 @@ export class CameraRig {
     this.prevFov = this.fov;
     const { pip, vel, blend } = ctx;
 
-    const sc = ctx.scale ?? 1;
+    const sc = 1;
     // --- 2D follow: look-ahead in the run direction, vertical dead-zone while airborne.
     this.look = damp(this.look, clamp(vel.x * 0.32, -2.3, 2.3) * sc, 2.6, dt);
     this.x2 = damp(this.x2, pip.x + this.look, 7, dt);
@@ -125,22 +113,12 @@ export class CameraRig {
       }
     }
 
-    // --- Shooter look (adult form): mouse drives an absolute yaw/pitch.
-    const sh = ctx.shoulder ?? null;
-    if (sh) {
-      if (blend > 0.98) {
-        this.lookYaw = wrapAngle(this.lookYaw + ctx.orbit.yaw);
-        this.lookPitch = clamp(this.lookPitch + ctx.orbit.pitch, -0.55, 0.95);
-      }
-      this.recoil = Math.max(0, this.recoil - dt * 6);
-    }
-
     // --- Blend 2D <-> 3D
     const s = blend;
-    const yaw3 = sh ? this.lookYaw : wrapAngle(CAM3D.behindYaw + this.orbitYaw);
-    const pitch3 = sh ? this.lookPitch + this.recoil * 0.05 : CAM3D.pitch + this.orbitPitch;
-    const fov3 = sh ? lerp(SHOULDER.fov, SHOULDER.aimFov, sh.aim) : CAM3D.fov;
-    const dist3 = sh ? lerp(SHOULDER.dist, SHOULDER.aimDist, sh.aim) : CAM3D.dist;
+    const yaw3 = wrapAngle(CAM3D.behindYaw + this.orbitYaw);
+    const pitch3 = CAM3D.pitch + this.orbitPitch;
+    const fov3 = CAM3D.fov;
+    const dist3 = CAM3D.dist;
     let yaw = lerpAngle(0, yaw3, s);
     let pitch = lerp(CAM2D.pitch, pitch3, smoothstep(0, 1, s));
     let fov = lerp(CAM2D.fov, fov3, s);
@@ -148,12 +126,7 @@ export class CameraRig {
     const viewH = lerp(CAM2D.viewHeight * sc, h3, s);
     let dist = viewH / (2 * Math.tan(((fov / 2) * Math.PI) / 180));
     const laneZ = ctx.laneZ ?? 0;
-    let t3 = this.t3;
-    if (sh) {
-      // Over the right shoulder: offset the target along the camera's right vector.
-      const side = lerp(SHOULDER.side, SHOULDER.aimSide, sh.aim);
-      t3 = v3(pip.x + Math.cos(yaw3) * side, pip.y + SHOULDER.height, pip.z - Math.sin(yaw3) * side);
-    }
+    const t3 = this.t3;
     let target = v3(lerp(this.x2, t3.x, s), lerp(this.y2, t3.y, s), lerp(laneZ, t3.z, s));
 
     // --- Cinematic override
@@ -183,7 +156,7 @@ export class CameraRig {
         target.z + Math.cos(yaw) * cp * dist,
       );
       const hit = ctx.raycast(target, probe);
-      if (hit !== null) want = Math.max(sh ? 0.6 : 1.6, dist * hit - (sh ? 0.2 : 0.4));
+      if (hit !== null) want = Math.max(1.6, dist * hit - 0.4);
     }
     this.clipDist = want < this.clipDist ? damp(this.clipDist, want, 25, dt) : damp(this.clipDist, want, 2.5, dt);
     if (s <= 0.5) this.clipDist = dist;
@@ -200,17 +173,6 @@ export class CameraRig {
       this.pos.y += Math.sin(f * 1.7 + 1) * k * 0.35;
       this.shake = Math.max(0, this.shake - dt * 2.2);
     }
-  }
-
-  /** Unit vector the camera looks along (for aiming rays). */
-  /** Shooter: turn the look so the camera faces along (dx, dz). */
-  faceToward(dx: number, dz: number) {
-    this.lookYaw = Math.atan2(-dx, -dz);
-  }
-
-  forward(): V3 {
-    const cp = Math.cos(this.pitch);
-    return v3(-Math.sin(this.yaw) * cp, -Math.sin(this.pitch), -Math.cos(this.yaw) * cp);
   }
 
   /** Converts stick/keys into a world-space direction relative to the camera. */

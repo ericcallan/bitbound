@@ -29,15 +29,6 @@ const BASS = [
   [43, 43, 38, 43],
 ];
 
-/** Neon Verge: the same theme, minor and slow, over a pulsing bass. */
-const CITY_CHORDS = [
-  [57, 60, 64],
-  [53, 57, 60],
-  [55, 59, 62],
-  [52, 55, 59],
-];
-const CITY_BASS = [33, 29, 31, 28];
-
 interface ToneOpts {
   type?: OscillatorType;
   gain?: number;
@@ -73,12 +64,6 @@ export class AudioEngine {
   private pendingEra: Era = 0;
   mystery = false;
   menu = false;
-  /** Neon Verge arrangement (dark synth) instead of the meadow's. */
-  city = false;
-  /** 0..1 combat layer: drums and a driving bass come in while hostiles are awake. */
-  combat = 0;
-  private rainSrc: AudioBufferSourceNode | null = null;
-  private rainGain: GainNode | null = null;
   musicVolume = 0.7;
   sfxVolume = 0.8;
   private playing = false;
@@ -207,11 +192,6 @@ export class AudioEngine {
     const quiet = this.menu ? 0.8 : 1;
     const lead = this.mystery ? 0 : quiet;
     const dest = this.musicGain;
-    if (this.city) {
-      this.playCity(t, sd, s, bar, mel, lead, dest);
-      return;
-    }
-    void chord;
     switch (this.era) {
       case 0: {
         // Three channels, like the first consoles: pulse lead, triangle bass, noise.
@@ -302,68 +282,6 @@ export class AudioEngine {
         if (s === 4) this.noiseHit(t, 0.5, 0.012, 'highpass', 8000, this.reverbSend);
         break;
       }
-    }
-  }
-
-  /** Dark synth: detuned pads, a 16th-note bass pulse, the theme in a minor key, gated drums in combat. */
-  private playCity(t: number, sd: number, s: number, bar: number, mel: number, lead: number, dest: AudioNode) {
-    const chord = CITY_CHORDS[bar];
-    const root = CITY_BASS[bar];
-    const c = this.combat;
-    if (s === 0) {
-      for (const n of chord) for (const d of [-12, 0, 12]) this.tone(t, mtof(n - 12), sd * 8.3, { type: 'sawtooth', gain: 0.007, filter: 900, attack: 0.9, release: 1.4, detune: d, dest });
-      this.tone(t, mtof(root - 12), sd * 8, { type: 'sine', gain: 0.18, attack: 0.1, release: 0.8, dest });
-    }
-    // 16th bass pulse: two per eighth
-    const bassGain = 0.05 + c * 0.05;
-    this.tone(t, mtof(root), sd * 0.4, { type: 'sawtooth', gain: bassGain, filter: 380 + c * 600, q: 6, release: 0.03, dest });
-    this.tone(t + sd / 2, mtof(root + (s % 4 === 3 ? 12 : 0)), sd * 0.4, { type: 'sawtooth', gain: bassGain * 0.8, filter: 380 + c * 600, q: 6, release: 0.03, dest });
-    // the theme, flattened into minor, sparse and far away
-    if (mel && s % 2 === 0 && lead > 0) {
-      const m = mel - 12 - ([64, 69, 71, 76, 81, 83].includes(mel - 12) ? 1 : 0);
-      this.tone(t, mtof(m), sd * 1.6, { type: 'sawtooth', gain: 0.022, filter: 1800, attack: 0.02, release: 0.3, dest: this.delaySend, vibrato: 4 });
-      this.tone(t, mtof(m), sd * 1.6, { type: 'triangle', gain: 0.03, attack: 0.02, release: 0.3, dest });
-    }
-    // arpeggio glints into the reverb
-    if (s % 2 === 1) this.tone(t, mtof(chord[(s >> 1) % 3] + 24), sd * 0.3, { type: 'square', gain: 0.008, filter: 3000, release: 0.2, dest: this.reverbSend });
-    if (c > 0.05) {
-      if (s % 2 === 0) this.kick(t, 0.45 * c, dest);
-      if (s === 2 || s === 6) this.snare(t, 0.11 * c, this.reverbSend);
-      this.hat(t, 0.02 * c, 9000, dest);
-      this.hat(t + sd / 2, 0.012 * c, 11000, dest);
-    } else if (s === 0 && bar % 2 === 0) {
-      this.kick(t, 0.2, dest);
-    }
-  }
-
-  /** Rain and distant city hum, looped. */
-  setRain(on: boolean) {
-    const ctx = this.ctx;
-    if (!ctx) return;
-    if (on && !this.rainSrc) {
-      const src = ctx.createBufferSource();
-      src.buffer = this.noise;
-      src.loop = true;
-      const bp = ctx.createBiquadFilter();
-      bp.type = 'bandpass';
-      bp.frequency.value = 2400;
-      bp.Q.value = 0.4;
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.value = 7000;
-      const g = ctx.createGain();
-      g.gain.value = 0;
-      g.gain.setTargetAtTime(0.11, ctx.currentTime, 1.2);
-      src.connect(bp).connect(lp).connect(g).connect(this.sfxGain);
-      src.start();
-      this.rainSrc = src;
-      this.rainGain = g;
-    } else if (!on && this.rainSrc) {
-      const src = this.rainSrc;
-      this.rainGain!.gain.setTargetAtTime(0, ctx.currentTime, 0.6);
-      window.setTimeout(() => src.stop(), 3000);
-      this.rainSrc = null;
-      this.rainGain = null;
     }
   }
 
@@ -586,60 +504,6 @@ export class AudioEngine {
         this.tone(t, mtof(84), 0.1, { type: 'triangle', gain: 0.04, dest: d });
         this.tone(t + 0.1, mtof(91), 0.2, { type: 'triangle', gain: 0.04, dest: d });
         break;
-      // --- the city
-      case 'shot':
-        this.noiseHit(t, 0.07, 0.12, 'bandpass', 2600, d, 1.4, 900);
-        this.tone(t, 900, 0.07, { type: 'sawtooth', gain: 0.06, slideTo: 180, filter: 4000, dest: d });
-        this.tone(t, 70, 0.08, { type: 'sine', gain: 0.12, slideTo: 40, dest: d });
-        break;
-      case 'charged':
-        this.noiseHit(t, 0.35, 0.2, 'lowpass', 5000, d, 1, 300);
-        this.tone(t, 1600, 0.3, { type: 'sawtooth', gain: 0.08, slideTo: 90, filter: 6000, dest: d });
-        this.tone(t, 55, 0.4, { type: 'sine', gain: 0.25, slideTo: 30, dest: d });
-        break;
-      case 'enemyShot':
-        this.tone(t, 1400, 0.09, { type: 'square', gain: 0.025, slideTo: 500, filter: 3000, dest: d });
-        break;
-      case 'hit':
-        this.noiseHit(t, 0.05, 0.08, 'highpass', 3000, d);
-        this.tone(t, 2200, 0.03, { type: 'square', gain: 0.03, dest: d });
-        break;
-      case 'shieldHit':
-        this.tone(t, 300, 0.12, { type: 'sine', gain: 0.07, slideTo: 600, dest: d, vibrato: 30 });
-        break;
-      case 'armorHit':
-        this.tone(t, 2800, 0.08, { type: 'triangle', gain: 0.05, dest: d });
-        this.tone(t, 3900, 0.06, { type: 'triangle', gain: 0.03, dest: d });
-        break;
-      case 'enemyDown':
-        this.noiseHit(t, value ? 1.4 : 0.45, value ? 0.35 : 0.18, 'lowpass', 3000, d, 1, 120);
-        this.tone(t, 160, value ? 1 : 0.3, { type: 'sawtooth', gain: 0.1, slideTo: 30, filter: 1200, dest: d });
-        for (let i = 0; i < 4; i++) this.tone(t + 0.05 + i * 0.04, mtof(96 - i * 5), 0.04, { type: 'square', gain: 0.02, dest: d });
-        break;
-      case 'overheat':
-        this.noiseHit(t, 1.2, 0.08, 'highpass', 4000, d, 1, 900);
-        this.tone(t, 800, 0.25, { type: 'square', gain: 0.03, slideTo: 200, dest: d });
-        break;
-      case 'vented':
-        this.tone(t, mtof(79), 0.06, { type: 'sine', gain: 0.05, dest: d });
-        this.tone(t + 0.07, mtof(86), 0.1, { type: 'sine', gain: 0.05, dest: d });
-        break;
-      case 'boltFizzle':
-        this.tone(t, 600, 0.12, { type: 'square', gain: 0.03, slideTo: 80, dest: d });
-        break;
-      case 'slam':
-        this.tone(t, 70, 0.6, { type: 'sine', gain: 0.4, slideTo: 25, dest: d });
-        this.noiseHit(t, 0.6, 0.3, 'lowpass', 1200, d, 1, 100);
-        break;
-      case 'pulse':
-        this.tone(t, 200, 0.8, { type: 'sawtooth', gain: 0.08, slideTo: 2000, filter: 3000, dest: d });
-        break;
-      case 'telegraph':
-        this.tone(t, 1800, 0.25, { type: 'sine', gain: 0.025, slideTo: 2600, dest: d });
-        break;
-      case 'dash':
-        this.noiseHit(t, 0.22, 0.12, 'bandpass', 900, d, 1, 4000);
-        break;
       case 'bubbleOn':
         this.tone(t, 900, 0.35, { type: wave, gain: 0.06, slideTo: 220, filter: 3000, dest: d });
         this.tone(t, 450, 0.35, { type: 'sine', gain: 0.06, slideTo: 110, dest: d });
@@ -649,37 +513,16 @@ export class AudioEngine {
         this.tone(t, 220, 0.3, { type: 'sine', gain: 0.06, slideTo: 900, dest: d });
         break;
       case 'line':
-        this.tone(t, value === 1 ? mtof(67) : value === 2 ? mtof(88) : mtof(76), 0.05, { type: this.city ? 'sine' : wave, gain: 0.025, dest: d });
+        this.tone(t, value === 1 ? mtof(67) : value === 2 ? mtof(88) : mtof(76), 0.05, { type: wave, gain: 0.025, dest: d });
         break;
-      case 'domeCrack':
-        this.noiseHit(t, 1.6, 0.3, 'highpass', 1500, d, 1, 8000);
-        for (let i = 0; i < 8; i++) this.tone(t + i * 0.07, 3000 + Math.random() * 3000, 0.05, { type: 'triangle', gain: 0.03, dest: d });
+      case 'glyphs':
+        for (let i = 0; i < 6; i++) this.tone(t + i * 0.11, mtof([72, 76, 79, 84, 79, 88][i]), 0.5, { type: 'sine', gain: 0.04, release: 0.6, dest: this.reverbSend });
+        this.tone(t + 1.6, 70, 1.2, { type: 'sine', gain: 0.2, slideTo: 40, dest: d });
+        this.noiseHit(t + 1.6, 1.4, 0.08, 'lowpass', 500, d, 1, 150);
         break;
-      case 'zone':
-        this.tone(t, 40, 2.5, { type: 'sine', gain: 0.3, attack: 0.3, release: 1.5, dest: d });
-        this.noiseHit(t, 2.5, 0.12, 'lowpass', 400, d, 1, 3000);
-        break;
-      case 'emitter':
-        for (let i = 0; i < 5; i++) this.tone(t + i * 0.06, 200 + i * 160, 0.08, { type: 'sawtooth', gain: 0.04, filter: 2000, dest: d });
-        this.tone(t + 0.35, 55, 0.6, { type: 'sine', gain: 0.25, dest: d });
-        break;
-      case 'pickup':
-        this.tone(t, mtof(72), 0.08, { type: 'sine', gain: 0.06, dest: d });
-        this.tone(t + 0.08, mtof(79), 0.14, { type: 'sine', gain: 0.06, dest: d });
-        break;
-      case 'shutter':
-        this.noiseHit(t, 1.6, 0.12, 'lowpass', 600, d, 2);
-        this.tone(t, 90, 1.5, { type: 'sawtooth', gain: 0.04, filter: 300, slideTo: 130, dest: d });
-        break;
-      case 'codeRead':
-        for (let i = 0; i < 4; i++) this.tone(t + i * 0.09, mtof(84 + (i % 2) * 7), 0.06, { type: 'square', gain: 0.025, filter: 4000, dest: d });
-        break;
-      case 'door':
-        this.tone(t, 60, 1.2, { type: 'sawtooth', gain: 0.06, filter: 400, slideTo: 40, dest: d });
-        this.noiseHit(t, 1.2, 0.08, 'bandpass', 800, d, 1, 200);
-        break;
-      case 'coreChoice':
-        for (const [i, n] of [60, 64, 67, 72, 76, 79].entries()) this.tone(t + i * 0.12, mtof(n), 2.5, { type: 'sine', gain: 0.05, attack: 0.05, release: 1.5, dest: d });
+      case 'wheel':
+        for (const [i, n] of [60, 64, 67, 72, 76, 79, 84].entries()) this.tone(t + i * 0.16, mtof(n), 3, { type: 'sine', gain: 0.05, attack: 0.05, release: 2, dest: this.reverbSend });
+        this.tone(t, 45, 3, { type: 'sine', gain: 0.25, attack: 0.4, release: 1.5, dest: d });
         break;
     }
   }
@@ -732,27 +575,15 @@ export class AudioEngine {
       case 'machineBeam':
         this.sfx('beam');
         break;
-      case 'dash':
       case 'bubbleOn':
       case 'bubbleOff':
       case 'bubblePop':
-      case 'domeCrack':
-      case 'zone':
-      case 'emitter':
-      case 'pickup':
-      case 'shutter':
-      case 'codeRead':
-      case 'door':
-      case 'coreChoice':
+      case 'glyphs':
+      case 'wheel':
         this.sfx(e.type);
         break;
       case 'line':
         this.sfx('line', e.text === 'PIP' ? 1 : e.text === 'SYSTEM' ? 2 : 0);
-        break;
-      case 'combat':
-        if (e.combat === 'enemyDown') this.sfx('enemyDown', e.text === 'warden' ? 1 : 0);
-        else if (e.combat === 'playerHit') this.sfx('hurt');
-        else if (e.combat) this.sfx(e.combat === 'impact' ? 'hit' : e.combat);
         break;
     }
   }

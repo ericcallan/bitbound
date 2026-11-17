@@ -14,33 +14,13 @@ export interface MoveIntent {
 
 export const NO_INTENT: MoveIntent = { mx: 0, mz: 0, jumpPressed: false, jumpHeld: false };
 
-export type PlayerForm = 'classic' | 'adult';
-
-/** The grown-up Pip: twice the size, heavier and tighter, with a dash. */
-export const ADULT_PHYS: typeof PHYS = {
-  ...PHYS,
-  gravity: 40,
-  fallGravityMul: 1.6,
-  jumpVel: 13.6,
-  runSpeed: 7.2,
-  groundAccel: 80,
-  groundDecel: 90,
-  turnAccel: 150,
-  airAccel: 36,
-  stompBounce: 10,
-  stompBounceHeld: 13,
-};
-export const ADULT_SIZE = { hw: 0.36, h: 1.8 };
-export const DASH = { speed: 17, time: 0.2, cooldown: 0.75 };
-
 export type PlayerEvent =
   | { type: 'jump' }
   | { type: 'land'; impact: number; airTime: number; distance: number }
   | { type: 'step' }
   | { type: 'bump' }
   | { type: 'stumble' }
-  | { type: 'pushStart' }
-  | { type: 'dash' };
+  | { type: 'pushStart' };
 
 /**
  * Pip's kinematic controller. Position is the centre of the feet. The same controller runs in
@@ -50,17 +30,10 @@ export class PlayerController {
   pos = v3();
   prevPos = v3();
   vel = v3();
-  hw = PIP_SIZE.hw;
-  h = PIP_SIZE.h;
-  /** Movement tuning for the current form. */
-  p: typeof PHYS = PHYS;
-  form: PlayerForm = 'classic';
-  /** Multiplier on run speed (aiming slows the adult form down). */
-  speedScale = 1;
-  /** Dash state (adult form): remaining time, cooldown and direction. */
-  dashT = 0;
-  dashCooldown = 0;
-  private dashDir = { x: 0, z: 0 };
+  readonly hw = PIP_SIZE.hw;
+  readonly h = PIP_SIZE.h;
+  /** Movement tuning. */
+  readonly p: typeof PHYS = PHYS;
 
   grounded = false;
   ground: Collider | null = null;
@@ -83,30 +56,6 @@ export class PlayerController {
     private world: World,
     private emit: (e: PlayerEvent) => void,
   ) {}
-
-  setForm(form: PlayerForm) {
-    this.form = form;
-    this.p = form === 'adult' ? ADULT_PHYS : PHYS;
-    this.hw = form === 'adult' ? ADULT_SIZE.hw : PIP_SIZE.hw;
-    this.h = form === 'adult' ? ADULT_SIZE.h : PIP_SIZE.h;
-    this.dashT = 0;
-  }
-
-  /** Start a dash along the given world direction (or the current heading). */
-  dash(dx: number, dz: number) {
-    if (this.form !== 'adult' || this.dashCooldown > 0 || this.dashT > 0) return false;
-    let l = Math.hypot(dx, dz);
-    if (l < 0.1) {
-      dx = Math.sin(this.heading);
-      dz = Math.cos(this.heading);
-      l = 1;
-    }
-    this.dashDir = { x: dx / l, z: dz / l };
-    this.dashT = DASH.time;
-    this.dashCooldown = DASH.cooldown;
-    this.emit({ type: 'dash' });
-    return true;
-  }
 
   box(at: V3 = this.pos): AABB {
     return {
@@ -162,8 +111,8 @@ export class PlayerController {
     const inputMag = Math.min(1, mag);
 
     // Horizontal acceleration as a 2D vector so 3D steering feels as tight as 2D.
-    const tx = mx * this.p.runSpeed * this.speedScale;
-    const tz = mz * this.p.runSpeed * this.speedScale;
+    const tx = mx * this.p.runSpeed;
+    const tz = mz * this.p.runSpeed;
     const speedBefore = Math.hypot(this.vel.x, this.vel.z);
     let accel: number;
     if (inputMag > 0.05) {
@@ -182,14 +131,6 @@ export class PlayerController {
     } else {
       this.vel.x += (dx / dl) * maxDv;
       this.vel.z += (dz / dl) * maxDv;
-    }
-    // Dash overrides horizontal velocity for a short burst.
-    this.dashCooldown = Math.max(0, this.dashCooldown - dt);
-    if (this.dashT > 0) {
-      this.dashT -= dt;
-      this.vel.x = this.dashDir.x * DASH.speed;
-      this.vel.z = mode === '2d' ? 0 : this.dashDir.z * DASH.speed;
-      if (mode === '2d' && Math.abs(this.dashDir.x) < 0.1) this.vel.x = this.dir * DASH.speed;
     }
     if (mode === '2d') this.vel.z = 0;
 

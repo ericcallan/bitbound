@@ -407,7 +407,6 @@ const SAMPLE: HudState = {
   stairRepaired: false,
   gatePassed: false,
   eraKeys: false,
-  zone: 'meadows',
   maxCells: 3,
   objective: 'Chapter 2 · Colour',
   dialogue: null,
@@ -416,13 +415,6 @@ const SAMPLE: HudState = {
   wheelOpen: false,
   regressEra: 0,
   maxEraUnlocked: 0,
-  armed: false,
-  shooter: false,
-  aiming: false,
-  heat: 0,
-  overheated: false,
-  weaponOffline: false,
-  boss: null,
 };
 
 const BOARD_EXPR: Expression[] = ['happy', 'determined', 'surprised', 'happy', 'wonder', 'idle'];

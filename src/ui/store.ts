@@ -26,7 +26,6 @@ export interface HudState {
   stairRepaired: boolean;
   gatePassed: boolean;
   eraKeys: boolean;
-  zone: 'meadows' | 'verge';
   maxCells: number;
   objective: string;
   dialogue: { speaker: 'ARCHIVE' | 'PIP' | 'SYSTEM'; text: string; id: number } | null;
@@ -35,13 +34,6 @@ export interface HudState {
   wheelOpen: boolean;
   regressEra: number;
   maxEraUnlocked: number;
-  armed: boolean;
-  shooter: boolean;
-  aiming: boolean;
-  heat: number;
-  overheated: boolean;
-  weaponOffline: boolean;
-  boss: { name: string; hp: number; max: number; state: string } | null;
 }
 
 export interface Settings {
@@ -50,15 +42,12 @@ export interface Settings {
   shake: boolean;
   showFps: boolean;
   quality: QualitySetting;
-  /** Mouse-look sensitivity in the city (0.3..2). */
-  sensitivity: number;
-  invertY: boolean;
 }
 
 const SETTINGS_KEY = 'pip-beyond-the-frame/settings';
 
 function loadSettings(): Settings {
-  const def: Settings = { music: 0.7, sfx: 0.8, shake: true, showFps: false, quality: 'auto', sensitivity: 1, invertY: false };
+  const def: Settings = { music: 0.7, sfx: 0.8, shake: true, showFps: false, quality: 'auto' };
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     return raw ? { ...def, ...JSON.parse(raw) } : def;
@@ -113,7 +102,6 @@ export const useUI = create<UIStore>((set, get) => ({
     stairRepaired: false,
     gatePassed: false,
     eraKeys: false,
-    zone: 'meadows',
     maxCells: 3,
     objective: '',
     dialogue: null,
@@ -122,13 +110,6 @@ export const useUI = create<UIStore>((set, get) => ({
     wheelOpen: false,
     regressEra: 0,
     maxEraUnlocked: 0,
-    armed: false,
-    shooter: false,
-    aiming: false,
-    heat: 0,
-    overheated: false,
-    weaponOffline: false,
-    boss: null,
   },
   setScreen: (screen) => set({ screen, paused: false, mapOpen: false, settingsOpen: false }),
   newSession: () => set({ session: get().session + 1 }),

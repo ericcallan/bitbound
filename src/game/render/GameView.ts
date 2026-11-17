@@ -4,11 +4,8 @@ import { LevelView, SKY_FRAG, SKY_SUN, SKY_VERT } from './LevelView';
 import { EntityViews } from './EntityViews';
 import { Particles } from './Particles';
 import { PostPipeline, type PostFrame, type QualitySetting } from './post/Pipeline';
-import { CityView, NEON } from './city/CityView';
-import { HostileViews } from './city/HostileViews';
 import { PixelSprite } from './sprites';
 import { PipModel } from '../pip/PipModel';
-import { PipAdult } from '../pip/PipAdult';
 import type { Game, GameEvent } from '../sim/Game';
 import { MAX_RIFTS, type Era } from '../era/EraSystem';
 import { segmentHitsBox } from '../collision/World';
@@ -17,8 +14,6 @@ import { clamp, lerp } from '../math';
 
 /** Direction toward the key light used for shading (front-lit so the 2D lane always reads). */
 const SUN_DIR = new THREE.Vector3(-0.45, 0.85, 0.55).normalize();
-/** The city's key light: cold moonlight from high behind. */
-const MOON_DIR = new THREE.Vector3(0.3, 0.9, -0.4).normalize();
 const SPLIT_SCREEN = [1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6];
 
 export interface ViewOptions {
@@ -26,14 +21,15 @@ export interface ViewOptions {
   split?: boolean;
 }
 
-const envCache = new WeakMap<THREE.WebGLRenderer, { day: THREE.Texture; night: THREE.Texture }>();
+const envCache = new WeakMap<THREE.WebGLRenderer, THREE.Texture>();
 
-/** Image-based lighting for both zones: the procedural day sky, and a neon-lit night. */
-function environments(gl: THREE.WebGLRenderer) {
+/** Image-based lighting: a PMREM of the procedural sky over a green ground bounce. */
+function skyEnvironment(gl: THREE.WebGLRenderer) {
   const cached = envCache.get(gl);
   if (cached) return cached;
   const pmrem = new THREE.PMREMGenerator(gl);
-  const skyMesh = (top: string, horizon: string, bottom: string, dim: number) =>
+  const s = new THREE.Scene();
+  s.add(
     new THREE.Mesh(
       new THREE.SphereGeometry(50, 32, 16),
       new THREE.ShaderMaterial({
@@ -42,30 +38,19 @@ function environments(gl: THREE.WebGLRenderer) {
         side: THREE.BackSide,
         depthWrite: false,
         uniforms: {
-          uTop: { value: new THREE.Color(top) },
-          uHorizon: { value: new THREE.Color(horizon) },
-          uBottom: { value: new THREE.Color(bottom) },
+          uTop: { value: new THREE.Color('#3b7be0') },
+          uHorizon: { value: new THREE.Color('#d6f0ff') },
+          uBottom: { value: new THREE.Color('#4c8a4a') },
           uSunDir: { value: SUN_DIR.clone() },
-          uDim: { value: dim },
+          uDim: { value: 1.2 },
         },
       }),
-    );
-  const day = new THREE.Scene();
-  day.add(skyMesh('#3b7be0', '#d6f0ff', '#4c8a4a', 1.2));
-  const night = new THREE.Scene();
-  night.add(skyMesh('#06040e', '#2a1640', '#0b0814', 1));
-  // neon panels so wet surfaces pick up coloured reflections
-  [NEON.pink, NEON.cyan, NEON.amber, NEON.violet].forEach((c, i) => {
-    const a = (i / 4) * Math.PI * 2;
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(14, 4), new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(4), side: THREE.DoubleSide }));
-    p.position.set(Math.cos(a) * 30, 4 + i * 2, Math.sin(a) * 30);
-    p.lookAt(0, p.position.y, 0);
-    night.add(p);
-  });
-  const out = { day: pmrem.fromScene(day, 0.03).texture, night: pmrem.fromScene(night, 0.02).texture };
+    ),
+  );
+  const tex = pmrem.fromScene(s, 0.03).texture;
   pmrem.dispose();
-  envCache.set(gl, out);
-  return out;
+  envCache.set(gl, tex);
+  return tex;
 }
 
 interface Pulse {
@@ -79,20 +64,13 @@ export class GameView {
   scene = new THREE.Scene();
   level: LevelView;
   entities: EntityViews;
-  city: CityView;
-  hostiles: HostileViews;
   pip = new PipModel();
-  adult = new PipAdult(1);
   pipSprite = new PixelSprite('pip', 1, 1);
-  citizen = new PixelSprite('citizen', 1, 1);
   particles = new Particles();
   post = new PostPipeline();
-  private env: { day: THREE.Texture; night: THREE.Texture };
   private sun: THREE.DirectionalLight;
   private hemi: THREE.HemisphereLight;
   private chamberLight: THREE.PointLight;
-  /** City: a soft key on Pip so the android reads against the night. */
-  private pipFill = new THREE.PointLight('#bcd4ff', 6, 7, 1.5);
   private blob: THREE.Mesh;
   private motes: THREE.InstancedMesh;
   private moteSeeds: Float32Array;
@@ -134,8 +112,6 @@ export class GameView {
     fieldMin: Array.from({ length: 4 }, () => new THREE.Vector3(0, -999, 0)),
     fieldMax: Array.from({ length: 4 }, () => new THREE.Vector3(0, -999, 0)),
     fieldEra: [0, 0, 0, 0],
-    night: false,
-    rain: 0,
   };
   private lastDt = 1 / 60;
 
@@ -160,13 +136,10 @@ export class GameView {
     this.options = options;
     this.level = new LevelView(game.level);
     this.entities = new EntityViews(game, this.level.eras);
-    this.city = new CityView(game, game.verge);
-    this.hostiles = new HostileViews(game.combat);
-    this.scene.add(this.level.group, this.entities.group, this.city.group, this.city.rain, this.hostiles.group);
-    this.scene.add(this.pip.root, this.pip.trail, this.adult.root, this.pipSprite.sprite, this.citizen.sprite, this.particles.mesh);
+    this.scene.add(this.level.group, this.entities.group);
+    this.scene.add(this.pip.root, this.pip.trail, this.pipSprite.sprite, this.particles.mesh);
     this.scene.fog = new THREE.Fog('#bfe3ff', 90, 380);
-    this.env = environments(gl);
-    this.scene.environment = this.env.day;
+    this.scene.environment = skyEnvironment(gl);
     this.scene.environmentIntensity = 0.55;
 
     this.hemi = new THREE.HemisphereLight('#cfeeff', '#6c8a4a', 0.85);
@@ -184,7 +157,7 @@ export class GameView {
     this.scene.add(this.hemi, this.sun, this.sun.target);
     this.chamberLight = new THREE.PointLight('#4ff5e6', 6, 14, 1.6);
     this.chamberLight.position.set(57, 2.6, -7.5);
-    this.scene.add(this.chamberLight, this.pipFill);
+    this.scene.add(this.chamberLight);
 
     // Early 3D has no shadow maps: a classic blob shadow keeps Pip grounded.
     this.blob = new THREE.Mesh(
@@ -232,11 +205,7 @@ export class GameView {
     this.unsub();
     this.post.dispose();
     this.pip.dispose();
-    this.adult.dispose();
     this.pipSprite.dispose();
-    this.citizen.dispose();
-    this.city.dispose();
-    this.hostiles.dispose();
     this.sun.dispose();
     this.chamberLight.dispose();
     this.scene.traverse((o) => {
@@ -259,7 +228,6 @@ export class GameView {
   private onEvent(e: GameEvent) {
     const P = this.particles;
     const p = e.pos;
-    if (e.type === 'zone' || e.type === 'domeCrack') this.flash = 0.6;
     if (!p) {
       if (e.type === 'finale') this.flash = 0.4;
       return;
@@ -270,7 +238,6 @@ export class GameView {
     if (era === 0 && !['jump', 'land', 'stomp', 'collect', 'combat', 'bubbleOn', 'bubbleOff', 'bubblePop'].includes(e.type)) return;
     const retro = era === 0;
     const beyond = era === 5;
-    const city = this.game.zone === 'verge';
     switch (e.type) {
       case 'jump':
         P.burst(p, { count: retro ? 2 : 6, colors: dust, speed: 1.6, up: 0.6, size: retro ? 0.12 : 0.07, life: 0.3, gravity: 2, flat: true });
@@ -278,13 +245,12 @@ export class GameView {
       case 'land': {
         const k = clamp((e.value ?? 0) / 20, 0.2, 1);
         P.burst(p, { count: retro ? 2 : Math.round(6 + k * 10), colors: dust, speed: 2.5 * k + 0.8, up: 0.4, size: retro ? 0.12 : 0.08, life: 0.35, gravity: 2, flat: true });
-        if (beyond && !city) this.pulse(p.x, p.y, p.z);
+        if (beyond) this.pulse(p.x, p.y, p.z);
         break;
       }
       case 'step':
-        if (!city) P.burst(p, { count: 2, colors: dust, speed: 0.6, up: 0.4, size: 0.05, life: 0.3, gravity: 1, flat: true });
-        else if (era >= 4) P.burst(p, { count: 3, colors: ['#9fc7ff', '#ffffff'], speed: 1.2, up: 1.2, size: 0.04, life: 0.3, gravity: 6, flat: true });
-        if (beyond && !city) this.pulse(p.x, p.y, p.z);
+        P.burst(p, { count: 2, colors: dust, speed: 0.6, up: 0.4, size: 0.05, life: 0.3, gravity: 1, flat: true });
+        if (beyond) this.pulse(p.x, p.y, p.z);
         break;
       case 'collect':
         P.burst(p, { count: retro ? 4 : 14, colors: ['#6ff6ff', '#ffd36b', '#fff4d6'], speed: 3.5, up: 2.5, size: retro ? 0.12 : 0.08, life: 0.5, gravity: 4 });
@@ -293,41 +259,28 @@ export class GameView {
         P.burst({ x: p.x, y: p.y + 0.3, z: p.z }, { count: retro ? 4 : 22, colors: ['#ff4fd8', '#2fd6c3', '#2b2d6e', '#ffffff'], speed: 4.5, up: 3, size: retro ? 0.14 : 0.11, life: 0.5 });
         break;
       case 'hurt':
-        P.burst({ x: p.x, y: p.y + (city ? 1.1 : 0.5), z: p.z }, { count: 14, colors: city ? ['#ff2a55', '#ffd36b', '#ffffff'] : ['#ff6b6b', '#ffcf6b'], speed: 4, up: 2, size: 0.08, life: 0.5 });
-        break;
-      case 'dash':
-        P.burst({ x: p.x, y: p.y + 0.9, z: p.z }, { count: 18, colors: ['#6ff6ff', '#b388ff'], speed: 2, up: 0.5, size: 0.06, life: 0.35, gravity: 0, flat: true });
+        P.burst({ x: p.x, y: p.y + 0.5, z: p.z }, { count: 14, colors: ['#ff6b6b', '#ffcf6b'], speed: 4, up: 2, size: 0.08, life: 0.5 });
         break;
       case 'bubbleOn':
       case 'bubbleOff':
       case 'bubblePop':
         this.flash = Math.max(this.flash, 0.18);
-        this.pulse(p.x, p.y + (city ? 0.9 : 0.45), p.z, e.type === 'bubbleOn' ? '#b388ff' : '#6ff6ff', 9, false);
+        this.pulse(p.x, p.y + 0.45, p.z, e.type === 'bubbleOn' ? '#b388ff' : '#6ff6ff', 9, false);
         P.burst({ x: p.x, y: p.y + 0.8, z: p.z }, { count: 30, colors: ['#b388ff', '#6ff6ff', '#ffffff'], speed: 5, up: 0.5, size: 0.07, life: 0.6, gravity: 0, drag: 2 });
         break;
-      case 'emitter':
-      case 'pickup':
-        P.converge({ x: p.x, y: p.y + 1.1, z: p.z }, 2, { count: 30, colors: e.type === 'pickup' ? ['#5cff8a', '#ffffff'] : ['#ff8a2a', '#ffd36b'], size: 0.06, life: 0.6 });
+      case 'glyphs':
+        P.burst({ x: p.x, y: p.y + 1.4, z: p.z }, { count: 40, colors: ['#6ff6ff', '#fff4d6', '#ffd36b'], speed: 2.5, up: 1.5, size: 0.06, life: 1.2, gravity: 0, drag: 1.2 });
+        this.flash = Math.max(this.flash, 0.25);
         break;
-      case 'shutter':
-      case 'door':
-        P.burst({ x: p.x, y: p.y + 2, z: p.z }, { count: 30, colors: ['#ffb347', '#ffffff'], speed: 4, up: 2, size: 0.07, life: 0.8 });
-        break;
-      case 'codeRead':
-        P.burst(p, { count: 24, colors: ['#3ef4ff', '#ffffff'], speed: 2, up: 1, size: 0.05, life: 0.8, gravity: 0 });
-        break;
-      case 'coreChoice':
-        this.flash = 0.8;
-        P.burst(p, { count: 120, colors: ['#f0862a', '#ffcf6b', '#5ec8f0', '#ff8fb8', '#6ff6ff', '#b388ff'], speed: 9, up: 0, size: 0.12, life: 2, gravity: 0, drag: 0.8 });
-        break;
-      case 'combat':
-        this.onCombat(e, p);
+      case 'wheel':
+        this.flash = 0.6;
+        P.burst({ x: p.x, y: p.y + 3, z: p.z }, { count: 160, colors: ['#f0862a', '#ffcf6b', '#5ec8f0', '#ff8fb8', '#6ff6ff', '#b388ff'], speed: 9, up: 2, size: 0.12, life: 2.2, gravity: 0, drag: 0.8 });
         break;
       case 'fizzle':
         P.burst({ x: p.x, y: p.y + 0.6, z: p.z }, { count: 10, colors: ['#8e5bd6', '#6b6b8a'], speed: 1.8, up: 1.5, size: 0.06, life: 0.5, gravity: 3 });
         break;
       case 'antenna':
-        P.burst({ x: p.x, y: p.y + (city ? 2.1 : 1.1), z: p.z }, { count: 6, colors: ['#6ff6ff', '#ffffff'], speed: 2, up: 2, size: 0.05, life: 0.3 });
+        P.burst({ x: p.x, y: p.y + 1.1, z: p.z }, { count: 6, colors: ['#6ff6ff', '#ffffff'], speed: 2, up: 2, size: 0.05, life: 0.3 });
         break;
       case 'shiftStart':
         this.flash = 0.25;
@@ -385,46 +338,10 @@ export class GameView {
         P.burst({ x: p.x, y: 0.6, z: p.z }, { count: 30, colors: ['#b388ff', '#8e5bd6', '#ffffff'], speed: 3, up: 2, size: 0.08, life: 0.6 });
         break;
       case 'checkpoint':
-        P.burst({ x: p.x, y: p.y + 1.2, z: city ? p.z : e.text === 'beacon' ? -1.6 : 1.6 }, { count: 50, colors: ['#ffd36b', '#6ff6ff', '#ff8fb8', '#8e5bd6', '#fff4d6'], speed: 5, up: 6, size: 0.1, life: 1.4, gravity: 6 });
+        P.burst({ x: p.x, y: p.y + 1.2, z: e.text === 'beacon' ? -1.6 : 1.6 }, { count: 50, colors: ['#ffd36b', '#6ff6ff', '#ff8fb8', '#8e5bd6', '#fff4d6'], speed: 5, up: 6, size: 0.1, life: 1.4, gravity: 6 });
         break;
       case 'respawn':
         P.converge({ x: p.x, y: p.y + 0.45, z: p.z }, 1.6, { count: 30, colors: ['#2fd6c3', '#fff4d6'], size: 0.06, life: 0.5 });
-        break;
-    }
-  }
-
-  private onCombat(e: GameEvent, p: { x: number; y: number; z: number }) {
-    const P = this.particles;
-    switch (e.combat) {
-      case 'impact':
-        P.burst(p, { count: 5, colors: ['#ffae4a', '#fff1c0', '#ff2a55'], speed: 4, up: 1.5, size: 0.05, life: 0.3, gravity: 6 });
-        break;
-      case 'hit':
-        P.burst(p, { count: 10, colors: ['#ffae4a', '#ffffff', '#ff2a55'], speed: 5, up: 2, size: 0.06, life: 0.35, gravity: 4 });
-        break;
-      case 'shieldHit':
-        P.burst(p, { count: 10, colors: ['#3ef4ff', '#ffffff'], speed: 3, up: 1, size: 0.06, life: 0.4, gravity: 0 });
-        break;
-      case 'armorHit':
-        P.burst(p, { count: 8, colors: ['#ffd36b', '#ffffff'], speed: 6, up: 2, size: 0.04, life: 0.25, gravity: 8 });
-        break;
-      case 'enemyDown': {
-        const boss = e.text === 'warden';
-        this.flash = Math.max(this.flash, boss ? 0.7 : 0.12);
-        P.burst(p, { count: boss ? 140 : 46, colors: ['#ff2a55', '#ffae4a', '#ffffff', '#3ef4ff', '#2b2d6e'], speed: boss ? 10 : 7, up: 4, size: 0.09, life: 1.1, gravity: 7 });
-        // they come apart into pixels
-        P.burst(p, { count: 20, colors: ['#ff4fd8', '#2fd6c3', '#ffcf6b'], speed: 3, up: 3, size: 0.16, life: 1.4, gravity: 2 });
-        break;
-      }
-      case 'boltFizzle':
-        P.burst(p, { count: 3, colors: ['#ff2a55', '#8e5bd6'], speed: 1, up: 0.5, size: 0.08, life: 0.3, gravity: 0 });
-        break;
-      case 'slam':
-        this.pulse(p.x, p.y, p.z, '#ff2a55', 18);
-        P.burst(p, { count: 40, colors: ['#c9c3d8', '#ffae4a'], speed: 8, up: 1, size: 0.1, life: 0.7, flat: true });
-        break;
-      case 'pulse':
-        this.pulse(p.x, p.y + 1.6, p.z, '#3ef4ff', 34, false);
         break;
     }
   }
@@ -450,7 +367,6 @@ export class GameView {
     const t = this.t;
     const a = g.alpha;
     const split = !!this.options.split;
-    const city = g.zone === 'verge';
 
     // --- camera (interpolated between fixed steps)
     const c = g.camera;
@@ -459,8 +375,8 @@ export class GameView {
     this.tmp.set(lerp(c.prevTarget.x, c.target.x, a), lerp(c.prevTarget.y, c.target.y, a), lerp(c.prevTarget.z, c.target.z, a));
     cam.lookAt(this.tmp);
     cam.fov = lerp(c.prevFov, c.fov, a);
-    cam.near = city ? 0.12 : 0.3;
-    cam.far = city ? 1400 : 900;
+    cam.near = 0.3;
+    cam.far = 900;
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
     const camTarget = this.tmp.clone();
@@ -490,27 +406,16 @@ export class GameView {
     }
     eraUniforms.uTime.value = t;
 
-    // --- zone: which world is drawn, and its light rig
-    this.level.group.visible = !city;
-    this.entities.group.visible = !city;
-    this.city.group.visible = city;
-    this.hostiles.group.visible = city;
-    this.chamberLight.visible = !city;
-    this.scene.environment = city ? this.env.night : this.env.day;
-    const fog = this.scene.fog as THREE.Fog;
-    fog.color.set(city ? '#0c0816' : '#bfe3ff');
-    fog.near = city ? 40 : 90;
-    fog.far = city ? 520 : 380;
-    const keyDir = city ? MOON_DIR : SUN_DIR;
+    // --- lights follow the action
+    const keyDir = SUN_DIR;
     this.sun.position.copy(camTarget).addScaledVector(keyDir, 45);
     this.sun.target.position.copy(camTarget);
     eraUniforms.uSunView.value.copy(keyDir).transformDirection(cam.matrixWorldInverse);
     this.chamberLight.intensity = 5 + Math.sin(t * 2) * 1.2 + (g.puzzle.plateLatched ? 4 : 0);
     // Lighting rig per generation at the camera focus: Beyond trades ambient for a strong warm key.
     const lookEra = split ? 4 : this.eraAt(camTarget);
-    const rig = city
-      ? { hemi: 0.7, env: 0.9, sun: 1.2, color: '#9fb4ff', sky: '#5a4a90', ground: '#2a1a34' }
-      : lookEra === 5
+    const rig =
+      lookEra === 5
         ? { hemi: 0.4, env: 0.5, sun: 3.6, color: '#ffe2b8', sky: '#cfeeff', ground: '#6c8a4a' }
         : { hemi: 0.85, env: 0.55, sun: 2.7, color: '#fff0d8', sky: '#cfeeff', ground: '#6c8a4a' };
     const k = Math.min(1, dt * 2);
@@ -521,12 +426,11 @@ export class GameView {
     this.sun.intensity += (rig.sun - this.sun.intensity) * k;
     this.sun.color.lerp(new THREE.Color(rig.color), k);
 
-    // --- Pip: a sprite in 8-bit, the classic rig, the young adult, or the grown android
+    // --- Pip: a sprite in 8-bit, the rig from Early 3D on
     const p = g.player;
     const pipPos = new THREE.Vector3(lerp(p.prevPos.x, p.pos.x, a), lerp(p.prevPos.y, p.pos.y, a), lerp(p.prevPos.z, p.pos.z, a));
     const shiftBoost = g.shift.transition ? Math.sin((g.shift.transition.t / g.shift.transition.dur) * Math.PI) : 0;
     const pipEra = this.eraAt(new THREE.Vector3(pipPos.x, pipPos.y + p.h * 0.5, pipPos.z));
-    const adult = p.form === 'adult';
     const pose = {
       pos: pipPos,
       vel: new THREE.Vector3(p.vel.x, p.vel.y, p.vel.z),
@@ -551,9 +455,8 @@ export class GameView {
     };
     // Gallery/menu views keep the classic rig so every band shows the same Pip.
     const useSprite = !split && pipEra === 0 && g.assemble >= 1;
-    const useAdult = !split && !useSprite && (adult || pipEra >= 4);
     this.pip.update(pose, dt);
-    if (useSprite || useAdult) {
+    if (useSprite) {
       this.pip.root.visible = false;
       this.pip.trail.visible = false;
     }
@@ -565,20 +468,6 @@ export class GameView {
       // pixel-snapped to the 16-px tile grid
       this.pipSprite.sprite.position.set(Math.round(pipPos.x * 16) / 16, Math.round(pipPos.y * 16) / 16, pipPos.z);
     }
-    this.adult.root.visible = useAdult;
-    this.pipFill.visible = city;
-    if (city) this.pipFill.position.set(pipPos.x + (cam.position.x - pipPos.x) * 0.3, pipPos.y + 2.4, pipPos.z + (cam.position.z - pipPos.z) * 0.3);
-    if (useAdult) {
-      this.adult.setAge(adult ? 1 : pipEra >= 5 ? 0.8 : 0.62);
-      this.adult.setHeight(adult ? 1.8 : 0.98);
-      this.adult.update({ ...pose, aim: g.aiming, firing: g.firing && g.combat.fireCd > 0.07, aimPitch: g.camera.pitch, dashing: p.dashT > 0, heat: g.combat.heat }, dt);
-    }
-    // epilogue: a little citizen under the opened dome looks up at the rain
-    this.citizen.sprite.visible = g.epilogue;
-    if (g.epilogue) {
-      this.citizen.set(0, false);
-      this.citizen.sprite.position.set(pipPos.x + 2.2, pipPos.y, 0.1);
-    }
 
     // blob shadow (16-bit + early 3D: before shadow maps)
     const hit = g.world.raycast({ x: pipPos.x, y: pipPos.y + 0.1, z: pipPos.z }, { x: pipPos.x, y: pipPos.y - 30, z: pipPos.z }, (col) => col.kind !== 'invisible');
@@ -588,31 +477,22 @@ export class GameView {
     if (this.blob.visible) {
       this.blob.position.set(pipPos.x, groundY + 0.015, pipPos.z);
       const kb = clamp(1 - height / 5, 0.25, 1);
-      this.blob.scale.setScalar(kb * (adult ? 1.6 : 1));
+      this.blob.scale.setScalar(kb);
       (this.blob.material as THREE.MeshBasicMaterial).opacity = 0.42 * kb;
     }
 
     // --- world
-    if (!city) {
-      this.level.update(t, dt, { pip: pipPos, era: this.eraAt, gearSpeed: g.puzzle.plateLatched ? 6 : 1, machineEye: g.machineEye }, this.swapEraAt);
-      this.entities.update(t, dt);
-      for (const l of this.level.lasers) {
-        const c = g.world.get(l.id);
-        l.obj.visible = !!c && g.world.active(c);
-      }
-    } else {
-      this.city.reflections = this.post.tier >= 1;
-      this.city.update(t, dt, cam, this.eraAt);
-      this.hostiles.update(t, dt, a);
+    this.level.update(t, dt, { pip: pipPos, era: this.eraAt, gearSpeed: g.puzzle.plateLatched ? 6 : 1, machineEye: g.machineEye }, this.swapEraAt);
+    this.entities.update(t, dt);
+    for (const l of this.level.masked) {
+      const c = g.world.get(l.id);
+      l.set(!!c && c.enabled && g.world.active(c), t);
     }
-    // rain: the city, and the epilogue under the opened dome
-    this.city.rain.visible = city || g.epilogue;
-    if (g.epilogue) this.city.updateRain(t, cam);
     this.particles.update(dt);
 
-    // Beyond motes (meadow only — the city has rain instead)
+    // Beyond motes
     const focusEra = this.eraAt(camTarget);
-    this.moteFade += ((focusEra === 5 && !city ? 1 : 0) - this.moteFade) * Math.min(1, dt * 1.5);
+    this.moteFade += ((focusEra === 5 ? 1 : 0) - this.moteFade) * Math.min(1, dt * 1.5);
     const mm = this.motes.material as THREE.MeshBasicMaterial;
     mm.opacity = this.moteFade * 0.85;
     this.motes.visible = this.moteFade > 0.01;
@@ -642,7 +522,7 @@ export class GameView {
     }
 
     // Lane guide while in 3D (meadow)
-    const laneOn = g.shift.unlocked && !city ? clamp(g.shift.blend, 0, 1) : 0;
+    const laneOn = g.shift.unlocked ? clamp(g.shift.blend, 0, 1) : 0;
     this.level.laneMat.opacity = laneOn * (0.55 + Math.sin(t * 3) * 0.15);
     this.level.group.children.forEach((o) => {
       if (o.userData.bridge !== undefined) o.visible = laneOn > 0.01 && (!o.userData.bridge || g.puzzle.state === 'repaired');
@@ -651,7 +531,7 @@ export class GameView {
     // Fade occluders that hide Pip from the 3D camera
     const head = pipPos.clone().add(new THREE.Vector3(0, p.h * 0.55, 0));
     for (const o of this.level.occluders) {
-      const blocks = !city && g.shift.blend > 0.4 && segmentHitsBox(cam.position, head, o.box);
+      const blocks = g.shift.blend > 0.4 && segmentHitsBox(cam.position, head, o.box);
       const want = blocks ? 0.22 : 1;
       o.opacity += (want - o.opacity) * Math.min(1, dt * 8);
       for (const m of o.mats) {
@@ -685,8 +565,6 @@ export class GameView {
       if (f.fieldMin[i].y > -900) fieldMax = Math.max(fieldMax, f.fieldEra[i]);
     }
     f.maxEra = split ? 5 : Math.max(f.eraFrom, f.eraTo, bub ? bub.era : 0, fieldMax);
-    f.night = city;
-    f.rain = city && focusEra >= 4 ? 1 : 0;
     f.fade = g.fade;
     f.fadeColor.set(g.fadeWhite ? '#f4fbff' : '#0d0b1e');
     const st = g.shift.transition;
@@ -700,7 +578,7 @@ export class GameView {
     f.time = t;
     // The camera target tracks Pip in play and frames the subject in cinematics/gallery views.
     f.focus.copy(camTarget);
-    f.dof = g.cine ? 0.6 : city ? (g.aiming > 0.5 ? 0.08 : 0.03) : g.shift.mode === '2d' ? 0.55 : 0.4;
+    f.dof = g.cine ? 0.6 : g.shift.mode === '2d' ? 0.55 : 0.4;
   }
 
   render(gl: THREE.WebGLRenderer) {
@@ -715,6 +593,4 @@ export const NEUTRAL_FRAME_EXTRAS = () => ({
   fieldMin: Array.from({ length: 4 }, () => new THREE.Vector3(0, -999, 0)),
   fieldMax: Array.from({ length: 4 }, () => new THREE.Vector3(0, -999, 0)),
   fieldEra: [0, 0, 0, 0],
-  night: false,
-  rain: 0,
 });

@@ -1,6 +1,5 @@
 import { World, overlaps, type Collider } from '../collision/World';
 import { LEVEL, type Level } from '../level/meadows';
-import { VERGE, inBox } from '../level/verge';
 import { NO_INTENT, PlayerController, type MoveIntent, type PlayerEvent } from '../player/PlayerController';
 import { DimensionShift, type ShiftBlock } from '../shift/DimensionShift';
 import { EraSystem, ERA_NAMES, ERA_TITLES, type Bubble, type Era } from '../era/EraSystem';
@@ -8,12 +7,11 @@ import { CameraRig, type CameraContext } from '../camera/CameraRig';
 import { BrokenPassage } from '../puzzle/BrokenPassage';
 import { PaintedStair } from '../puzzle/PaintedStair';
 import { Glitchling, Mover, type Bit } from '../entities/entities';
-import { Combat, WARDEN_STOMP_DAMAGE, type CombatCtx, type CombatEvent, type Hostile } from '../combat/combat';
-import { newSave, writeSave, type SaveData, type Zone } from '../save/save';
+import { newSave, writeSave, type SaveData } from '../save/save';
 import { SCRIPT, lineDuration, type Line, type LineId } from '../story/script';
 import { DEATH_Y, LANE_TOLERANCE, MAX_CELLS, STEP } from './constants';
 import type { Action, InputSource } from './Input';
-import { clamp, dist2D, v3, wrapAngle, type V3 } from '../math';
+import { clamp, dist2D, v3, type V3 } from '../math';
 
 export type PipAction = 'none' | 'stumble' | 'fistpump' | 'inspect' | 'surprised' | 'dance' | 'hurt' | 'wave';
 export type Expression = 'idle' | 'happy' | 'surprised' | 'panic' | 'dizzy' | 'determined' | 'sleepy' | 'hurt' | 'wonder';
@@ -25,7 +23,6 @@ export type GameEventType =
   | 'bump'
   | 'stumble'
   | 'pushStart'
-  | 'dash'
   | 'collect'
   | 'stomp'
   | 'hurt'
@@ -58,26 +55,17 @@ export type GameEventType =
   | 'bubbleOn'
   | 'bubbleOff'
   | 'bubblePop'
-  | 'domeCrack'
-  | 'zone'
-  | 'emitter'
-  | 'pickup'
-  | 'shutter'
-  | 'codeRead'
-  | 'door'
-  | 'coreChoice'
-  | 'combat';
+  | 'glyphs'
+  | 'wheel';
 
 export interface GameEvent {
   type: GameEventType;
   pos?: V3;
   value?: number;
   text?: string;
-  /** For 'combat': the combat event kind. */
-  combat?: CombatEvent['type'];
 }
 
-type CineName = 'awakening' | 'shard' | 'device' | 'bridge' | 'beacon' | 'stair' | 'gate' | 'dome' | 'core';
+type CineName = 'awakening' | 'shard' | 'device' | 'bridge' | 'beacon' | 'stair' | 'gate' | 'glyphs' | 'summit';
 
 interface Cine {
   name: CineName;
@@ -105,7 +93,6 @@ export interface Dialogue {
 }
 
 export type GameMode = 'play' | 'menu';
-export type { Zone };
 
 export const ROOMS: { id: string; test: (p: V3) => boolean }[] = [
   { id: 'field', test: (p) => p.x < 16 },
@@ -117,13 +104,12 @@ export const ROOMS: { id: string; test: (p: V3) => boolean }[] = [
   { id: 'stair', test: (p) => p.x >= 100 && p.x < 112 && p.z < 2.5 },
   { id: 'alcove', test: (p) => p.x >= 100 && p.x < 112 && p.z >= 2.5 },
   { id: 'plateau', test: (p) => p.x >= 112 && p.x < 141 },
-  { id: 'overlook', test: (p) => p.x >= 141 && p.x < 500 },
-  { id: 'roof', test: (p) => p.x >= 990 && p.x < 1036 },
-  { id: 'alleyway', test: (p) => p.x >= 1056 && p.x < 1061 && p.z < -7 },
-  { id: 'market', test: (p) => p.x >= 1036 && p.x < 1094 && p.y < 8 },
-  { id: 'billboard', test: (p) => p.x >= 1094 && p.x < 1140 },
-  { id: 'plaza', test: (p) => p.x >= 1140 && p.x < 1197 },
-  { id: 'core', test: (p) => p.x >= 1197 },
+  { id: 'gate', test: (p) => p.x >= 141 && p.x < 166 },
+  { id: 'brambles', test: (p) => p.x >= 166 && p.x < 184 },
+  { id: 'cliff', test: (p) => p.x >= 184 && p.x < 198 },
+  { id: 'seal', test: (p) => p.x >= 198 && p.x < 214 },
+  { id: 'aqueduct', test: (p) => p.x >= 214 && p.x < 226 },
+  { id: 'summit', test: (p) => p.x >= 226 },
 ];
 export const roomAt = (p: V3) => ROOMS.find((r) => r.test(p))?.id ?? 'field';
 
@@ -136,11 +122,10 @@ const ERA_KEYS: [Action, Era][] = [
   ['era6', 5],
 ];
 
-/** Chapter headings, shown as the HUD objective line in the meadow. */
-export const CHAPTERS = ['Ch 1 · Boot', 'Ch 2 · Colour', 'Ch 3 · Depth', 'Ch 4 · Ink', 'Ch 5 · Light', 'Ch 6 · Neon Verge'];
+/** Chapter headings, shown as the HUD objective line. */
+export const CHAPTERS = ['Ch 1 · Boot', 'Ch 2 · Colour', 'Ch 3 · Depth', 'Ch 4 · Ink', 'Ch 5 · Light', 'Ch 6 · The Waking World'];
 
-export const BUBBLE_RADIUS = { classic: 3.0, adult: 4.6 };
-export const ADULT_CELLS = 5;
+export const BUBBLE_RADIUS = 3.0;
 
 /**
  * The authoritative game simulation. Pure TypeScript with no rendering or DOM dependencies,
@@ -148,7 +133,6 @@ export const ADULT_CELLS = 5;
  */
 export class Game {
   readonly level: Level = LEVEL;
-  readonly verge = VERGE;
   readonly world = new World();
   readonly player: PlayerController;
   readonly shift: DimensionShift;
@@ -159,11 +143,8 @@ export class Game {
   readonly enemies: Glitchling[];
   readonly bits: Bit[];
   readonly movers: Mover[];
-  readonly combat: Combat;
-  readonly healthPickups: { id: string; pos: V3; taken: boolean }[];
 
   save: SaveData;
-  zone: Zone = 'meadows';
   time = 0;
   /** Interpolation factor between the last two fixed steps, for rendering. */
   alpha = 0;
@@ -171,9 +152,8 @@ export class Game {
   paused = false;
 
   cells = MAX_CELLS;
+  readonly maxCells = MAX_CELLS;
   invuln = 0;
-  private sinceHurt = 99;
-  private regenT = 0;
   checkpoint = 'start';
   activeCheckpoints = new Set<string>(['start']);
 
@@ -187,9 +167,13 @@ export class Game {
   machineEye = 0;
   pixelGlow = 0;
   gateGlow = 0;
+  /** 0..1: the sealed door sinking once the glyphs are read. */
+  sealOpen = 0;
+  /** 0..1: the world wheel turning at the summit. */
+  wheelTurn = 0;
   fade = 0;
   fadeGoal = 0;
-  /** Fade colour: false = dark, true = white (dome crack, ending). */
+  /** Fade colour: false = dark, true = white (the ending). */
   fadeWhite = false;
   private respawnT = -1;
 
@@ -204,8 +188,6 @@ export class Game {
   private dialogueId = 0;
   private dialogueQueue: Line[] = [];
   finaleCard = false;
-  /** The epilogue plays in the meadow, in rain, after the core. */
-  epilogue = false;
   tutorialMoved = false;
   tutorialJumped = false;
   private sinceAwake = 0;
@@ -218,17 +200,9 @@ export class Game {
   wheelOpen = false;
   private wheelT = 0;
   private wheelPicked = false;
-  // Shooter
-  aiming = 0;
-  firing = false;
-  private altHeld = 0;
-  aimPoint = v3();
-  doorOpen = false;
-  wardenAwake = false;
 
   private listeners = new Set<(e: GameEvent) => void>();
   readonly events: GameEvent[] = [];
-  private combatCtx: CombatCtx;
 
   constructor(
     public input: InputSource,
@@ -236,7 +210,9 @@ export class Game {
     public mode: GameMode = 'play',
   ) {
     this.era = new EraSystem(this.level.riftAnchors);
-    for (const s of [...this.level.solids, ...this.verge.solids]) {
+    // The glyph stones still sleep at 16-bit until full fidelity is projected over them.
+    this.era.fields = [{ ...this.level.sleepField }];
+    for (const s of this.level.solids) {
       this.world.add(s.id, s.kind, s.box, s.enabled ?? true, s.only2d ?? false, s.genMask);
     }
     this.world.genAt = (c: Collider) => this.era.gameEraAtBox(c.min, c.max);
@@ -252,20 +228,7 @@ export class Game {
     this.puzzle = new BrokenPassage(this.world, this.level);
     this.stair = new PaintedStair(this.world, this.level);
     this.enemies = this.level.enemies.map((d) => new Glitchling(d));
-    this.bits = [...this.level.bits, ...this.verge.bits].map((b) => ({ id: b.id, pos: { ...b.pos }, collected: false }));
-    this.combat = new Combat(this.verge.hostiles);
-    this.healthPickups = this.verge.pickups.map((p) => ({ id: p.id, pos: { ...p.pos }, taken: false }));
-    this.combatCtx = {
-      world: this.world,
-      era: this.era,
-      pip: () => v3(this.player.pos.x, this.player.pos.y + this.player.h * 0.6, this.player.pos.z),
-      pipBox: () => this.player.box(),
-      pipEra: () => this.pipEra,
-      pipInvulnerable: () => this.invuln > 0 || this.player.dashT > 0 || this.respawnT >= 0 || !!this.cine,
-      hurtPip: (dmg, from) => this.hurt(dmg, from),
-      popBubble: () => this.setBubble(null, true),
-      emit: (e) => this.onCombatEvent(e),
-    };
+    this.bits = this.level.bits.map((b) => ({ id: b.id, pos: { ...b.pos }, collected: false }));
 
     this.save = save ? { ...save } : newSave();
     this.applySave(this.save);
@@ -285,10 +248,6 @@ export class Game {
   /** Back-compat helper: the first moving platform. */
   get mover() {
     return this.movers[0];
-  }
-
-  get maxCells() {
-    return this.player.form === 'adult' ? ADULT_CELLS : MAX_CELLS;
   }
 
   /** The generation whose rules apply at Pip's chest. */
@@ -359,28 +318,12 @@ export class Game {
     if (s.bridgeRepaired) this.puzzle.setSolved();
     if (s.stairRepaired) this.stair.setSolved();
     if (s.awakened) this.tutorialMoved = this.tutorialJumped = true;
-    if (s.zone === 'verge') {
-      this.enterVergeState();
-      for (const h of this.combat.hostiles) {
-        if (s.defeated.includes(h.def.id)) {
-          h.alive = false;
-          h.dying = 99;
-        }
-      }
-      for (const p of this.healthPickups) if (s.pickups.includes(p.id)) p.taken = true;
-      this.combat.enabled = s.emitter;
-      if (s.shutterOpen) this.world.get('shutter')!.enabled = false;
-      if (s.wardenDown) this.openDoor(false);
-      const cps = this.verge.checkpoints;
-      const cp = cps.find((c) => c.id === s.checkpoint) ?? cps[0];
-      for (const id of cps.slice(0, cps.indexOf(cp) + 1).map((c) => c.id)) this.activeCheckpoints.add(id);
-      this.checkpoint = cp.id;
-      this.player.teleport(cp.pos);
-      return;
-    }
+    if (s.glyphsRead) this.openSeal(true);
+    if (s.finished) this.wheelTurn = 1;
     const cp = this.level.checkpoints.find((c) => c.id === s.checkpoint) ?? this.level.checkpoints[0];
     const order = this.level.checkpoints.map((c) => c.id);
     for (const id of order.slice(0, order.indexOf(cp.id) + 1)) this.activeCheckpoints.add(id);
+    this.checkpoint = cp.id;
     this.player.teleport(cp.pos);
   }
 
@@ -388,68 +331,14 @@ export class Game {
     if (this.mode !== 'play') return;
     this.save = {
       ...this.save,
-      zone: this.zone,
       checkpoint: this.checkpoint,
       era: this.era.targetEra,
       shiftUnlocked: this.shift.unlocked,
       bridgeRepaired: this.puzzle.state !== 'broken',
       stairRepaired: this.stair.state !== 'faded',
       bits: this.bits.filter((b) => b.collected).map((b) => b.id),
-      pickups: this.healthPickups.filter((p) => p.taken).map((p) => p.id),
-      defeated: this.combat.hostiles.filter((h) => !h.alive).map((h) => h.def.id),
     };
     writeSave(this.save);
-  }
-
-  // ---------------------------------------------------------------- zones
-
-  /** Put the simulation into the city: adult form, shooter camera, city lanes and censor fields. */
-  private enterVergeState() {
-    this.zone = 'verge';
-    this.player.setForm('adult');
-    this.shift.lanes = this.verge.lanes;
-    this.shift.set('3d');
-    this.era.fields = this.verge.fields;
-    if (this.era.targetEra !== 5) this.era.set(5);
-    this.camera.lookYaw = -Math.PI / 2;
-    this.camera.lookPitch = 0.12;
-    this.cells = ADULT_CELLS;
-  }
-
-  private enterVerge() {
-    this.setBubble(null, true, true);
-    this.enterVergeState();
-    this.save.vergeEntered = true;
-    this.checkpoint = 'roof';
-    this.activeCheckpoints = new Set(['roof']);
-    this.player.teleport(this.verge.spawn);
-    this.player.heading = Math.PI / 2;
-    this.camera.override = null;
-    this.camera.overrideW = 0;
-    this.camera.overrideGoal = 0;
-    this.camera.snap(this.cameraContext());
-    this.emit('zone', { text: 'verge' });
-    this.persist();
-    this.say('verge');
-  }
-
-  /** The epilogue: back under the dome, in the very first generation, in the rain. */
-  private enterEpilogue() {
-    this.setBubble(null, true, true);
-    this.zone = 'meadows';
-    this.epilogue = true;
-    this.player.setForm('classic');
-    this.shift.lanes = [{ x0: -Infinity, x1: Infinity, z: 0 }];
-    this.shift.set('2d');
-    this.era.fields = [];
-    this.era.set(0);
-    this.player.teleport(v3(4.2, 0, 0));
-    this.player.dir = 1;
-    this.camera.override = { target: v3(3.8, 2.6, 0), yaw: 0, pitch: 0.12, fov: 13, dist: 30 };
-    this.camera.overrideW = 1;
-    this.camera.overrideGoal = 1;
-    this.camera.snap(this.cameraContext());
-    this.emit('zone', { text: 'epilogue' });
   }
 
   // ---------------------------------------------------------------- main loop
@@ -468,11 +357,9 @@ export class Game {
     this.time += dt;
     const p = this.player;
     const input = this.input;
-    const verge = this.zone === 'verge';
 
     // Timers
     this.invuln = Math.max(0, this.invuln - dt);
-    this.sinceHurt += dt;
     if (this.banner) {
       this.bannerT -= dt;
       if (this.bannerT <= 0) this.banner = null;
@@ -496,14 +383,8 @@ export class Game {
     const gd = Math.abs(p.pos.x - this.level.gate.x);
     const gateTarget = this.save.gatePassed ? 1 : clamp(1 - (gd - 2) / 14, 0.15, 0.9);
     this.gateGlow += (gateTarget - this.gateGlow) * Math.min(1, dt * 2);
-    // Adult Pip slowly repairs out of combat.
-    if (p.form === 'adult' && this.cells < ADULT_CELLS && this.sinceHurt > 4) {
-      this.regenT += dt;
-      if (this.regenT > 2.5) {
-        this.regenT = 0;
-        this.cells++;
-      }
-    }
+    if (this.save.glyphsRead) this.sealOpen = Math.min(1, this.sealOpen + dt * 0.5);
+    if (this.save.finished || this.cine?.name === 'summit') this.wheelTurn += dt * (this.save.finished ? 0.08 : 0.04);
 
     // World systems
     const eraDone = this.era.step(dt, p.pos.x);
@@ -533,10 +414,9 @@ export class Game {
     // Intent
     const blocking = !!this.cine || this.shift.busy || this.respawnT >= 0 || this.mode === 'menu' || this.finaleCard;
     let intent: MoveIntent = NO_INTENT;
-    this.firing = false;
     if (!blocking) {
       this.stepRegressInput(dt);
-      if (input.consume('shift') && !this.interact()) this.requestShift();
+      if (input.consume('shift')) this.requestShift();
       if (this.save.eraKeys && !this.wheelOpen) {
         for (const [k, e] of ERA_KEYS) if (input.consume(k)) this.changeEra(e, 1.8);
       }
@@ -549,29 +429,19 @@ export class Game {
         const r = this.camera.relativeInput(ax, ay);
         intent = { mx: r.mx, mz: r.mz, jumpPressed, jumpHeld: input.held('jump') };
       }
-      if (input.consume('dash')) {
-        if (p.dash(intent.mx, intent.mz)) this.invuln = Math.max(this.invuln, 0.22);
-      }
-      if (verge) this.stepWeapon(dt, intent);
       if (Math.abs(ax) > 0.2) this.tutorialMoved = true;
       if (jumpPressed) this.tutorialJumped = true;
     } else {
       // Don't let presses made during a cinematic fire afterwards.
-      for (const a of ['jump', 'shift', 'dash', 'regress', 'altFire'] as Action[]) input.consume(a);
+      for (const a of ['jump', 'shift', 'regress'] as Action[]) input.consume(a);
       for (const [k] of ERA_KEYS) input.consume(k);
       this.wheelOpen = false;
       if (this.cine?.name === 'awakening' && (input.consume('skip') || input.consume('jump'))) this.skipAwakening();
-      if (this.dialogue && (this.cine?.name === 'core') && input.consume('skip')) this.advanceDialogue();
+      if (this.dialogue && this.cine?.name === 'summit' && input.consume('skip')) this.advanceDialogue();
     }
-    this.aiming = Math.max(0, Math.min(1, this.aiming + (verge && !blocking && input.held('aim') && this.combat.enabled ? dt * 7 : -dt * 7)));
-    p.speedScale = 1 - this.aiming * 0.45;
 
-    const frozen = this.shift.busy || this.respawnT >= 0 || this.cine?.name === 'awakening' || this.cine?.name === 'gate' || this.cine?.name === 'dome' || this.cine?.name === 'core';
+    const frozen = this.shift.busy || this.respawnT >= 0 || this.cine?.name === 'awakening' || this.cine?.name === 'gate' || this.cine?.name === 'summit';
     p.step(dt, intent, frozen ? 'frozen' : this.shift.mode);
-    // The shooter faces where it aims.
-    if (verge && this.shift.mode === '3d' && !frozen && (this.aiming > 0.2 || this.firing)) {
-      p.heading = wrapAngle(this.camera.yaw + Math.PI);
-    }
 
     // Idle personality
     const moving = Math.hypot(p.vel.x, p.vel.z) > 0.3 || !p.grounded;
@@ -582,17 +452,11 @@ export class Game {
       this.emit('antenna', { pos: { ...p.pos } });
     }
 
-    if (verge) {
-      this.combat.step(blocking && !this.wardenAwake ? 0 : dt, this.combatCtx);
-      if (!frozen && this.respawnT < 0) this.stepHostileContacts();
-    } else {
-      this.stepGlitchlings(dt, frozen);
-    }
+    this.stepGlitchlings(dt, frozen);
 
     if (this.mode === 'play') {
       this.stepPickups();
-      if (verge) this.stepVergeTriggers();
-      else this.stepTriggers();
+      this.stepTriggers();
     }
 
     // Puzzles
@@ -621,7 +485,7 @@ export class Game {
 
     // Visited rooms (world map)
     const room = roomAt(p.pos);
-    if (this.mode === 'play' && !this.epilogue && !this.save.visited.includes(room)) this.save.visited = [...this.save.visited, room];
+    if (this.mode === 'play' && !this.save.visited.includes(room)) this.save.visited = [...this.save.visited, room];
 
     this.sinceAwake += dt;
     this.camera.step(dt, this.cameraContext());
@@ -629,7 +493,6 @@ export class Game {
 
   cameraContext(): CameraContext {
     const orbit = this.mode === 'play' && !this.cine ? this.input.takeOrbit() : { yaw: 0, pitch: 0, active: false };
-    const adult = this.player.form === 'adult';
     return {
       pip: this.player.pos,
       vel: this.player.vel,
@@ -637,10 +500,8 @@ export class Game {
       blend: this.shift.blend,
       orbit,
       recenter: this.input.held('recenter'),
-      bounds: this.zone === 'verge' ? this.verge.bounds : this.level.bounds,
-      raycast: (a, b) => this.world.raycast(a, b, (c) => c.kind !== 'invisible' && c.kind !== 'cube' && c.max.y > a.y - (adult ? 1.4 : 0.6)),
-      shoulder: adult ? { aim: this.aiming } : null,
-      scale: adult ? 1.6 : 1,
+      bounds: this.level.bounds,
+      raycast: (a, b) => this.world.raycast(a, b, (c) => c.kind !== 'invisible' && c.kind !== 'cube' && c.max.y > a.y - 0.6),
       laneZ: this.shift.laneZ,
     };
   }
@@ -682,8 +543,8 @@ export class Game {
   applyRegress(era: Era | null) {
     const p = this.player;
     const base = this.era.baseEraAt(p.pos);
-    if (era === null || (era === base && this.era.fields.length === 0)) return this.setBubble(null);
-    const b: Bubble = { x: p.pos.x, y: p.pos.y + p.h * 0.5, z: p.pos.z, r: BUBBLE_RADIUS[p.form], era };
+    if (era === null || (era === base && this.era.gameEraAt(p.pos) === base)) return this.setBubble(null);
+    const b: Bubble = { x: p.pos.x, y: p.pos.y + p.h * 0.5, z: p.pos.z, r: BUBBLE_RADIUS, era };
     return this.setBubble(b);
   }
 
@@ -696,7 +557,7 @@ export class Game {
     if (!safe) {
       this.era.bubble = prev;
       if (!quiet) {
-        this.toast = { keys: [], text: "Can't — something would materialise inside you.", tone: 'warn' };
+        this.toast = { keys: [], text: "Can't — something would appear right where you're standing.", tone: 'warn' };
         this.toastT = 2.2;
         this.emit('fizzle', { pos: { ...this.player.pos }, text: 'regress' });
       }
@@ -706,117 +567,7 @@ export class Game {
     return true;
   }
 
-  // ---------------------------------------------------------------- weapon
-
-  private stepWeapon(dt: number, intent: MoveIntent) {
-    const input = this.input;
-    const p = this.player;
-    this.updateAimPoint();
-    if (!this.combat.enabled) return;
-    const eightBit = this.pipEra === 0;
-    const alt = input.held('altFire');
-    if (alt) this.altHeld += dt;
-    const muzzle = this.muzzle();
-    if (!alt && this.altHeld > 0) {
-      if (this.altHeld >= 0.6 && !eightBit && this.combat.fire(muzzle, this.aimPoint, true)) {
-        this.firing = true;
-        this.camera.recoil = 1.4;
-      }
-      this.altHeld = 0;
-    }
-    if (input.held('fire')) {
-      this.firing = true;
-      if (eightBit) {
-        if (input.consume('fire')) {
-          this.toast = { keys: [], text: 'No lasers in 8-bit. Stomp instead.', tone: 'warn' };
-          this.toastT = 1.6;
-        }
-      } else if (this.combat.fire(muzzle, this.aimPoint)) {
-        this.camera.recoil = Math.min(1.5, this.camera.recoil + 0.35);
-      }
-    }
-    input.consume('fire');
-    void intent;
-    void p;
-  }
-
-  /** Emitter muzzle on Pip's right forearm. */
-  muzzle(): V3 {
-    const p = this.player;
-    const h = p.heading;
-    // right of heading: rotate forward (sin h, cos h) by -90°
-    const rx = Math.cos(h) * -1;
-    const rz = Math.sin(h);
-    return v3(p.pos.x + Math.sin(h) * 0.45 - rx * 0.32, p.pos.y + 1.3, p.pos.z + Math.cos(h) * 0.45 - rz * 0.32);
-  }
-
-  /** Where the crosshair points: camera ray in 3D, auto-aim along the facing in 2D. */
-  private updateAimPoint() {
-    const p = this.player;
-    if (this.shift.mode === '2d') {
-      let best: Hostile | null = null;
-      let bd = 22;
-      for (const h of this.combat.hostiles) {
-        if (!h.alive || !h.exists || !h.awake) continue;
-        const dx = (h.pos.x - p.pos.x) * p.dir;
-        const d = Math.hypot(h.pos.x - p.pos.x, h.center().y - p.pos.y - 1.2);
-        if (dx > -0.5 && d < bd) {
-          bd = d;
-          best = h;
-        }
-      }
-      this.aimPoint = best ? best.center() : v3(p.pos.x + p.dir * 20, p.pos.y + 1.3, p.pos.z);
-      return;
-    }
-    const c = this.camera;
-    const f = c.forward();
-    const from = c.pos;
-    const far = v3(from.x + f.x * 120, from.y + f.y * 120, from.z + f.z * 120);
-    let t = this.world.raycast(from, far, (col) => col.kind !== 'invisible') ?? 1;
-    for (const h of this.combat.hostiles) {
-      if (!h.alive || !h.exists) continue;
-      const box = h.box();
-      // segment-box via combat helper
-      const ft = segmentFraction(from, far, box.min, box.max);
-      if (ft !== null && ft < t) t = ft;
-    }
-    // Never aim at something between the camera and Pip.
-    const minT = (Math.hypot(c.pos.x - p.pos.x, c.pos.z - p.pos.z) + 0.6) / 120;
-    t = Math.max(t, minT);
-    this.aimPoint = v3(from.x + (far.x - from.x) * t, from.y + (far.y - from.y) * t, from.z + (far.z - from.z) * t);
-  }
-
-  private onCombatEvent(e: CombatEvent) {
-    this.emit('combat', { combat: e.type, pos: e.pos, value: e.value, text: e.text });
-    if (e.type === 'enemyDown') {
-      this.camera.shake = Math.max(this.camera.shake, 0.25);
-      if (e.text === 'warden') this.onWardenDown();
-    }
-    if (e.type === 'telegraph' && e.pos && e.pos.y > 20) this.say('sniper');
-  }
-
-  /** Sprites (8-bit enforcers / Warden) hurt on touch and can be stomped. */
-  private stepHostileContacts() {
-    const p = this.player;
-    const pb = p.box();
-    for (const h of this.combat.hostiles) {
-      if (!h.alive || !h.awake || !h.exists || !h.sprite) continue;
-      const hb = h.box();
-      hb.max.y = h.pos.y + h.h * 0.6;
-      if (!overlaps(pb, hb, -0.02)) continue;
-      if (p.vel.y < 0 && p.pos.y > h.pos.y + h.h * 0.6 * 0.5) {
-        const dmg = h.kind === 'warden' ? WARDEN_STOMP_DAMAGE : 99;
-        this.combat.damage(h, dmg, h.center(), this.combatCtx, true);
-        p.bounce(this.input.held('jump'));
-        this.camera.shake = 0.4;
-        this.emit('stomp', { pos: { ...h.pos } });
-      } else {
-        this.hurt(1, h.pos);
-      }
-    }
-  }
-
-  // ---------------------------------------------------------------- meadows enemies
+  // ---------------------------------------------------------------- enemies and hazards
 
   private stepGlitchlings(dt: number, frozen: boolean) {
     const p = this.player;
@@ -890,27 +641,16 @@ export class Game {
   }
 
   private hurt(dmg: number, from: V3) {
-    if (this.invuln > 0 || this.respawnT >= 0 || this.player.dashT > 0) return;
+    if (this.invuln > 0 || this.respawnT >= 0) return;
     const p = this.player;
-    const adult = p.form === 'adult';
     this.cells -= dmg;
-    this.sinceHurt = 0;
-    this.regenT = 0;
-    this.invuln = adult ? 0.55 : 1.4;
+    this.invuln = 1.4;
     const dir = Math.sign(p.pos.x - from.x) || -p.dir;
-    if (!adult) {
-      p.vel.x = dir * 6;
-      p.vel.y = 9;
-      p.grounded = false;
-    } else {
-      const dx = p.pos.x - from.x;
-      const dz = p.pos.z - from.z;
-      const l = Math.hypot(dx, dz) || 1;
-      p.vel.x += (dx / l) * 3;
-      p.vel.z += (dz / l) * 3;
-    }
+    p.vel.x = dir * 6;
+    p.vel.y = 9;
+    p.grounded = false;
     this.setAction('hurt');
-    this.camera.shake = adult ? 0.35 : 0.5;
+    this.camera.shake = 0.5;
     this.emit('hurt', { pos: { ...p.pos }, value: dmg });
     if (this.cells <= 0) this.beginRespawn();
   }
@@ -923,25 +663,10 @@ export class Game {
   }
 
   private finishRespawn() {
-    const list = this.zone === 'verge' ? this.verge.checkpoints : this.level.checkpoints;
+    const list = this.level.checkpoints;
     const cp = list.find((c) => c.id === this.checkpoint) ?? list[0];
     this.setBubble(null, true, true);
     this.player.teleport(cp.pos);
-    if (this.zone === 'verge') {
-      this.shift.set('3d');
-      this.player.heading = Math.PI / 2;
-      this.camera.lookYaw = -Math.PI / 2;
-      this.camera.lookPitch = 0.12;
-      for (const h of this.combat.hostiles) {
-        if (!h.alive) continue;
-        h.pos = { ...h.home };
-        h.prevPos = { ...h.home };
-        h.cooldown = 1.5;
-        h.telegraph = 0;
-        h.slamT = -1;
-      }
-      this.combat.projectiles = [];
-    }
     if (this.cells <= 0) this.cells = this.maxCells;
     this.invuln = 1.0;
     this.respawnT = -1;
@@ -957,39 +682,43 @@ export class Game {
     const cx = p.pos.x;
     const cy = p.pos.y + p.h / 2;
     const cz = p.pos.z;
-    const reach = p.form === 'adult' ? 1.1 : 0.78;
     for (const b of this.bits) {
       if (b.collected) continue;
-      if (Math.hypot(b.pos.x - cx, b.pos.y - cy, b.pos.z - cz) < reach) {
+      if (Math.hypot(b.pos.x - cx, b.pos.y - cy, b.pos.z - cz) < 0.78) {
         b.collected = true;
         this.bitsCollected++;
         this.emit('collect', { pos: { ...b.pos }, value: this.bitsCollected });
       }
     }
-    if (this.zone !== 'verge') return;
-    for (const h of this.healthPickups) {
-      if (h.taken || this.cells >= ADULT_CELLS) continue;
-      if (Math.hypot(h.pos.x - cx, h.pos.y - cy, h.pos.z - cz) < 1.2) {
-        h.taken = true;
-        this.cells = Math.min(ADULT_CELLS, this.cells + 2);
-        this.emit('pickup', { pos: { ...h.pos } });
-      }
-    }
   }
 
-  // ---------------------------------------------------------------- meadows triggers
+  // ---------------------------------------------------------------- triggers
 
   private stepTriggers() {
     const p = this.player;
     const L = this.level;
-    if (this.cine || this.respawnT >= 0 || this.epilogue) return;
+    if (this.cine || this.respawnT >= 0) return;
     const x = p.pos.x;
     if (this.save.awakened && this.era.era === 0 && x > 11.5 && x < 16) this.say('holes');
     if (this.era.era === 0 && x > 27 && x < 31) this.say('goodJob');
     if (this.era.displayEra >= 1 && x > 36 && x < 46) this.say('deadPixel');
     if (x > 98 && x < 104 && this.save.beaconLit) this.say('mural');
-    if (this.save.regress && x > 114.5 && x < this.level.fenceX) this.say('fence');
-    if (x > this.level.fenceX + 0.8 && x < 125 && p.pos.y > 8) this.say('fencePassed');
+    if (this.save.regress && x > 114.5 && x < L.fenceX) this.say('fence');
+    if (x > L.fenceX + 0.8 && x < 125 && p.pos.y > 8) this.say('fencePassed');
+    // Chapter 6 — the Halo Path
+    if (this.save.gatePassed && x > L.haloX && p.grounded) this.say('halo');
+    if (x > L.beamX - 4 && x < L.beamX) this.say('beam');
+    if (x > L.thicketX - 5 && x < L.thicketX) this.say('thicket');
+    if (x > L.thicketX + 1 && x < L.thicketX + 6 && p.pos.y > L.haloY - 0.5) this.say('thicketPassed');
+    if (x > L.reliefGap.x0 - 4 && x < L.reliefGap.x0 && p.pos.y > L.haloY - 0.5) this.say('relief');
+    if (x > L.sleepField.min.x - 1.5 && x < L.sleepField.max.x && p.pos.y > L.sealY - 1) this.say('sleeping');
+    if (x > L.aqueduct.x0 - 4 && x < L.aqueduct.x0 && p.pos.y > L.sealY - 0.5) this.say('aqueduct');
+    // Reading the glyphs takes full fidelity at the stone.
+    const gs = L.glyphStone;
+    if (!this.save.glyphsRead && dist2D(x, p.pos.z, gs.x, gs.z) < 5 && Math.abs(p.pos.y - gs.y) < 2 && this.era.gameEraAt(v3(gs.x, gs.y + 1, gs.z)) >= 4) {
+      this.startCine('glyphs');
+    }
+
     if (!this.save.shardTaken) {
       const s = L.shard;
       if (Math.abs(s.x - x) < 0.8 && Math.abs(s.z - p.pos.z) < 1 && p.pos.y < s.y + 3) this.startCine('shard');
@@ -1022,111 +751,22 @@ export class Game {
     }
     if (!this.save.beaconLit && x > L.beaconX && p.pos.y < 3 && p.grounded) this.startCine('beacon');
     if (!this.save.gatePassed && x > L.gateX && p.pos.y > L.plateauY - 1 && p.grounded) this.startCine('gate');
-    if (this.save.gatePassed && !this.save.vergeEntered && x > L.finaleX && p.pos.y > L.plateauY - 1 && p.grounded) this.startCine('dome');
+    if (!this.save.finished && x > L.summitX && p.pos.y > L.sealY - 1 && p.grounded) this.startCine('summit');
   }
 
   private activateCheckpoint(id: string) {
     this.activeCheckpoints.add(id);
     this.checkpoint = id;
     this.cells = this.maxCells;
-    const list = this.zone === 'verge' ? this.verge.checkpoints : this.level.checkpoints;
-    const cp = list.find((c) => c.id === id)!;
+    const cp = this.level.checkpoints.find((c) => c.id === id)!;
     this.emit('checkpoint', { pos: { ...cp.pos }, text: id });
     this.persist();
   }
 
-  // ---------------------------------------------------------------- city triggers
-
-  private stepVergeTriggers() {
-    const p = this.player;
-    const V = this.verge;
-    if (this.cine || this.respawnT >= 0) return;
-    const chest = v3(p.pos.x, p.pos.y + 1, p.pos.z);
-    // Emitter
-    if (!this.save.emitter && Math.hypot(V.emitter.x - chest.x, V.emitter.y - chest.y, V.emitter.z - chest.z) < 1.6) {
-      this.save.emitter = true;
-      this.combat.enabled = true;
-      this.emit('emitter', { pos: { ...V.emitter } });
-      this.say('emitter');
-      this.toast = { keys: ['LMB'], text: 'Fire · RMB aim · F hold for a charged shot', tone: 'info' };
-      this.toastT = 5;
-      this.persist();
-    }
-    // Encounters wake as Pip arrives.
-    for (const enc of V.encounters) {
-      if (enc.needs === 'emitter' && !this.save.emitter) continue;
-      if (inBox(p.pos, enc.min, enc.max)) this.combat.wake(enc.group);
-    }
-    // Story beats by place
-    if (p.pos.x > 1046 && p.pos.y < 3) this.say('market');
-    if (p.pos.x > 1072 && p.pos.x < 1084 && !this.save.shutterOpen) this.say('turrets');
-    if (inBox(p.pos, V.alley.min, V.alley.max)) this.say('alley');
-    if (this.save.shutterOpen && p.pos.x > 1093 && p.pos.y < 3) this.say('billboard');
-    if (p.pos.x > V.plazaEntryX && p.pos.y > 14) this.say('plaza');
-    // Reading the censored code takes full fidelity at the sign.
-    if (!this.save.codeRead && Math.hypot(V.codeSign.x - p.pos.x, V.codeSign.z - p.pos.z) < 6 && this.era.gameEraAt(V.codeSign) >= 4) {
-      this.save.codeRead = true;
-      this.emit('codeRead', { pos: { ...V.codeSign } });
-      this.say('codeRead');
-      this.persist();
-    }
-    const warden = this.combat.hostiles.find((h) => h.kind === 'warden')!;
-    if (this.wardenAwake && warden.alive && warden.armored) this.say('wardenWeak');
-    // Checkpoints
-    for (const cp of V.checkpoints) {
-      if (this.activeCheckpoints.has(cp.id)) continue;
-      if (Math.hypot(p.pos.x - cp.pos.x, p.pos.z - cp.pos.z) < 1.6 && Math.abs(p.pos.y - cp.pos.y) < 2 && p.grounded) this.activateCheckpoint(cp.id);
-    }
-    // Into the core
-    if (this.doorOpen && p.pos.x > V.coreX && !this.save.finished) this.startCine('core');
-  }
-
-  /** Context action on E. Returns true if something was used (so E doesn't also shift). */
-  private interact(): boolean {
-    if (this.zone !== 'verge') return false;
-    const p = this.player;
-    const V = this.verge;
-    if (!this.save.shutterOpen && Math.hypot(V.terminal.x - p.pos.x, V.terminal.z - p.pos.z) < 1.8 && p.pos.y < 2) {
-      this.save.shutterOpen = true;
-      this.world.get('shutter')!.enabled = false;
-      this.emit('shutter', { pos: v3(1084.3, 0, 0) });
-      this.say('shutterOpen');
-      this.persist();
-      return true;
-    }
-    if (!this.doorOpen && Math.hypot(V.doorPanel.x - p.pos.x, V.doorPanel.z - p.pos.z) < 2.4 && p.pos.y > 14) {
-      if (!this.save.codeRead) {
-        this.toast = { keys: [], text: 'The panel wants a code. Find it — it\'s been censored.', tone: 'warn' };
-        this.toastT = 2.6;
-      } else if (!this.wardenAwake && !this.save.wardenDown) {
-        this.wardenAwake = true;
-        this.combat.wake('warden');
-        // It comes from behind: turn the camera to face it.
-        const w = this.combat.hostiles.find((h) => h.kind === 'warden')!;
-        this.camera.faceToward(w.pos.x - p.pos.x, w.pos.z - p.pos.z);
-        this.say('warden');
-        this.emit('door', { pos: { ...V.doorPanel }, text: 'warden' });
-      } else if (this.save.wardenDown) {
-        this.openDoor(true);
-      }
-      return true;
-    }
-    return false;
-  }
-
-  private openDoor(announce: boolean) {
-    this.doorOpen = true;
-    this.world.get('door')!.enabled = false;
-    if (announce) this.emit('door', { pos: { ...this.verge.doorPanel }, text: 'open' });
-  }
-
-  private onWardenDown() {
-    this.save.wardenDown = true;
-    this.wardenAwake = false;
-    this.say('wardenDown');
-    this.openDoor(true);
-    this.checkpoint = 'door';
-    this.persist();
+  /** The sealed door sinks into the ground once its glyphs are read. */
+  private openSeal(instant: boolean) {
+    this.world.get('sealDoor')!.enabled = false;
+    if (instant) this.sealOpen = 1;
   }
 
   // ---------------------------------------------------------------- dimension shift
@@ -1138,13 +778,10 @@ export class Game {
       const msgs: Record<ShiftBlock, Prompt | null> = {
         locked: this.player.pos.x > 50 ? { keys: [], text: "Pip's core is dormant… something nearby is humming.", tone: 'warn' } : null,
         airborne: { keys: [], text: 'Land first — the core needs solid ground.', tone: 'warn' },
-        'off-lane':
-          this.zone === 'verge'
-            ? { keys: [], text: 'Nothing flat to fold onto here. Find a billboard.', tone: 'warn' }
-            : { keys: [], text: 'Return to the glowing lane to flatten back into 2D.', tone: 'warn' },
+        'off-lane': { keys: [], text: 'Return to the glowing lane to flatten back into 2D.', tone: 'warn' },
         obstructed: { keys: [], text: 'Something is in the way on the lane.', tone: 'warn' },
         'no-ground': { keys: [], text: "There's no ground on the lane here.", tone: 'warn' },
-        painted: { keys: [], text: "Can't unfold here — painted steps only exist in 2D.", tone: 'warn' },
+        painted: { keys: [], text: "Can't unfold here — this only holds together from the side.", tone: 'warn' },
         busy: null,
       };
       const m = msgs[block];
@@ -1157,15 +794,9 @@ export class Game {
       return block;
     }
     const to = wasMode === '2d' ? '3d' : '2d';
-    if (to === '3d') {
-      this.camera.resetOrbit(0, 0);
-      if (this.player.form === 'adult') {
-        this.camera.lookYaw = -Math.PI / 2;
-        this.camera.lookPitch = 0.12;
-      }
-    }
+    if (to === '3d') this.camera.resetOrbit(0, 0);
     this.emit('shiftStart', { pos: { ...this.player.pos }, text: to });
-    if (to === '3d' && !this.save.firstShiftDone && this.zone === 'meadows') {
+    if (to === '3d' && !this.save.firstShiftDone) {
       this.changeEra(2, 3.0, v3(this.player.pos.x, this.player.pos.y + 0.5, 0));
     }
     return null;
@@ -1173,7 +804,7 @@ export class Game {
 
   private onShiftDone() {
     this.emit('shiftEnd', { pos: { ...this.player.pos }, text: this.shift.mode });
-    if (this.shift.mode === '3d' && !this.save.firstShiftDone && this.zone === 'meadows') {
+    if (this.shift.mode === '3d' && !this.save.firstShiftDone) {
       this.save.firstShiftDone = true;
       this.setAction('surprised');
       this.lookAtCamera = 2.2;
@@ -1388,64 +1019,70 @@ export class Game {
         }
         break;
       }
-      case 'dome': {
-        // At the overlook the painted sky cracks: the meadow was a dome on a rooftop.
+      case 'glyphs': {
+        // Full fidelity: the writing on the sleeping stone resolves, and the seal sinks.
+        const gs = L.glyphStone;
         this.once('start', 0, () => {
-          this.setAction('surprised');
-          this.lookAtCamera = 3;
-          this.camera.override = { target: v3(168, 20, -40), yaw: -0.434, pitch: -0.167, fov: 46, dist: 53 };
+          this.save.glyphsRead = true;
+          this.setAction('inspect');
+          this.emit('glyphs', { pos: { ...gs } });
+          this.camera.override = { target: v3(gs.x + 1.5, gs.y + 1.4, 0), yaw: 0.35, pitch: 0.12, fov: 40, dist: 10 };
           this.camera.overrideGoal = 1;
-          this.camera.overrideRate = 0.8;
-          this.emit('reveal', { pos: { ...p.pos } });
+          this.camera.overrideRate = 2.2;
+          this.say('glyphs');
         });
-        this.once('crack', 3.0, () => {
-          this.emit('domeCrack', { pos: { ...p.pos } });
-          this.camera.shake = 0.8;
+        this.once('open', 1.6, () => {
+          this.openSeal(false);
+          this.camera.shake = 0.35;
         });
-        this.once('white', 4.4, () => {
-          this.fadeWhite = true;
-          this.fadeGoal = 1;
+        this.once('release', 3.4, () => {
+          this.camera.overrideGoal = 0;
+          this.camera.overrideRate = 2.0;
         });
-        if (c.t > 5.6 && this.fade > 0.98) {
+        if (c.t > 3.8) {
           this.endCine();
-          this.enterVerge();
-          this.fadeGoal = 0;
-          this.showBanner('NEON VERGE', 'Chapter 6', 5, 3.6);
+          this.persist();
         }
         break;
       }
-      case 'core': {
-        const V = this.verge;
+      case 'summit': {
+        // The world wheel turns; the camera pulls back over every place Pip has been.
+        const w = L.wheel;
         this.once('start', 0, () => {
           this.setBubble(null, true, true);
-          this.camera.override = { target: v3(V.core.x, V.core.y, V.core.z), yaw: -1.2, pitch: 0.08, fov: 50, dist: 12 };
+          this.setAction('inspect');
+          this.camera.override = { target: v3(w.x, w.y + 2.5, w.z), yaw: 0.5, pitch: 0.14, fov: 44, dist: 14 };
           this.camera.overrideGoal = 1;
-          this.camera.overrideRate = 1.2;
-          this.say('core', true);
+          this.camera.overrideRate = 1.4;
+          this.say('summit', true);
         });
-        if (!c.fired.has('choice') && c.t > 2 && !this.speaking) {
-          this.once('choice', 0, () => {
-            this.emit('coreChoice', { pos: { ...V.core } });
-            this.camera.shake = 0.5;
+        if (!c.fired.has('turn') && c.t > 2 && !this.speaking) {
+          this.once('turn', 0, () => {
+            this.emit('wheel', { pos: { ...w } });
+            this.camera.shake = 0.4;
+            this.setAction('dance');
+            this.camera.override = { target: v3(120, 6, -10), yaw: -0.25, pitch: 0.18, fov: 52, dist: 150 };
+            this.camera.overrideRate = 0.35;
+            this.emit('reveal', { pos: { ...p.pos } });
           });
         }
-        if (c.fired.has('choice') && !c.fired.has('white')) {
-          c.fired.add('white');
-          c.t = 100;
-          this.fadeWhite = true;
-          this.fadeGoal = 1;
+        if (c.fired.has('turn') && !c.fired.has('end')) {
+          if (!c.fired.has('mark')) {
+            c.fired.add('mark');
+            c.t = 100;
+          }
+          if (c.t > 104) {
+            c.fired.add('end');
+            this.save.finished = true;
+            this.save.eraKeys = true;
+            this.checkpoint = 'summit';
+            this.activeCheckpoints.add('summit');
+            this.persist();
+            this.say('ending', true);
+          }
         }
-        if (c.t > 102.5 && this.fade > 0.98 && !c.fired.has('epilogue')) {
-          c.fired.add('epilogue');
-          this.save.finished = true;
-          this.save.eraKeys = true;
-          this.checkpoint = 'door';
-          this.persist();
-          this.enterEpilogue();
-          this.fadeGoal = 0;
-          this.say('ending', true);
-        }
-        if (c.fired.has('epilogue') && c.t > 104 && !this.speaking && !this.finaleCard) {
+        if (c.fired.has('end') && !this.speaking && !this.finaleCard) {
+          this.action = 'none';
           this.finaleCard = true;
           this.emit('finale');
         }
@@ -1459,15 +1096,8 @@ export class Game {
     this.finaleCard = false;
     this.action = 'none';
     this.endCine();
-    this.epilogue = false;
     this.fadeWhite = false;
-    this.save.zone = 'verge';
-    this.enterVergeState();
-    this.doorOpen = true;
-    this.world.get('door')!.enabled = false;
-    const cp = this.verge.checkpoints.find((c) => c.id === 'door')!;
-    this.checkpoint = 'door';
-    this.player.teleport(cp.pos);
+    this.fadeGoal = 0;
     this.camera.snap(this.cameraContext());
     this.toast = { keys: ['1', '–', '6'], text: 'All six generations unlocked — switch any time', tone: 'story' };
     this.toastT = 5;
@@ -1484,38 +1114,32 @@ export class Game {
     if (this.action === 'fistpump' || this.action === 'dance') return 'happy';
     if (this.action === 'stumble') return 'dizzy';
     if (!p.grounded && p.fallTime > 0.45 && p.vel.y < -12) return 'panic';
-    if (p.pushing > 0 || this.aiming > 0.5 || this.firing) return 'determined';
+    if (p.pushing > 0) return 'determined';
     if (this.idleT > 14) return 'sleepy';
     return 'idle';
   }
 
   /** The HUD's objective line. */
   objective(): string {
-    if (this.epilogue) return '';
-    if (this.zone === 'meadows') return CHAPTERS[Math.min(4, this.era.displayEra)];
-    const V = this.save;
-    if (!V.emitter) return 'Reach the crate by the hatch';
-    if (this.combat.remaining('roof') > 0 && this.player.pos.x < 1036 && this.player.pos.y > 8) return 'Deal with the Censors';
-    if (!V.shutterOpen) return 'Open the shutter at the end of Market Street';
-    if (this.player.pos.y < 14) return 'Climb the billboard to the skybridge';
-    if (!V.codeRead) return 'Read the censored door code';
-    if (!V.wardenDown) return this.wardenAwake ? 'Defeat the Warden' : 'Enter the code at the Archive Tower';
-    return 'Enter the core';
+    if (this.save.finished) return 'Explore · 1–6 change generation';
+    if (this.player.pos.x > 141) return CHAPTERS[5];
+    return CHAPTERS[Math.min(4, this.era.displayEra)];
   }
 
   prompt(): Prompt | null {
     if (this.toast) return this.toast;
-    if (this.mode !== 'play' || this.cine || this.shift.busy || this.finaleCard || this.epilogue) return null;
+    if (this.mode !== 'play' || this.cine || this.shift.busy || this.finaleCard) return null;
     const p = this.player;
     const L = this.level;
     const x = p.pos.x;
-    if (this.zone === 'verge') return this.vergePrompt();
     if (!this.tutorialMoved && this.sinceAwake > 0.6) return { keys: ['→'], text: 'GO', tone: 'info' };
     if (!this.tutorialJumped && this.tutorialMoved && x > 6 && x < 24 && this.shift.mode === '2d') return { keys: ['Space'], text: 'Jump — hold for height', tone: 'info' };
     if (!this.shift.unlocked && x > 55 && x < 62) return { keys: [], text: 'The bridge is broken. That device is humming…', tone: 'story' };
-    if (this.save.regress && x > 114 && x < this.level.fenceX && !this.bubbleActive && p.pos.y > 8)
+    if (this.save.regress && x > 114 && x < L.fenceX && !this.bubbleActive && p.pos.y > 8)
       return { keys: ['Q', '1'], text: 'Hold Q, press 1: project 8-bit around you', tone: 'info' };
-    if (this.bubbleActive && x > this.level.fenceX + 1 && x < 124) return { keys: ['Q'], text: 'Tap Q to drop the bubble', tone: 'info' };
+    if (this.bubbleActive && x > L.fenceX + 1 && x < 124) return { keys: ['Q'], text: 'Tap Q to drop the bubble', tone: 'info' };
+    const halo = this.haloPrompt();
+    if (halo !== undefined) return halo;
     const inAct2 = x > 98.5 && x < 112.5 && p.pos.y < 2;
     if (this.shift.mode === '2d') {
       if (this.shift.unlocked && !this.puzzle.plateLatched && x > 50 && x < 63) return { keys: ['E'], text: 'Dimension Shift', tone: 'info' };
@@ -1530,7 +1154,7 @@ export class Game {
     }
     if (inAct2 && !this.stair.latched) {
       if (!this.seenAlcove) return { keys: ['D'], text: 'A lantern glows on the grass to your right — walk over to it', tone: 'info' };
-      // Step-by-step: lamp → right along the alcove, then back toward the mural onto the glowing ring.
+      // Step-by-step: lantern forward along the alcove, then toward the mural onto the target.
       const lc = this.stair.lampCenter;
       const sk = L.lampSocket;
       if (lc.x > sk.x + 0.6) return { keys: [], text: 'Pushed too far — step on the purple glyph to reset the lantern', tone: 'info' };
@@ -1538,38 +1162,32 @@ export class Game {
       if (lc.z > sk.z + 0.3) return { keys: ['A'], text: 'Now push it from its right side toward the wall, onto the yellow arrow', tone: 'info' };
       return { keys: [], text: 'Nudge the lantern onto the yellow arrow', tone: 'info' };
     }
-    if (Math.abs(p.pos.z) > LANE_TOLERANCE) return { keys: [], text: 'Return to the glowing lane', tone: 'info' };
+    if (Math.abs(p.pos.z) > LANE_TOLERANCE && x < 141) return { keys: [], text: 'Return to the glowing lane', tone: 'info' };
     if (inAct2) return { keys: ['E'], text: 'Shift to 2D — painted steps are solid when flat', tone: 'info' };
-    return { keys: ['E'], text: 'Shift back to 2D', tone: 'info' };
+    if (x < 141) return { keys: ['E'], text: 'Shift back to 2D', tone: 'info' };
+    return null;
   }
 
-  private vergePrompt(): Prompt | null {
+  /** Hints along the Halo Path. `undefined` = not in that stretch (fall through). */
+  private haloPrompt(): Prompt | null | undefined {
     const p = this.player;
-    const V = this.verge;
-    const S = this.save;
-    if (this.combat.overheated) return { keys: [], text: 'Emitter venting…', tone: 'warn' };
-    if (!S.emitter) return Math.hypot(p.pos.x - V.emitter.x, p.pos.z - V.emitter.z) < 8 ? { keys: [], text: 'Something is humming in that crate', tone: 'story' } : null;
-    if (!S.shutterOpen) {
-      const dT = Math.hypot(p.pos.x - V.terminal.x, p.pos.z - V.terminal.z);
-      if (dT < 1.8) return { keys: ['E'], text: 'Open the shutter', tone: 'info' };
-      if (p.pos.x > 1072 && p.pos.x < 1084 && this.pipEra !== 0) return { keys: ['Q', '1'], text: 'Lasers and turrets don\'t exist in 8-bit', tone: 'info' };
-      if (this.pipEra === 0 && dT < 7) return { keys: [], text: 'Reach the terminal — your emitter is offline in 8-bit', tone: 'info' };
+    const L = this.level;
+    const x = p.pos.x;
+    if (x < 152 || this.save.finished) return undefined;
+    const bubble = this.era.bubble;
+    const near = (x0: number, x1: number) => x > x0 && x < x1;
+    if (near(L.beamX - 4, L.beamX) && this.world.active(this.world.get('beam1')!)) return { keys: ['Q', '1'], text: 'Light threads were never drawn in 8-bit', tone: 'info' };
+    if (near(L.thicketX - 5, L.thicketX - 0.6) && p.pos.y > L.haloY - 0.5 && this.world.active(this.world.get('thicket')!))
+      return { keys: ['Q', '2'], text: 'In 16-bit, scenery is its own layer — walk behind it', tone: 'info' };
+    if (near(L.reliefGap.x0 - 3, L.reliefGap.x1) && p.pos.y > L.haloY - 1 && bubble?.era !== 3)
+      return { keys: ['Q', '4'], text: 'Carved handholds only hold you in the Stylized world', tone: 'info' };
+    if (near(L.sleepField.min.x - 1, L.glyphStone.x + 4) && !this.save.glyphsRead && p.pos.y > L.sealY - 1)
+      return { keys: ['Q', '6'], text: 'The stone is asleep in 16-bit — project full detail beside it', tone: 'info' };
+    if (near(L.aqueduct.x0 - 3, L.aqueduct.x0 + 0.5) && p.pos.y > L.sealY - 1) {
+      if (this.shift.mode === '3d') return { keys: ['E'], text: 'From the side, the two halves line up — shift to 2D', tone: 'info' };
+      return null;
     }
-    if (S.shutterOpen && p.pos.y < 14 && this.shift.mode === '3d') {
-      const lane = this.shift.laneAt(p.pos.x, p.pos.z);
-      if (lane && Math.abs(p.pos.z - lane.z) <= LANE_TOLERANCE) return { keys: ['E'], text: 'Flatten onto the billboard', tone: 'info' };
-      if (p.pos.x > 1092) return { keys: [], text: 'Step onto the glowing strip by the billboard', tone: 'info' };
-    }
-    if (p.pos.y > 14 && this.shift.mode === '2d' && p.pos.x > 1112) return { keys: ['E'], text: 'Unfold back into 3D', tone: 'info' };
-    if (p.pos.y > 14 && !S.codeRead && Math.hypot(p.pos.x - V.codeSign.x, p.pos.z - V.codeSign.z) < 9)
-      return { keys: ['Q', '6'], text: 'Censored. Project full fidelity near the sign', tone: 'info' };
-    if (S.codeRead && !this.doorOpen && !this.wardenAwake && Math.hypot(p.pos.x - V.doorPanel.x, p.pos.z - V.doorPanel.z) < 2.4) return { keys: ['E'], text: 'Enter the code', tone: 'info' };
-    if (this.wardenAwake) {
-      const w = this.combat.hostiles.find((h) => h.kind === 'warden')!;
-      if (w.armored) return { keys: ['Q', '1'], text: 'Armoured — stomp it in 8-bit', tone: 'info' };
-      if (w.shielded) return { keys: ['Q', '2'], text: 'Its shield only exists in modern generations — regress close to it', tone: 'info' };
-    }
-    if (this.save.wardenDown && Math.hypot(p.pos.x - V.doorPanel.x, p.pos.z - V.doorPanel.z) < 3 && !this.doorOpen) return { keys: ['E'], text: 'Open the door', tone: 'info' };
+    if (bubble && x > L.aqueduct.x1) return { keys: ['Q'], text: 'Tap Q to drop the bubble', tone: 'info' };
     return null;
   }
 
@@ -1578,34 +1196,4 @@ export class Game {
     if (this.shift.busy) return 'active';
     return this.shift.check() ? 'blocked' : 'ready';
   }
-
-  /** The boss bar, while the Warden is fighting. */
-  boss(): { name: string; hp: number; max: number; state: string } | null {
-    if (!this.wardenAwake) return null;
-    const w = this.combat.hostiles.find((h) => h.kind === 'warden')!;
-    if (!w.alive) return null;
-    return { name: 'WARDEN', hp: w.hp, max: w.maxHp, state: w.armored ? 'armoured' : w.shielded ? 'shielded' : 'exposed' };
-  }
 }
-
-/** Segment (a→b) vs AABB entry fraction. */
-function segmentFraction(a: V3, b: V3, min: V3, max: V3): number | null {
-  let tmin = 0;
-  let tmax = 1;
-  for (const ax of ['x', 'y', 'z'] as const) {
-    const d = b[ax] - a[ax];
-    if (Math.abs(d) < 1e-9) {
-      if (a[ax] < min[ax] || a[ax] > max[ax]) return null;
-    } else {
-      let t0 = (min[ax] - a[ax]) / d;
-      let t1 = (max[ax] - a[ax]) / d;
-      if (t0 > t1) [t0, t1] = [t1, t0];
-      tmin = Math.max(tmin, t0);
-      tmax = Math.min(tmax, t1);
-      if (tmin > tmax) return null;
-    }
-  }
-  return tmin;
-}
-
-export { ERA_NAMES };

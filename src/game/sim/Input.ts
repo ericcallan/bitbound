@@ -15,10 +15,6 @@ export type Action =
   | 'era5'
   | 'era6'
   | 'skip'
-  | 'fire'
-  | 'aim'
-  | 'altFire'
-  | 'dash'
   | 'regress';
 
 /** What the simulation needs from any input device (keyboard, gamepad, or a scripted test bot). */
@@ -46,12 +42,7 @@ const KEYMAP: Record<string, Action[]> = {
   Space: ['jump', 'skip'],
   KeyK: ['jump'],
   KeyE: ['shift'],
-  ShiftLeft: ['dash'],
-  ShiftRight: ['dash'],
   KeyQ: ['regress'],
-  KeyF: ['altFire'],
-  KeyJ: ['fire'],
-  KeyL: ['aim'],
   KeyM: ['map'],
   Escape: ['pause'],
   KeyP: ['pause'],
@@ -89,7 +80,6 @@ export class BrowserInput implements InputSource {
     window.addEventListener('pointerup', this.onPointerUp);
     window.addEventListener('pointermove', this.onPointerMove);
     el.addEventListener('contextmenu', this.onContextMenu);
-    document.addEventListener('pointerlockchange', this.onLockChange);
   }
 
   dispose() {
@@ -100,7 +90,6 @@ export class BrowserInput implements InputSource {
     window.removeEventListener('pointerup', this.onPointerUp);
     window.removeEventListener('pointermove', this.onPointerMove);
     this.el.removeEventListener('contextmenu', this.onContextMenu);
-    document.removeEventListener('pointerlockchange', this.onLockChange);
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -121,60 +110,20 @@ export class BrowserInput implements InputSource {
     this.down.clear();
     this.dragging = false;
   };
-  /** Shooter mode: mouse look via pointer lock, LMB fire, RMB aim. */
-  shooter = false;
-  sensitivity = 1;
-  invertY = false;
   private onPointerDown = (e: PointerEvent) => {
-    if (this.shooter) {
-      if (document.pointerLockElement !== this.el && this.enabled) {
-        void this.el.requestPointerLock?.();
-        return;
-      }
-      const a: Action | null = e.button === 0 ? 'fire' : e.button === 2 ? 'aim' : null;
-      if (a) {
-        if (!this.down.has(a)) this.pressed.add(a);
-        this.down.add(a);
-      }
-      return;
-    }
     if (e.button === 0 || e.button === 2) this.dragging = true;
   };
-  private onPointerUp = (e: PointerEvent) => {
+  private onPointerUp = () => {
     this.dragging = false;
-    if (e.button === 0) this.down.delete('fire');
-    if (e.button === 2) this.down.delete('aim');
   };
   private onPointerMove = (e: PointerEvent) => {
-    const locked = typeof document !== 'undefined' && document.pointerLockElement === this.el;
-    if (!this.dragging && !locked) return;
-    const k = locked ? 0.0022 * this.sensitivity : 0.0055;
-    this.orbitYaw -= e.movementX * k;
-    this.orbitPitch += e.movementY * k * 0.8 * (this.invertY ? -1 : 1);
+    if (!this.dragging) return;
+    this.orbitYaw -= e.movementX * 0.0055;
+    this.orbitPitch += e.movementY * 0.0055 * 0.8;
     this.lastOrbitAt = performance.now();
   };
-
+  /** Right-drag orbits the camera, so the browser menu must not open. */
   private onContextMenu = (e: Event) => e.preventDefault();
-  private wasLocked = false;
-  private releasing = false;
-  /** Esc exits pointer lock without a keydown reaching the page: treat losing the lock as "pause". */
-  private onLockChange = () => {
-    const locked = document.pointerLockElement === this.el;
-    if (this.wasLocked && !locked && !this.releasing && this.shooter) this.pressed.add('pause');
-    if (!locked) {
-      this.down.delete('fire');
-      this.down.delete('aim');
-    }
-    this.wasLocked = locked;
-    this.releasing = false;
-  };
-
-  releasePointer() {
-    if (typeof document !== 'undefined' && document.pointerLockElement) {
-      this.releasing = true;
-      document.exitPointerLock?.();
-    }
-  }
 
   /** Called once per rendered frame to sample gamepads. */
   pollGamepad() {
@@ -190,11 +139,8 @@ export class BrowserInput implements InputSource {
     this.padRY = dz(p.axes[3] ?? 0);
     const b = (i: number) => !!p.buttons[i]?.pressed;
     if (b(0)) this.padHeld.add('jump').add('skip');
-    if (b(2)) this.padHeld.add('shift');
-    if (b(1)) this.padHeld.add('dash');
+    if (b(1) || b(2) || b(5)) this.padHeld.add('shift');
     if (b(3)) this.padHeld.add('regress');
-    if (b(5) || (p.buttons[7]?.value ?? 0) > 0.4) this.padHeld.add('fire');
-    if (b(4) || (p.buttons[6]?.value ?? 0) > 0.4) this.padHeld.add('aim');
     if (b(8)) this.padHeld.add('map');
     if (b(9)) this.padHeld.add('pause');
     if (b(14)) this.padHeld.add('left');

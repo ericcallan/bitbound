@@ -1,9 +1,9 @@
 import type { Game } from '../game/sim/Game';
 import type { ScriptedInput } from './helpers';
-import type { Hostile } from '../game/combat/combat';
 import type { Action } from '../game/sim/Input';
 import type { Era } from '../game/era/EraSystem';
-import { v3, wrapAngle, type V3 } from '../game/math';
+import { RELIEFS } from '../game/level/meadows';
+import { v3 } from '../game/math';
 
 interface Waypoint {
   x: number;
@@ -20,16 +20,10 @@ const MOVER_PITS = [
 
 const ERA_KEY: Action[] = ['era1', 'era2', 'era3', 'era4', 'era5', 'era6'];
 
-interface Goal {
-  name: string;
-  done: (g: Game) => boolean;
-  act: (g: Game, bot: Bot) => void;
-}
-
 /**
  * A bot that plays the whole game through the real input path: 2D runs with obstacle/gap/enemy
- * heuristics, 3D steering converted into camera-relative stick input, Regress via the Q wheel,
- * and in the city it aims with mouse-look deltas and fires the emitter.
+ * heuristics, 3D steering converted into camera-relative stick input, and Regress via the Q wheel
+ * for each generation-rule obstacle on the Halo Path.
  */
 export class Bot {
   phase = 'awaken';
@@ -38,26 +32,14 @@ export class Bot {
   private jumpHold = 0;
   private lastGround = '';
   private regressSeq: { era: Era | null; step: number } | null = null;
-  private goal = 0;
-  private goals: Goal[];
-  private stuckT = 0;
-  private lastPos = v3();
-  private sidestep = 0;
-  private sideDir = 1;
+  /** Middle of the handhold the bot is jumping toward. */
+  private hopTarget: number | null = null;
 
-  constructor(public input: ScriptedInput) {
-    this.goals = this.vergeGoals();
-  }
+  constructor(public input: ScriptedInput) {}
 
   setPhase(p: string, g: Game) {
     this.phase = p;
     this.log.push(`${g.time.toFixed(2)}s ${p} @ x=${g.player.pos.x.toFixed(2)} y=${g.player.pos.y.toFixed(2)} z=${g.player.pos.z.toFixed(2)}`);
-  }
-
-  /** Start the city part of the bot at a named goal (resume tests). */
-  startVergeAt(name: string, g: Game) {
-    this.goal = Math.max(0, this.goals.findIndex((x) => x.name === name));
-    this.setPhase(`verge:${this.goals[this.goal].name}`, g);
   }
 
   // ---------------------------------------------------------------- shared helpers
@@ -189,275 +171,88 @@ export class Bot {
     return false;
   }
 
-  // ---------------------------------------------------------------- shooting
+  // ---------------------------------------------------------------- the Halo Path
 
-  private los(g: Game, from: V3, to: V3) {
-    return g.world.raycast(from, to, (c) => c.kind !== 'invisible') === null;
-  }
-
-  /** Nearest awake, existing, visible hostile. */
-  target(g: Game, range = 45, exclude?: Hostile): Hostile | null {
+  /**
+   * Past the Frame Gate each obstacle wants a generation: walk up, project it, cross, drop it.
+   * Returns true when it has taken over the input this tick.
+   */
+  private halo(g: Game) {
     const p = g.player;
-    const eye = v3(p.pos.x, p.pos.y + 1.4, p.pos.z);
-    let best: Hostile | null = null;
-    let bd = range;
-    for (const h of g.combat.hostiles) {
-      if (!h.alive || !h.awake || !h.exists || h === exclude) continue;
-      const c = h.center();
-      const d = Math.hypot(c.x - eye.x, c.y - eye.y, c.z - eye.z);
-      if (d < bd && this.los(g, eye, c)) {
-        bd = d;
-        best = h;
+    const L = g.level;
+    const x = p.pos.x;
+    const bubble = g.era.bubble;
+    const stop = () => (this.input.x = 0);
+    // Light fence (8-bit) and brambles (16-bit): project before, walk through, drop after.
+    const gates: [number, number, Era][] = [
+      [L.beamX, 1.3, 0],
+      [L.thicketX - 0.8, 2.2, 1],
+    ];
+    for (const [gx, half, era] of gates) {
+      if (x > gx - half - 1.6 && x < gx - half - 0.4 && p.grounded && bubble?.era !== era) {
+        stop();
+        this.regress(g, era);
+        return true;
+      }
+      if (bubble?.era === era && x > gx + half + 0.6 && p.grounded) {
+        stop();
+        this.regress(g, null);
+        return true;
       }
     }
-    return best;
-  }
-
-  /** Turn the camera (via mouse-look deltas) toward a point; true when lined up. */
-  aimAt(g: Game, t: V3) {
-    const c = g.camera;
-    // Aim from the camera itself (the crosshair ray starts there, over the shoulder).
-    const dx = t.x - c.pos.x;
-    const dz = t.z - c.pos.z;
-    const yaw = Math.atan2(-dx, -dz);
-    const horiz = Math.hypot(dx, dz);
-    const pitch = -Math.atan2(t.y - c.pos.y, horiz);
-    const dy = wrapAngle(yaw - c.lookYaw);
-    const dp = pitch - c.lookPitch;
-    this.input.orbitYaw = Math.max(-0.2, Math.min(0.2, dy));
-    this.input.orbitPitch = Math.max(-0.12, Math.min(0.12, dp));
-    return Math.abs(dy) < 0.06 && Math.abs(dp) < 0.08;
-  }
-
-  /** True if the crosshair ray actually reaches this target (not a pillar in front of it). */
-  aimClear(g: Game, t: Hostile) {
-    const c = t.center();
-    const a = g.aimPoint;
-    return Math.hypot(a.x - c.x, a.y - c.y, a.z - c.z) < Math.max(t.hw, 0.6) + 0.9;
-  }
-
-  /** The current target if the aim ray is blocked (so the caller can close the distance). */
-  blocked: Hostile | null = null;
-  retreating = false;
-
-  /** Engage a target if any; returns true while fighting. */
-  fight(g: Game, range = 30) {
-    const t = this.target(g, range);
-    this.blocked = null;
-    if (!t) {
-      this.input.release('fire');
+    // Cliff handholds (Stylized): careful hops between holds.
+    const gap = L.reliefGap;
+    if (x > gap.x0 - 2 && x < gap.x1 && p.pos.y > L.haloY - 1) {
+      if (bubble?.era !== 3) {
+        if (!p.grounded) return false;
+        stop();
+        this.regress(g, 3);
+        return true;
+      }
+      const holds = [{ x0: gap.x0 - 4, x1: gap.x0 }, ...RELIEFS, { x0: gap.x1, x1: gap.x1 + 4 }];
+      const i = holds.findIndex((h) => x >= h.x0 - 0.3 && x <= h.x1 + 0.3);
+      if (p.grounded && i >= 0 && i < holds.length - 1) {
+        const edge = holds[i].x1;
+        const next = holds[i + 1];
+        // walk to the edge, then a modest-speed jump that lands in the middle of the next hold
+        if (x < edge - 0.45) this.input.x = 0.7;
+        else {
+          this.input.x = 0.55;
+          this.hopTarget = (next.x0 + next.x1) / 2;
+          this.pressJump();
+        }
+        return true;
+      }
+      if (!p.grounded && this.hopTarget !== null) {
+        // steer toward the middle of the hold ahead while airborne
+        const mid = this.hopTarget;
+        this.input.x = Math.abs(mid - x) < 0.25 ? 0 : Math.sign(mid - x) * 0.8;
+        return true;
+      }
       return false;
     }
-    if (g.shift.mode === '2d') {
-      // 2D: the emitter auto-aims along the facing.
-      if (g.combat.overheated) this.input.release('fire');
-      else this.input.press('fire');
+    if (bubble?.era === 3 && x > gap.x1 + 1 && p.grounded) {
+      stop();
+      this.regress(g, null);
       return true;
     }
-    const aligned = this.aimAt(g, t.center());
-    if (aligned && !this.aimClear(g, t)) {
-      this.blocked = t;
-      this.input.release('fire');
+    // The sleeping glyph stone: stand beside it and project full detail.
+    const gs = L.glyphStone;
+    if (!g.save.glyphsRead && x > L.sleepField.min.x - 2) {
+      if (Math.abs(x - gs.x) > 0.25 || !p.grounded) {
+        this.input.x = Math.sign(gs.x - x) * Math.min(1, Math.abs(gs.x - x) + 0.2);
+        return true;
+      }
+      stop();
+      this.regress(g, 5);
       return true;
     }
-    if (aligned && !g.combat.overheated && g.pipEra !== 0) this.input.press('fire');
-    else this.input.release('fire');
-    return true;
-  }
-
-  // ---------------------------------------------------------------- the city
-
-  private vergeGoals(): Goal[] {
-    const warden = (g: Game) => g.combat.hostiles.find((h) => h.kind === 'warden')!;
-    const route = (pts: [number, number][]) => {
-      // Progress is kept between ticks; a teleport (respawn) re-picks the nearest point.
-      let i = 0;
-      let last: V3 | null = null;
-      return (g: Game, bot: Bot) => {
-        const p = g.player.pos;
-        if (last && Math.hypot(p.x - last.x, p.z - last.z) > 3) {
-          let bd = Infinity;
-          pts.forEach(([x, z], k) => {
-            const d = Math.hypot(p.x - x, p.z - z);
-            if (d < bd) {
-              bd = d;
-              i = k;
-            }
-          });
-        }
-        last = { ...p };
-        while (i < pts.length && Math.hypot(p.x - pts[i][0], p.z - pts[i][1]) < 0.6) i++;
-        if (i < pts.length) bot.steer(g, pts[i][0], pts[i][1], 0.3);
-        else bot.input.x = bot.input.y = 0;
-      };
-    };
-    /** After a route, advance on whatever in this group is still alive. */
-    const hunt = (group: string, base: (g: Game, bot: Bot) => void) => (g: Game, bot: Bot) => {
-      const left = g.combat.hostiles.filter((h) => h.def.group === group && h.alive);
-      const p = g.player.pos;
-      const near = left.sort((a, b) => Math.hypot(a.pos.x - p.x, a.pos.z - p.z) - Math.hypot(b.pos.x - p.x, b.pos.z - p.z))[0];
-      if (near) {
-        // Keep closing until something is in sight (fight() takes over once it is).
-        const d = Math.hypot(near.pos.x - p.x, near.pos.z - p.z) || 1;
-        const stop = near.kind === 'sniper' ? 7 : 2.5;
-        bot.steer(g, near.pos.x - ((near.pos.x - p.x) / d) * stop, near.pos.z - ((near.pos.z - p.z) / d) * stop, 0.5);
-      } else base(g, bot);
-    };
-    const fightThen = (move: (g: Game, bot: Bot) => void, range = 30) => (g: Game, bot: Bot) => {
-      // Low on cells: fall back to the last checkpoint and let the chassis self-repair.
-      if (g.cells <= 2 || (bot.retreating && g.cells < 4)) {
-        bot.retreating = true;
-        bot.input.release('fire');
-        const cp = g.verge.checkpoints.find((c) => c.id === g.checkpoint)!.pos;
-        bot.steer(g, cp.x, cp.z, 0.3);
-        return;
-      }
-      bot.retreating = false;
-      if (bot.fight(g, range)) {
-        // Something in the way: sidestep toward the target instead of shooting cover.
-        if (bot.blocked) {
-          const b = bot.blocked.pos;
-          const p = g.player.pos;
-          const dx = b.x - p.x;
-          const dz = b.z - p.z;
-          const d = Math.hypot(dx, dz) || 1;
-          bot.steer(g, p.x + (dx / d) * 2 - (dz / d) * 2, p.z + (dz / d) * 2 + (dx / d) * 2, 0.1);
-        } else bot.input.x = bot.input.y = 0;
-      } else move(g, bot);
-    };
-    const doorRoute = route([[1166, -11], [1180, -11], [1194.6, -3.4]]);
-    const coreRoute = route([[1194, -3], [1205, 0], [1216, 0]]);
-    return [
-      { name: 'emitter', done: (g) => g.save.emitter, act: route([[1013, -1.8]]) },
-      { name: 'roofFight', done: (g) => g.combat.remaining('roof') === 0, act: fightThen(route([[1018, 0]])) },
-      {
-        name: 'drop',
-        done: (g) => g.player.pos.x > 1048.5 && g.player.pos.y < 0.5,
-        act: route([[1034, 0], [1039, 0], [1045, 0], [1050, -1]]),
-      },
-      { name: 'market', done: (g) => g.combat.remaining('market') === 0, act: fightThen(route([[1058, 0], [1066, 0], [1072, -1]])) },
-      { name: 'nookApproach', done: (g) => Math.hypot(g.player.pos.x - 1075.8, g.player.pos.z + 5.2) < 0.4, act: route([[1072, -2], [1075.8, -5.2]]) },
-      { name: 'nookRegress', done: (g) => g.era.bubble?.era === 0, act: (g, bot) => ((bot.input.x = bot.input.y = 0), bot.regress(g, 0)) },
-      {
-        name: 'terminal',
-        done: (g) => g.save.shutterOpen,
-        act: (g, bot) => {
-          const t = g.verge.terminal;
-          bot.steer(g, t.x - 0.1, t.z + 0.7, 0.25);
-          if (Math.hypot(g.player.pos.x - t.x, g.player.pos.z - t.z) < 1.5) bot.input.press('shift');
-        },
-      },
-      { name: 'nookExit', done: (g) => g.player.pos.x < 1076.4, act: route([[1079.5, -5.2], [1075.6, -5.2]]) },
-      { name: 'dropBubble', done: (g) => !g.era.bubble, act: (g, bot) => ((bot.input.x = bot.input.y = 0), bot.regress(g, null)) },
-      { name: 'shutterFight', done: (g) => g.combat.remaining('shutter') === 0 && g.player.pos.x > 1086, act: fightThen(route([[1080, 0], [1090, 0]])) },
-      {
-        name: 'toLane',
-        done: (g) => g.shift.mode === '2d' && !g.shift.busy,
-        act: (g, bot) => {
-          bot.input.release('fire');
-          if (bot.steer(g, 1096.4, -6.2, 0.2)) bot.shiftTo(g, '2d');
-        },
-      },
-      {
-        name: 'climb',
-        done: (g) => g.player.pos.y > 14.5 && g.player.pos.x > 1113,
-        act: (g, bot) => {
-          bot.run2D(g);
-          bot.fight(g, 18);
-        },
-      },
-      { name: 'unfold', done: (g) => g.shift.mode === '3d' && !g.shift.busy, act: (g, bot) => (bot.input.release('fire'), bot.shiftTo(g, '3d')) },
-      { name: 'plaza', done: (g) => g.combat.remaining('plaza') === 0, act: fightThen(hunt('plaza', route([[1138, -6], [1146, -6], [1150, -9]])), 50) },
-      { name: 'toSign', done: (g) => Math.hypot(g.player.pos.x - 1157.5, g.player.pos.z + 9.5) < 0.6, act: route([[1150, -9.5], [1157.5, -9.5]]) },
-      { name: 'readCode', done: (g) => g.save.codeRead, act: (g, bot) => ((bot.input.x = bot.input.y = 0), bot.regress(g, 5)) },
-      { name: 'dropBubble2', done: (g) => !g.era.bubble, act: (g, bot) => ((bot.input.x = bot.input.y = 0), bot.regress(g, null)) },
-      {
-        name: 'door',
-        done: (g) => g.wardenAwake || g.save.wardenDown,
-        act: (g, bot) => {
-          const d = g.verge.doorPanel;
-          doorRoute(g, bot);
-          if (Math.hypot(g.player.pos.x - d.x, g.player.pos.z - d.z) < 2.2) bot.input.press('shift');
-        },
-      },
-      {
-        name: 'warden',
-        done: (g) => g.save.wardenDown,
-        act: (g, bot) => {
-          const w = warden(g);
-          const p = g.player;
-          const dx = w.pos.x - p.pos.x;
-          const dz = w.pos.z - p.pos.z;
-          const dist = Math.hypot(dx, dz) || 1;
-          if (w.armored) {
-            // Armoured: stomp it in 8-bit.
-            bot.input.release('fire');
-            if (!g.era.bubble || g.era.bubble.era !== 0) {
-              bot.regress(g, 0);
-              return;
-            }
-            bot.steer(g, w.pos.x, w.pos.z, 0.05);
-            if (dist < 1.6 && p.grounded) bot.pressJump();
-            return;
-          }
-          // Shielded: get close inside a 16-bit bubble so the shield doesn't exist, then shoot.
-          if (!g.era.bubble || g.era.bubble.era !== 1) {
-            bot.input.release('fire');
-            bot.regress(g, 1);
-            return;
-          }
-          if (dist > 3.0) bot.steer(g, w.pos.x - (dx / dist) * 2.6, w.pos.z - (dz / dist) * 2.6, 0.2);
-          else bot.input.x = bot.input.y = 0;
-          const aligned = bot.aimAt(g, w.center());
-          if (aligned && !g.combat.overheated) bot.input.press('fire');
-          else bot.input.release('fire');
-        },
-      },
-      {
-        name: 'dropBubble3',
-        done: (g) => !g.era.bubble,
-        act: (g, bot) => {
-          bot.input.release('fire');
-          bot.input.x = bot.input.y = 0;
-          bot.regress(g, null);
-        },
-      },
-      { name: 'core', done: (g) => g.finaleCard, act: (g, bot) => (g.cine ? (bot.input.x = bot.input.y = 0) : coreRoute(g, bot)) },
-    ];
-  }
-
-  private tickVerge(g: Game) {
-    while (this.goal < this.goals.length && this.goals[this.goal].done(g)) {
-      this.goal++;
-      this.input.release('fire');
-      if (this.goal < this.goals.length) this.setPhase(`verge:${this.goals[this.goal].name}`, g);
+    if (g.save.glyphsRead && bubble && x < L.aqueduct.x0) {
+      stop();
+      this.regress(g, null);
+      return true;
     }
-    if (this.goal >= this.goals.length) {
-      this.setPhase('done', g);
-      return;
-    }
-    // un-stick: if pushing into something for a while, hop
-    const p = g.player;
-    const moved = Math.hypot(p.pos.x - this.lastPos.x, p.pos.z - this.lastPos.z);
-    this.stuckT = (this.input.x || this.input.y) && moved < 0.002 ? this.stuckT + 1 / 120 : 0;
-    this.lastPos = { ...p.pos };
-    if (this.stuckT > 0.5 && p.grounded) {
-      this.pressJump();
-      this.stuckT = 0;
-      this.sidestep = 0.9;
-      this.sideDir = -this.sideDir;
-    }
-    this.goals[this.goal].act(g, this);
-    // Blocked by something tall: slide sideways (perpendicular to the intended direction) for a moment.
-    if (this.sidestep > 0) {
-      this.sidestep -= 1 / 120;
-      const ix = this.input.x;
-      const iy = this.input.y;
-      if (ix || iy) {
-        this.input.x = iy * this.sideDir + ix * 0.3;
-        this.input.y = -ix * this.sideDir + iy * 0.3;
-      }
-    }
+    return false;
   }
 
   // ---------------------------------------------------------------- main
@@ -467,22 +262,11 @@ export class Bot {
     this.jumpHold -= dt;
     if (this.jumpHold <= 0) inp.release('jump');
     inp.release('shift');
-    inp.release('dash');
     if (!this.regressSeq) for (const a of ERA_KEY) inp.release(a);
     const p = g.player;
     if (g.finaleCard && this.phase !== 'done') this.setPhase('done', g);
     if (this.phase === 'done') {
       inp.x = inp.y = 0;
-      inp.release('fire');
-      return;
-    }
-    if (g.zone === 'verge' || this.phase.startsWith('verge')) {
-      if (!this.phase.startsWith('verge')) this.setPhase(`verge:${this.goals[this.goal].name}`, g);
-      if (g.cine && g.cine.name !== 'core') {
-        inp.x = inp.y = 0;
-        return;
-      }
-      this.tickVerge(g);
       return;
     }
     if (g.cine && this.phase !== 'awaken') {
@@ -602,6 +386,7 @@ export class Bot {
         break;
       }
       case 'finish':
+        if (this.halo(g)) break;
         this.run2D(g);
         break;
     }

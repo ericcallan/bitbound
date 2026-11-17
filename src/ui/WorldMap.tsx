@@ -23,15 +23,16 @@ const MEADOWS: Room[] = [
 const CHAMBER: Room = { id: 'chamber', x: 216, y: 262, w: 40, h: 28, label: 'Hidden Chamber' };
 const ALCOVE: Room = { id: 'alcove', x: 336, y: 262, w: 38, h: 28, label: 'Lamp Alcove' };
 
-/** Neon Verge: outside the dome, on the roofs and streets of the megacity. */
+/** The Halo Path: past the Frame Gate, climbing toward the world wheel on Mount Halo. */
 const VERGE: Room[] = [
-  { id: 'roof', x: 500, y: 150, w: 70, h: 40, label: 'The Roof' },
-  { id: 'market', x: 574, y: 236, w: 120, h: 44, label: 'Market Street' },
-  { id: 'billboard', x: 698, y: 150, w: 44, h: 130, label: 'Billboard' },
-  { id: 'plaza', x: 746, y: 120, w: 110, h: 50, label: 'Tower Plaza' },
-  { id: 'core', x: 860, y: 70, w: 70, h: 100, label: 'Archive Core' },
+  { id: 'gate', x: 500, y: 150, w: 60, h: 40, label: 'Frame Gate' },
+  { id: 'brambles', x: 564, y: 136, w: 70, h: 40, label: 'Brambles' },
+  { id: 'cliff', x: 638, y: 120, w: 60, h: 50, label: 'Carved Cliff' },
+  { id: 'seal', x: 702, y: 110, w: 64, h: 40, label: 'Sleeping Seal' },
+  { id: 'aqueduct', x: 770, y: 110, w: 56, h: 30, label: 'Aqueduct' },
+  { id: 'summit', x: 830, y: 80, w: 100, h: 60, label: 'World Wheel' },
 ];
-const ALLEY: Room = { id: 'alleyway', x: 620, y: 288, w: 40, h: 24, label: 'Hidden Alley' };
+const ALLEY: Room = { id: 'alcove', x: 336, y: 262, w: 0, h: 0 };
 
 const UNKNOWN = {
   beyond: [
@@ -48,7 +49,6 @@ export function WorldMap({ overlay = false, onClose, hud: hudOverride }: { overl
   const visited = new Set(hud.visited);
   const room = hud.room;
   const all = [...MEADOWS, CHAMBER, ALCOVE, ...VERGE, ALLEY];
-  const inCity = hud.zone === 'verge';
   const here = all.find((r) => r.id === room) ?? MEADOWS[0];
 
   const map = (
@@ -74,14 +74,14 @@ export function WorldMap({ overlay = false, onClose, hud: hudOverride }: { overl
         </filter>
       </defs>
       <rect width="1000" height="600" fill="#0b0816" />
-      {/* the meadow is a painted sky inside a dome on a tower roof */}
+      {/* the valley, with Mount Halo rising to the right */}
       <path d="M10 300 Q 250 -40 490 300 Z" fill="url(#wm-sky)" opacity={hud.gatePassed ? 0.55 : 1} />
       <path d="M10 300 Q 250 -40 490 300" fill="none" stroke="#bfe3ff" strokeWidth="2" strokeDasharray={hud.gatePassed ? '6 4' : '0'} opacity="0.7" />
       <rect y="300" width="1000" height="300" fill="url(#wm-earth)" />
       <rect width="1000" height="600" fill="url(#wm-grid)" />
       <path d="M10 300 Q 120 288 250 300 T 490 298 V 312 H 10 Z" fill="#4cc24a" opacity="0.9" />
       <path d="M490 300 H 1000 V 312 H 490 Z" fill="#2a2440" />
-      <text x="20" y="30" className="wm-strata">THE DOME</text>
+      <text x="20" y="30" className="wm-strata">THE VALLEY</text>
       <text x="20" y="340" className="wm-strata">MEGATOWER</text>
       <text x="20" y="580" className="wm-strata">THE STREETS BELOW</text>
 
@@ -106,12 +106,12 @@ export function WorldMap({ overlay = false, onClose, hud: hudOverride }: { overl
           ))}
         </g>
       ))}
-      <text className="wm-region" x="560" y="520">Unrendered — the city below</text>
+      <text className="wm-region" x="560" y="520">Still folded up — the rest of the world</text>
 
       {/* explored region */}
       <text className="wm-region wm-region--known" x="150" y="140">Pixel Meadows</text>
       <text className={`wm-region ${hud.gatePassed ? 'wm-region--known' : ''}`} x="560" y="60">
-        {hud.gatePassed ? 'Neon Verge' : '???'}
+        {hud.gatePassed ? 'The Halo Path' : '???'}
       </text>
       {VERGE.map((r) => (
         <g key={r.id} className={`wm-room wm-room--city ${visited.has(r.id) ? 'wm-room--seen' : ''}`}>
@@ -141,7 +141,7 @@ export function WorldMap({ overlay = false, onClose, hud: hudOverride }: { overl
       <Marker x={235} y={228} got={hud.shiftUnlocked} label="Dimension Core" />
       <Marker x={453} y={170} got={hud.gatePassed} label="Frame Gate" />
       <Marker x={300} y={200} got={hud.regress} label="Regress" />
-      <Marker x={535} y={170} got={hud.armed || inCity} label="Pulse Emitter" />
+      <Marker x={890} y={120} got={hud.room === 'summit' || hud.eraKeys} label="World Wheel" />
 
       {/* landmarks */}
       <g className="wm-landmark">

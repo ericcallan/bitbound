@@ -201,9 +201,7 @@ uniform float uBubbleEra;
 uniform vec3 uFieldMin[4];
 uniform vec3 uFieldMax[4];
 uniform float uFieldEra[4];
-uniform float uNight;
-uniform float uRain;
-uniform float uCrack;
+
 ${DEPTH_HELPERS}
 
 vec3 toSRGB(vec3 c) {
@@ -274,7 +272,7 @@ vec3 pixelEra(vec2 fc, float rows, bool eight) {
   col = toSRGB(clamp(col, 0.0, 1.4));
   float dith = bayer4(block) - 0.5;
   // The first generation has no gradients in its sky: one flat colour (night in the city).
-  if (eight && texture2D(tDepth, uvc).r >= 0.99999) return uNight > 0.5 ? uPal[0] : uPal[3];
+  if (eight && texture2D(tDepth, uvc).r >= 0.99999) return uPal[3];
   if (eight) {
     col += dith * 0.11;
     col = nearestPal(col);
@@ -347,17 +345,6 @@ vec3 modern(vec2 uv) {
 
 // --- Beyond: depth of field, AO, bloom, light shafts, atmosphere, grade, CA, grain
 vec3 beyond(vec2 uv, float d) {
-  // Rain on the lens: a few drops that refract what's behind them.
-  if (uRain > 0.0) {
-    vec2 g = uv * vec2(uRes.x / uRes.y, 1.0) * 9.0;
-    vec2 cell = floor(g);
-    vec2 f = fract(g) - 0.5;
-    float h = hash12(cell);
-    float ph = fract(uTime * 0.12 + h);
-    vec2 c = vec2(hash12(cell + 7.0) - 0.5, 0.4 - ph * 0.8) * 0.6;
-    float drop = smoothstep(0.09, 0.0, length(f - c)) * step(0.82, h);
-    uv += (f - c) * drop * 0.035 * uRain;
-  }
   float vd = viewDistOf(d);
   float coc = d >= 0.99999 ? 1.0 : clamp(abs(vd - uFocusDist) / max(vd, 0.1) * 2.2, 0.0, 1.0);
   coc = smoothstep(0.08, 1.0, coc) * uDof;
@@ -390,11 +377,10 @@ vec3 beyond(vec2 uv, float d) {
   if (d < 0.99999) {
     vec3 w = worldOf(uv, d);
     float beyondFocus = max(0.0, vd - uFocusDist);
-    float fog = (1.0 - exp(-beyondFocus * (uNight > 0.5 ? 0.016 : 0.01))) * exp(-max(w.y + 2.0, 0.0) * (uNight > 0.5 ? 0.02 : 0.05)) * (uNight > 0.5 ? 0.85 : 0.5);
-    vec3 fogCol = uNight > 0.5 ? vec3(0.07, 0.05, 0.12) : vec3(0.42, 0.6, 0.9);
-    col = mix(col, fogCol + uSunColor * rays * 0.5, fog);
+    float fog = (1.0 - exp(-beyondFocus * 0.01)) * exp(-max(w.y + 2.0, 0.0) * 0.05) * 0.5;
+    col = mix(col, vec3(0.42, 0.6, 0.9) + uSunColor * rays * 0.5, fog);
   }
-  if (d >= 0.99999 && uNight < 0.5) {
+  if (d >= 0.99999) {
     // deeper, more saturated sky with a warm glow toward the sun
     col = mix(col, vec3(0.12, 0.34, 0.86), 0.35 * smoothstep(0.25, 1.0, uv.y));
   }

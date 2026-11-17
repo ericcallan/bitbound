@@ -59,14 +59,6 @@ export function SettingsPanel() {
             </div>
           </div>
         )}
-        <label className="setting">
-          <span>Mouse sensitivity</span>
-          <input type="range" min={0.3} max={2} step={0.05} value={s.sensitivity} onChange={(e) => ui.updateSettings({ sensitivity: +e.target.value })} />
-        </label>
-        <label className="setting setting--toggle">
-          <span>Invert look Y</span>
-          <input type="checkbox" checked={s.invertY} onChange={(e) => ui.updateSettings({ invertY: e.target.checked })} />
-        </label>
         <label className="setting setting--toggle">
           <span>Screen shake</span>
           <input type="checkbox" checked={s.shake} onChange={(e) => ui.updateSettings({ shake: e.target.checked })} />
