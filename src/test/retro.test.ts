@@ -1,19 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { CLOUD_COLORS, GROUND_COLORS, groundBlock, isRetroTile, SKY_INDEX, TILE_PX } from '../game/render/retro/RetroLayer';
+import { BUSH_COLORS, CLOUD_COLORS, HILL_COLORS, isRetroTile, SKY_INDEX, TILE_PX, TILES } from '../game/render/retro/RetroLayer';
 import { PALETTE_8 } from '../game/render/post/Pipeline';
 import { BACKDROP, SPRITES } from '../game/render/sprites';
 import { LEVEL } from '../game/level/meadows';
 
-/** The 1985 rules for the 8-bit generation: one ground block, three colours per tile/sprite, palette only. */
+/** The 1985 rules for the 8-bit generation: 16×16 tiles in three colours, flat two-colour scenery, palette only. */
 describe('8-bit tile renderer', () => {
-  it('has one 16×16 ground block in exactly three palette colours', () => {
-    const b = groundBlock();
-    expect(b.length).toBe(TILE_PX);
-    for (const row of b) expect(row.length).toBe(TILE_PX);
-    const used = new Set(b.flat());
-    expect(used.size).toBe(3);
-    expect([...used].sort()).toEqual([...GROUND_COLORS].sort());
-    for (const k of used) expect(PALETTE_8[k]).toBeDefined();
+  it('draws every tile 16×16 in exactly three palette colours', () => {
+    for (const [name, t] of Object.entries(TILES)) {
+      expect(t.length, name).toBe(TILE_PX);
+      for (const row of t) expect(row.length, name).toBe(TILE_PX);
+      const used = new Set(t.flat());
+      expect(used.size, name).toBe(3);
+      for (const k of used) expect(PALETTE_8[k], `${name} colour ${k}`).toBeDefined();
+    }
+  });
+
+  it('keeps the green landscape flat: hills and bushes in two palette colours each', () => {
+    for (const set of [HILL_COLORS, BUSH_COLORS]) {
+      expect(new Set(set).size).toBe(2);
+      for (const k of set) expect(PALETTE_8[k]).toBeDefined();
+    }
   });
 
   it('uses palette colours for the sky and clouds', () => {

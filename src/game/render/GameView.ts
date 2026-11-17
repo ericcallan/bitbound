@@ -96,6 +96,8 @@ export class GameView {
   private retro: RetroLayer;
   /** 0..1: how far the 2D camera is locked to whole 8-bit pixels. */
   private retroCamW = 0;
+  /** Screen pixels per 8-bit pixel while the camera is locked. */
+  private retroK = 1;
   private gl: THREE.WebGLRenderer;
   private blob: THREE.Mesh;
   private motes: THREE.InstancedMesh;
@@ -141,6 +143,8 @@ export class GameView {
     retro: null,
     retro2D: false,
     laneZ: 0,
+    letterbox: 0,
+    retroK: 1,
   };
   private lastDt = 1 / 60;
 
@@ -438,8 +442,10 @@ export class GameView {
     const dist = cam.position.distanceTo(target);
     const buf = this.gl.getDrawingBufferSize(new THREE.Vector2());
     const H = buf.y;
-    // A 1985 frame: ~240 rows (15 tiles tall), each 8-bit pixel a whole number (k) of screen pixels.
-    const k = Math.max(1, Math.round(H / RETRO_ROWS));
+    // A 1985 frame: exactly 240 rows (15 tiles tall), each 8-bit pixel a whole number (k) of screen pixels;
+    // letterbox bars fill what's left, like a console on a modern screen.
+    const k = Math.max(1, Math.floor(H / RETRO_ROWS));
+    this.retroK = k;
     const fov = THREE.MathUtils.radToDeg(2 * Math.atan(H / (TILE_PX * k) / (2 * dist)));
     const snap = (v: number) => Math.round(v * TILE_PX) / TILE_PX;
     // With an odd buffer size the screen centre sits on a half pixel: shift half a screen pixel so 8-bit
@@ -734,6 +740,8 @@ export class GameView {
     this.retro.update(g.world);
     f.retro = this.retro;
     f.retro2D = retro2D;
+    f.letterbox = smoothstep(0, 1, this.retroCamW);
+    f.retroK = this.retroK;
     f.laneZ = g.shift.laneZ;
   }
 

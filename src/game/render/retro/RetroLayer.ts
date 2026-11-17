@@ -9,8 +9,6 @@ import { BACKDROP } from '../sprites';
 export const TILE_PX = 16;
 /** Frame height of the 8-bit view in pixels (the 2D camera frames this many rows). */
 export const RETRO_ROWS = 240;
-/** The one ground block, three colours (indices into PALETTE_8): mortar, body, highlight. */
-export const GROUND_COLORS = [13, 12, 11] as const;
 /** The flat 8-bit sky (PALETTE_8 index). */
 export const SKY_INDEX = 3;
 /** Cloud colours: outline and white (PALETTE_8 indices). */
@@ -19,28 +17,48 @@ export const CLOUD_COLORS = { k: 0, w: 9 } as const;
 /** Looks the tile renderer draws as ground. Beams, reliefs and the mural keep their own sprites/meshes. */
 const TILE_LOOKS = new Set(['grass', 'stone', 'ruin', 'hedge', 'wood', 'metal']);
 
+type Tile = number[][];
+const tile = (fn: (x: number, y: number) => number): Tile => Array.from({ length: TILE_PX }, (_, y) => Array.from({ length: TILE_PX }, (_, x) => fn(x, y)));
+const hash = (x: number, y: number) => (((x * 73856093) ^ (y * 19349663)) >>> 0) % 997;
+
 /**
- * The ground block as palette indices: staggered bricks, highlight on the top/left edge of each brick,
- * mortar on the bottom/right, a couple of pits for texture. Exactly three colours.
+ * The 8-bit tile set, each 16×16 in exactly three palette colours like the first consoles:
+ *  - grassTop: a lush grass edge with tufts over the first band of earth;
+ *  - earth: the soil below, with darker cracks and a few pale pebbles;
+ *  - stone: masonry for ruins and structures.
  */
-export function groundBlock(): number[][] {
-  const [a, b, c]: number[] = [...GROUND_COLORS];
-  const rows: number[][] = [];
-  for (let y = 0; y < TILE_PX; y++) {
-    const row: number[] = [];
+export const TILES: Record<'grassTop' | 'earth' | 'stone', Tile> = {
+  grassTop: tile((x, y) => {
+    const tuft = (x * 5 + 3) % 7 < 2 ? 1 : 0;
+    if (y < 2) return 8; // bright grass edge
+    if (y < 5 + tuft) return (x + y) % 5 === 0 ? 8 : 7; // grass, catching light
+    if (y < 7 && (x * 3) % 5 === 0) return 7; // roots hanging into the soil
+    return 12; // soil
+  }),
+  earth: tile((x, y) => {
+    // short diagonal cracks and dark grit scattered without a visible grid
+    const crack = (x === (y * 2 + 3) % 16 && y % 8 < 3) || (x === (21 - y) % 16 && y % 8 > 4 && y % 8 < 7);
+    if (crack || hash(x, y) % 23 === 0) return 13;
+    if (hash(x + 5, y + 2) % 41 === 0) return 11; // pale pebbles
+    return 12;
+  }),
+  stone: tile((x, y) => {
     const offset = y < 8 ? 0 : 4;
-    for (let x = 0; x < TILE_PX; x++) {
-      const lx = (x + TILE_PX - offset) % 8;
-      const ly = y % 8;
-      let k = b;
-      if (ly === 7 || lx === 7) k = a;
-      else if (ly === 0 || lx === 0) k = c;
-      else if ((lx === 3 && ly === 3) || (lx === 5 && ly === 4)) k = a;
-      row.push(k);
-    }
-    rows.push(row);
-  }
-  return rows;
+    const lx = (x + TILE_PX - offset) % 8;
+    const ly = y % 8;
+    if (ly === 7 || lx === 7) return 1; // mortar
+    if (ly === 0 || lx === 0) return 9; // lit edge
+    return 15;
+  }),
+};
+
+/** Backdrop scenery colours (PALETTE_8): hills and bushes are two colours each, flat, like 1985. */
+export const HILL_COLORS = [7, 6] as const;
+export const BUSH_COLORS = [8, 7] as const;
+
+/** Which tile set a solid uses. */
+function tileFor(s: SolidDef): 'grass' | 'stone' {
+  return s.look === 'grass' || s.look === 'hedge' ? 'grass' : 'stone';
 }
 
 /** Does this solid appear as ground in the 8-bit tile layer? */
@@ -50,7 +68,8 @@ export function isRetroTile(s: SolidDef) {
 
 /**
  * The 8-bit generation as a real tile renderer (2D only): a world-anchored pixel canvas, 16 pixels per
- * world unit, holding the flat sky's clouds and every 8-bit solid drawn with the one ground block. It is
+ * world unit, holding the flat sky's clouds, flat green hills and bushes, and every 8-bit solid drawn with
+ * the tile set (grass over earth, stone for structures). It is
  * redrawn only when the set of present solids changes (bridges repaired, gates opened). The post composite
  * samples it per world pixel wherever a 2D view shows 8-bit; sprites (Pip, enemies, pickups) stay real
  * 16×16 sprites in the scene and are snapped to the same pixel grid and palette.
@@ -67,9 +86,11 @@ export class RetroLayer {
   private x0: number;
   private y1: number;
   private signature = '';
-  private block: CanvasPattern;
+  private patterns: Record<keyof typeof TILES, CanvasPattern>;
   private cloud: HTMLCanvasElement;
   private clouds: { x: number; y: number }[] = [];
+  private hills: { x: number; y: number; w: number; h: number }[] = [];
+  private bushes: { x: number; y: number; w: number }[] = [];
 
   constructor(level: Level) {
     this.solids = level.solids.filter(isRetroTile);
@@ -95,16 +116,19 @@ export class RetroLayer {
     this.ctx = this.canvas.getContext('2d')!;
     this.ctx.imageSmoothingEnabled = false;
 
-    const tile = document.createElement('canvas');
-    tile.width = tile.height = TILE_PX;
-    const tctx = tile.getContext('2d')!;
-    groundBlock().forEach((row, y) =>
-      row.forEach((k, x) => {
-        tctx.fillStyle = PALETTE_8[k];
-        tctx.fillRect(x, y, 1, 1);
-      }),
-    );
-    this.block = this.ctx.createPattern(tile, 'repeat')!;
+    const pattern = (t: Tile) => {
+      const c = document.createElement('canvas');
+      c.width = c.height = TILE_PX;
+      const tctx = c.getContext('2d')!;
+      t.forEach((row, y) =>
+        row.forEach((k, x) => {
+          tctx.fillStyle = PALETTE_8[k];
+          tctx.fillRect(x, y, 1, 1);
+        }),
+      );
+      return this.ctx.createPattern(c, 'repeat')!;
+    };
+    this.patterns = { grassTop: pattern(TILES.grassTop), earth: pattern(TILES.earth), stone: pattern(TILES.stone) };
 
     const rows = BACKDROP.cloud;
     this.cloud = document.createElement('canvas');
@@ -127,6 +151,16 @@ export class RetroLayer {
       if (top === -Infinity) top = 0;
       this.clouds.push({ x: Math.round(x), y: Math.min(this.y1 - 2, Math.round(top + 6 + r() * 3)) });
     }
+    // Rolling hills and bushes standing on the grass, behind everything that moves.
+    const grass = this.solids.filter((s) => s.look === 'grass' && s.box.max.x - s.box.min.x > 6);
+    for (const g of grass) {
+      for (let x = g.box.min.x + 2 + r() * 4; x < g.box.max.x - 3; x += 14 + r() * 12) {
+        this.hills.push({ x, y: g.box.max.y, w: 4 + r() * 4, h: 1.6 + r() * 2 });
+      }
+      for (let x = g.box.min.x + 6 + r() * 6; x < g.box.max.x - 2; x += 11 + r() * 10) {
+        this.bushes.push({ x, y: g.box.max.y, w: 1.6 + r() * 1.6 });
+      }
+    }
 
     this.texture = new THREE.CanvasTexture(this.canvas);
     this.texture.magFilter = this.texture.minFilter = THREE.NearestFilter;
@@ -144,15 +178,66 @@ export class RetroLayer {
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.size.x, this.size.y);
     for (const c of this.clouds) ctx.drawImage(this.cloud, (c.x - this.x0) * TILE_PX, (this.y1 - c.y) * TILE_PX);
-    ctx.fillStyle = this.block;
+    for (const h of this.hills) this.drawHill(h.x, h.y, h.w, h.h);
+    for (const b of this.bushes) this.drawBush(b.x, b.y, b.w);
     for (const s of present) {
       const px0 = Math.round((s.box.min.x - this.x0) * TILE_PX);
       const px1 = Math.round((s.box.max.x - this.x0) * TILE_PX);
       const py0 = Math.round((this.y1 - s.box.max.y) * TILE_PX);
       const py1 = Math.round((this.y1 - s.box.min.y) * TILE_PX);
-      ctx.fillRect(px0, py0, px1 - px0, py1 - py0);
+      if (tileFor(s) === 'grass') {
+        ctx.fillStyle = this.patterns.earth;
+        ctx.fillRect(px0, py0, px1 - px0, py1 - py0);
+        ctx.fillStyle = this.patterns.grassTop;
+        ctx.fillRect(px0, py0, px1 - px0, Math.min(TILE_PX, py1 - py0));
+      } else {
+        ctx.fillStyle = this.patterns.stone;
+        ctx.fillRect(px0, py0, px1 - px0, py1 - py0);
+      }
     }
     this.texture.needsUpdate = true;
+  }
+
+  /** A flat, rounded hill in two colours (body and outline with a few dark spots), standing on y. */
+  private drawHill(cx: number, y: number, w: number, h: number) {
+    const ctx = this.ctx;
+    const R = (w / 2) * TILE_PX;
+    const H = h * TILE_PX;
+    const baseX = (cx - this.x0) * TILE_PX;
+    const baseY = (this.y1 - y) * TILE_PX;
+    const [body, ink] = HILL_COLORS;
+    for (let dx = -R; dx <= R; dx += 2) {
+      const t = dx / R;
+      const top = Math.round((H * Math.sqrt(Math.max(0, 1 - t * t))) / 2) * 2;
+      if (top <= 0) continue;
+      ctx.fillStyle = PALETTE_8[ink];
+      ctx.fillRect(Math.round(baseX + dx), Math.round(baseY - top), 2, top);
+      ctx.fillStyle = PALETTE_8[body];
+      ctx.fillRect(Math.round(baseX + dx), Math.round(baseY - top + 2), 2, Math.max(0, top - 2));
+    }
+    ctx.fillStyle = PALETTE_8[ink];
+    for (const [fx, fy] of [[-0.3, 0.45], [0.2, 0.6], [0.05, 0.3]]) ctx.fillRect(Math.round(baseX + fx * R), Math.round(baseY - fy * H), 2, 4);
+  }
+
+  /** A three-lobed bush in two colours. */
+  private drawBush(cx: number, y: number, w: number) {
+    const ctx = this.ctx;
+    const [body, ink] = BUSH_COLORS;
+    const baseY = (this.y1 - y) * TILE_PX;
+    const lobes = [[-0.32, 0.55], [0, 0.8], [0.32, 0.55]];
+    const R = (w / 2) * TILE_PX;
+    for (const pass of [ink, body]) {
+      ctx.fillStyle = PALETTE_8[pass];
+      for (const [fx, fh] of lobes) {
+        const lx = (cx - this.x0) * TILE_PX + fx * R * 2;
+        const lr = R * 0.55 - (pass === body ? 1 : 0);
+        for (let dx = -lr; dx <= lr; dx += 1) {
+          const t = dx / lr;
+          const top = Math.round(lr * fh * 1.6 * Math.sqrt(Math.max(0, 1 - t * t)));
+          ctx.fillRect(Math.round(lx + dx), Math.round(baseY - top - (pass === body ? 0 : 1)), 1, top + (pass === body ? 0 : 1));
+        }
+      }
+    }
   }
 
   /** The palette indices used anywhere on the canvas (for tests and the report). */

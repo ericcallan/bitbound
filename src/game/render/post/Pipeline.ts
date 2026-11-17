@@ -51,6 +51,9 @@ export interface PostFrame {
   /** True while the view is fully 2D (the tile layer applies). */
   retro2D: boolean;
   laneZ: number;
+  /** 0..1: how far the 8-bit letterbox (exactly 240 rows at retroK screen px each) has closed in. */
+  letterbox: number;
+  retroK: number;
 }
 
 const rt = (w: number, h: number, type: THREE.TextureDataType = THREE.HalfFloatType) => {
@@ -186,6 +189,8 @@ export class PostPipeline {
       uLaneZ: { value: 0 },
       uViewProj: { value: new THREE.Matrix4() },
       uSunW: { value: new THREE.Vector3(0, 1, 0) },
+      uLetterbox: { value: 0 },
+      uRetroK: { value: 1 },
 
     });
     this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.comp);
@@ -354,6 +359,8 @@ export class PostPipeline {
     u.uRetro2D.value = f.retro && f.retro2D ? 1 : 0;
     u.uLaneZ.value = f.laneZ;
     u.uSunW.value.copy(f.sunDir);
+    u.uLetterbox.value = f.letterbox;
+    u.uRetroK.value = f.retroK;
     u.uViewProj.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 
     this.pass(gl, this.comp, null);

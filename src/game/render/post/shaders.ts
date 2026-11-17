@@ -208,6 +208,8 @@ uniform float uRetro2D;
 uniform float uLaneZ;
 uniform mat4 uViewProj;
 uniform vec3 uSunW;
+uniform float uLetterbox;
+uniform float uRetroK;
 
 ${DEPTH_HELPERS}
 
@@ -500,6 +502,11 @@ void main() {
     col = mix(col, vec3(1.0), seam * 0.32);
   }
   col += uFlash * vec3(0.8, 1.0, 1.0);
+  // 8-bit letterbox: exactly 240 rows in the middle of the screen
+  if (uLetterbox > 0.001) {
+    float halfBand = mix(uRes.y * 0.5 + 1.0, 120.0 * uRetroK, uLetterbox);
+    if (abs(gl_FragCoord.y - uRes.y * 0.5) > halfBand) col = vec3(0.0);
+  }
   col = mix(col, uFadeColor, uFade);
   gl_FragColor = vec4(col, 1.0);
 }

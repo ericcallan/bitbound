@@ -172,6 +172,8 @@ function PipLineup({ pose }: { pose: (typeof POSES)[number] }) {
         retro: null,
         retro2D: false,
         laneZ: 0,
+        letterbox: 0,
+        retroK: 1,
         eraFrom: 0,
         eraTo: 0,
         center: new THREE.Vector3(),
