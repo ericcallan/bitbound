@@ -6,6 +6,41 @@ import { MAX_RIFTS } from '../era/EraSystem';
  * rendering in at each fragment. During an era change the boundary is a sphere growing from
  * the ripple centre; in Beyond, rifts carve bubbles of older generations into the world.
  */
+/**
+ * A small tiling value-noise texture (four independent channels, smooth, wraps seamlessly): cheap noise for
+ * per-pixel effects (cloud shadows, terrain variation) instead of hashing per pixel.
+ */
+function makeNoiseTexture(size = 128) {
+  const data = new Uint8Array(size * size * 4);
+  const cell = [8, 16, 32, 4];
+  for (let c = 0; c < 4; c++) {
+    const n = cell[c];
+    const grid = Array.from({ length: n * n }, () => Math.random());
+    const at = (i: number, j: number) => grid[((j + n) % n) * n + ((i + n) % n)];
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const fx = (x / size) * n;
+        const fy = (y / size) * n;
+        const ix = Math.floor(fx);
+        const iy = Math.floor(fy);
+        const tx = fx - ix;
+        const ty = fy - iy;
+        const sx = tx * tx * (3 - 2 * tx);
+        const sy = ty * ty * (3 - 2 * ty);
+        const v = at(ix, iy) * (1 - sx) * (1 - sy) + at(ix + 1, iy) * sx * (1 - sy) + at(ix, iy + 1) * (1 - sx) * sy + at(ix + 1, iy + 1) * sx * sy;
+        data[(y * size + x) * 4 + c] = Math.round(v * 255);
+      }
+    }
+  }
+  const t = new THREE.DataTexture(data, size, size);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.magFilter = THREE.LinearFilter;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.generateMipmaps = true;
+  t.needsUpdate = true;
+  return t;
+}
+
 export const eraUniforms = {
   uEraFrom: { value: 0 },
   uEraTo: { value: 0 },
@@ -31,6 +66,7 @@ export const eraUniforms = {
   uPip: { value: new THREE.Vector3() },
   /** 1 while the 2D view draws 8-bit through the tile renderer (render/retro), which replaces the ground. */
   uRetro2D: { value: 0 },
+  uNoiseTex: { value: makeNoiseTexture() },
   /** Early-3D vertex snapping grid (in NDC units per half-screen). */
   uSnapRes: { value: new THREE.Vector2(110, 80) },
 };
@@ -67,6 +103,7 @@ uniform float uTime;
 uniform float uValleyX;
 uniform vec3 uPip;
 uniform float uRetro2D;
+uniform sampler2D uNoiseTex;
 float eraAtWorld(vec3 w) {
   if (uSplit > 0.5) {
     float e = 0.0;
@@ -96,6 +133,8 @@ float vnoise(vec3 p) {
   return mix(mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y), mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);
 }
 float fbm(vec3 p) { return vnoise(p) * 0.55 + vnoise(p * 2.13) * 0.28 + vnoise(p * 4.41) * 0.17; }
+/** Cheap smooth noise from the shared texture: four independent octave-like channels at one tile per unit of p. */
+vec4 noiseT(vec2 p) { return texture2D(uNoiseTex, p); }
 `;
 
 const FRAG_HEAD = /* glsl */ `
@@ -279,6 +318,18 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
         }`,
       )
       .replace(
+        '#include <aomap_fragment>',
+        `#include <aomap_fragment>
+        // Beyond: soft cloud shadows drifting across the valley.
+        if (eraF > 4.5) {
+          float cs = noiseT(vEraWorld.xz * 0.0022 + vec2(uTime * 0.0015, uTime * 0.0006)).x * 0.65
+                   + noiseT(vEraWorld.xz * 0.0031 + vec2(uTime * 0.0025, 0.0)).y * 0.35;
+          float shade = mix(0.62, 1.0, smoothstep(0.36, 0.6, cs));
+          reflectedLight.directDiffuse *= shade;
+          reflectedLight.directSpecular *= shade;
+        }`,
+      )
+      .replace(
         '#include <opaque_fragment>',
         `if (eraF < 3.5) {
           vec3 nV = normalize(normal);
@@ -315,7 +366,7 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
   };
   const prevKey = m.customProgramCacheKey.bind(m);
   m.customProgramCacheKey = () =>
-    `${prevKey()}|era-v3${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.minEra ? '-me' + o.minEra : ''}${o.retroTile ? '-rt' : ''}${o.vertexEra ? '-ve' : ''}`;
+    `${prevKey()}|era-v4${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.minEra ? '-me' + o.minEra : ''}${o.retroTile ? '-rt' : ''}${o.vertexEra ? '-ve' : ''}`;
   return m;
 }
 

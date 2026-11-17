@@ -62,13 +62,16 @@ export function terrainMaterial() {
         // Layers with no weight at a pixel are skipped entirely (rock is only on cliffs, path only on the
         // path...). Sampling inside those branches uses explicit gradients so mip selection stays correct.
         vec2 gXZx, gXZy, gZYx, gZYy, gXYx, gXYy;
+        // Top-down sampling position: the world xz, shifted by relief mapping in Beyond.
+        vec2 tXZ;
         vec4 topA(sampler2D t, float s) {
-          vec4 a = textureGrad(t, vTerrW.xz / s, gXZx / s, gXZy / s);
+          vec4 a = textureGrad(t, tXZ / s, gXZx / s, gXZy / s);
           float s2 = s * 5.7;
-          vec4 b = textureGrad(t, vTerrW.xz / s2 + 0.37, gXZx / s2, gXZy / s2);
+          vec4 b = textureGrad(t, tXZ / s2 + 0.37, gXZx / s2, gXZy / s2);
           return mix(a, b, 0.32);
         }
-        vec3 topN(sampler2D t, float s) { return textureGrad(t, vTerrW.xz / s, gXZx / s, gXZy / s).xyz * 2.0 - 1.0; }
+        vec3 topN(sampler2D t, float s) { return textureGrad(t, tXZ / s, gXZx / s, gXZy / s).xyz * 2.0 - 1.0; }
+        float topH(sampler2D t, float s, vec2 p) { return textureGrad(t, p / s, gXZx / s, gXZy / s).a; }
         vec3 triW(vec3 n) { vec3 w = pow(abs(n), vec3(4.0)); return w / (w.x + w.y + w.z); }
         vec4 triA(sampler2D t, float s, vec3 w) {
           return textureGrad(t, vTerrW.zy / s, gZYx / s, gZYy / s) * w.x + textureGrad(t, vTerrW.xz / s, gXZx / s, gXZy / s) * w.y + textureGrad(t, vTerrW.xy / s, gXYx / s, gXYy / s) * w.z;
@@ -84,6 +87,28 @@ export function terrainMaterial() {
         float wR = vSplat.r, wP = vSplat.g, wF = vSplat.b;
         float wG = max(0.0, 1.0 - wR - wP - wF);
         const float EPS = 0.004;
+        float tEra = eraAtWorld(vTerrW);
+        float camDist = distance(cameraPosition, vTerrW);
+        tXZ = vTerrW.xz;
+        // Beyond: relief (steep parallax) mapping on the ground near the camera, from the scanned height of
+        // the dominant top layer, so stones, clods and leaf litter stand out of the surface.
+        if (tEra > 4.5 && camDist < 16.0 && wn.y > 0.7 && wR < 0.5) {
+          vec3 V = normalize(cameraPosition - vTerrW);
+          const int STEPS = 10;
+          float depth = 0.07 * (1.0 - smoothstep(9.0, 16.0, camDist));
+          vec2 dir = -V.xz / max(V.y, 0.3) * depth / float(STEPS);
+          float which = wG >= max(wP, wF) ? 0.0 : (wP >= wF ? 1.0 : 2.0);
+          vec2 off = vec2(0.0);
+          float layer = 1.0;
+          for (int i = 0; i < STEPS; i++) {
+            vec2 p = tXZ + off;
+            float h = which < 0.5 ? topH(t_grassN, 3.5, p) : (which < 1.5 ? topH(t_pathN, 3.0, p) : topH(t_forestN, 4.0, p));
+            if (h >= layer) break;
+            layer -= 1.0 / float(STEPS);
+            off += dir;
+          }
+          tXZ += off;
+        }
         vec4 aG = vec4(0.0), aR = vec4(0.0), aP = vec4(0.0), aF = vec4(0.0);
         if (wG > EPS) aG = topA(t_grassA, 3.5);
         if (wP > EPS) aP = topA(t_pathA, 3.0);
@@ -97,12 +122,34 @@ export function terrainMaterial() {
         float patchy = textureGrad(t_grassA, vTerrW.xz / 61.0, gXZx / 61.0, gXZy / 61.0).g;
         A.rgb *= mix(vec3(1.0), mix(vec3(0.5, 0.82, 0.36), vec3(0.62, 0.86, 0.42), patchy), W.x);
         A.rgb *= mix(vec3(1.0), vec3(0.85, 0.95, 0.72), W.w);
-        diffuseColor.rgb = A.rgb;
         terrRough = clamp(A.a, 0.35, 1.0);
+        if (tEra > 4.5) {
+          // the far heights: scree and bare rock, then snow on the flatter tops
+          float n = noiseT(vTerrW.xz * 0.004).z - 0.5;
+          float alt = smoothstep(17.0, 26.0, vTerrW.y + n * 8.0);
+          if (alt > 0.01) {
+            vec4 scree = textureGrad(t_rockA, vTerrW.xz / 15.0, gXZx / 15.0, gXZy / 15.0);
+            A.rgb = mix(A.rgb, scree.rgb * vec3(0.95, 0.92, 0.88), alt * 0.85);
+            float snow = smoothstep(33.0, 39.0, vTerrW.y + n * 10.0) * smoothstep(0.55, 0.8, wn.y);
+            A.rgb = mix(A.rgb, vec3(0.86, 0.88, 0.92), snow);
+            terrRough = mix(terrRough, 0.55, snow);
+          }
+          // damp ground: near the river and in the low spots of the path, darker and glossier
+          float wet = (1.0 - smoothstep(-2.6, -1.2, vTerrW.y)) + W.z * smoothstep(0.55, 0.8, noiseT(vTerrW.xz * 0.035).w) * 0.8;
+          wet = clamp(wet, 0.0, 1.0);
+          A.rgb *= mix(1.0, 0.62, wet);
+          terrRough = mix(terrRough, 0.28, wet);
+        }
+        diffuseColor.rgb = A.rgb;
         vec3 pTop = vec3(0.0);
         if (W.x > EPS) pTop += topN(t_grassN, 3.5) * W.x;
         if (W.z > EPS) pTop += topN(t_pathN, 3.0) * W.z;
         if (W.w > EPS) pTop += topN(t_forestN, 4.0) * W.w;
+        // Modern HD and Beyond: a fine detail normal close to the camera, so the ground holds up near Pip.
+        if (tEra > 3.5 && camDist < 12.0) {
+          vec3 dn = textureGrad(t_pathN, tXZ / 0.55, gXZx / 0.55, gXZy / 0.55).xyz * 2.0 - 1.0;
+          pTop += dn * 0.45 * (1.0 - smoothstep(6.0, 12.0, camDist));
+        }
         // whiteout-style perturbation of the geometric world normal
         vec3 pert = vec3(pTop.x, 0.0, pTop.y) * 0.9;
         if (W.y > EPS) {
@@ -124,7 +171,7 @@ export function terrainMaterial() {
         reflectedLight.directDiffuse *= mix(0.75, 1.0, tao);`,
       );
   };
-  m.customProgramCacheKey = () => 'terrain-splat-v2';
+  m.customProgramCacheKey = () => 'terrain-splat-v3';
   return patchEraMaterial(m, { minEra: 2 });
 }
 

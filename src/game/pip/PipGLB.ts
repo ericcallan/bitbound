@@ -1,8 +1,59 @@
 import * as THREE from 'three';
 import { getAsset, instanceOf, loadAsset } from '../render/assets';
+import { patchEraMaterial } from '../render/eraMaterial';
 import { drawFace, FACE_RES } from './face';
 import type { PipPose } from './PipModel';
 import { clamp, dampAngle, lerpAngle, smoothstep, wrapAngle } from '../math';
+
+/** Shared by every Beyond shell material: the circuit pulse follows the core. */
+const PULSE = { value: 0 };
+
+/**
+ * Beyond's version of a painted part: the same baked maps, plus a clearcoat, fine scratches and thin teal
+ * circuit seams on the orange shell that pulse with the core. Noise runs in the rig's bind-pose space, so the
+ * detail stays fixed to Pip as he moves.
+ */
+function beyondShell(src: THREE.MeshStandardMaterial): THREE.MeshPhysicalMaterial {
+  const m = new THREE.MeshPhysicalMaterial();
+  THREE.MeshStandardMaterial.prototype.copy.call(m, src);
+  m.defines = { STANDARD: '', PHYSICAL: '' };
+  m.clearcoat = src.metalness > 0.5 ? 0.25 : 0.75;
+  m.clearcoatRoughness = 0.16;
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.uPipPulse = PULSE;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vPipObj;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPipObj = position;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vPipObj;\nuniform float uPipPulse;\nfloat pipScratch;\nfloat pipSeam;')
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        // fine scratches: noise stretched along one axis, thresholded into thin marks
+        pipScratch = smoothstep(0.9, 0.95, vnoise(vPipObj * vec3(260.0, 14.0, 260.0))) * smoothstep(0.5, 0.7, vnoise(vPipObj * 9.0));
+        // (scratches only change the gloss, so they catch the light instead of reading as painted lines)
+        // circuit traces on the orange shell: horizontal runs broken into segments, with short risers
+        float orangeShell = smoothstep(0.25, 0.45, diffuseColor.r - diffuseColor.b) * smoothstep(0.1, 0.25, diffuseColor.r - diffuseColor.g);
+        vec3 q = vPipObj * 26.0;
+        float run = (1.0 - smoothstep(0.03, 0.06, abs(fract(q.y) - 0.5))) * step(0.72, vnoise(vec3(q.x * 0.35, floor(q.y), 1.0))) * step(0.5, fract(floor(q.y) * 0.5));
+        float rise = (1.0 - smoothstep(0.03, 0.06, abs(fract(q.x + q.z * 0.7) - 0.5))) * step(0.9, vnoise(vec3(floor(q.x + q.z * 0.7), q.y * 0.4, 4.0)));
+        pipSeam = clamp(run + rise, 0.0, 1.0) * orangeShell;
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.04, 0.12, 0.12), pipSeam * 0.85);`,
+      )
+      .replace(
+        '#include <roughnessmap_fragment>',
+        '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.2, pipScratch * 0.6);',
+      )
+      .replace(
+        '#include <emissivemap_fragment>',
+        `#include <emissivemap_fragment>
+        float wave = 0.35 + 0.65 * pow(0.5 + 0.5 * sin(uPipPulse * 3.0 - vPipObj.y * 14.0), 4.0);
+        totalEmissiveRadiance += vec3(0.03, 0.7, 0.6) * pipSeam * wave * 1.5;`,
+      );
+  };
+  m.customProgramCacheKey = () => 'pip-beyond-shell-v1';
+  return patchEraMaterial(m, {});
+}
 
 type Clip = 'idle' | 'walk' | 'run' | 'jump_start' | 'jump_up' | 'fall' | 'land' | 'brake' | 'celebrate' | 'surprise' | 'shift';
 const ONE_SHOT: Clip[] = ['jump_start', 'land', 'brake', 'celebrate', 'surprise', 'shift'];
@@ -36,6 +87,10 @@ export class PipGLB {
   private blinking = 0;
   private headYaw = 0;
   private wasShifting = false;
+  /** Painted parts with their Modern HD and Beyond materials. */
+  private shells: { mesh: THREE.Mesh; modern: THREE.Material; beyond: THREE.Material }[] = [];
+  private glass: THREE.Mesh | null = null;
+  private beyondOn = false;
 
   constructor() {
     this.faceTex.colorSpace = THREE.SRGBColorSpace;
@@ -63,9 +118,29 @@ export class PipGLB {
       if (mat.name === 'pip_face') {
         mesh.material = new THREE.MeshBasicMaterial({ map: this.faceTex, toneMapped: false, color: new THREE.Color(1.25, 1.25, 1.25), side: THREE.DoubleSide });
         mesh.castShadow = false;
+        // Beyond: a glass layer over the display, adding only its reflection.
+        const glass = mesh.clone();
+        glass.material = new THREE.MeshStandardMaterial({
+          color: '#ffffff',
+          metalness: 1,
+          roughness: 0.06,
+          envMapIntensity: 0.1,
+          transparent: true,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          side: THREE.FrontSide,
+        });
+        glass.castShadow = false;
+        glass.visible = false;
+        mesh.parent?.add(glass);
+        this.glass = glass;
       } else if (mat.name === 'pip_glow') {
         this.glow = mat;
         mesh.castShadow = false;
+      } else if (mat.isMeshStandardMaterial) {
+        this.shells.push({ mesh, modern: mat, beyond: beyondShell(mat) });
       }
     });
     this.mixer = new THREE.AnimationMixer(m);
@@ -182,6 +257,13 @@ export class PipGLB {
     if (head) head.rotation.y += this.headYaw;
 
     if (this.glow) this.glow.emissiveIntensity = 2.2 + Math.sin(p.time * 2.6) * 0.5 + p.coreBoost * 5;
+    PULSE.value = p.time + p.coreBoost * 2;
+    const beyond = p.era === 5;
+    if (beyond !== this.beyondOn) {
+      this.beyondOn = beyond;
+      for (const s of this.shells) s.mesh.material = beyond ? s.beyond : s.modern;
+      if (this.glass) this.glass.visible = beyond;
+    }
     this.updateFace(p, dt);
     this.model!.scale.setScalar(Math.max(0.001, p.assemble));
     this.root.visible = !(p.invuln > 0 && Math.floor(p.time * 18) % 2 === 0);

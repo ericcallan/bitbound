@@ -23,8 +23,70 @@ export const PRELOAD: AssetName[] = ['rocks', 'pip', 'terrain', 'tree', 'gateway
  * Per-material set-up by name (material names come from the Blender scripts). Scattered vegetation only
  * exists from Modern HD up (`minEra: 4`); slot-placed assets are swapped per generation by the view.
  */
+const texLoader = new THREE.TextureLoader();
+const textures = new Map<string, THREE.Texture>();
+function sharedTexture(name: string, srgb: boolean) {
+  let t = textures.get(name);
+  if (!t) {
+    t = texLoader.load(`${import.meta.env.BASE_URL}assets/textures/${name}.webp`);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+    textures.set(name, t);
+  }
+  return t;
+}
+
+/**
+ * Beyond: moss creeping over the upward faces of the ancient stone (scanned moss, broken up by noise), so
+ * the ruins look weathered into the valley rather than placed on it.
+ */
+function mossyStone(m: THREE.MeshStandardMaterial) {
+  const moss = sharedTexture('moss_albedo', true);
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.tMoss = { value: moss };
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D tMoss;')
+      .replace(
+        '#include <color_fragment>',
+        `#include <color_fragment>
+        if (eraF > 4.5) {
+          vec3 gn = normalize(cross(dFdx(vEraWorld), dFdy(vEraWorld)));
+          float top = smoothstep(0.45, 0.85, abs(gn.y));
+          float patches = smoothstep(0.42, 0.62, fbm(vEraWorld * 1.4)) * top + smoothstep(0.7, 0.85, fbm(vEraWorld * 2.3)) * 0.35;
+          vec3 mossCol = texture2D(tMoss, vEraWorld.xz / 1.6).rgb * vec3(0.75, 1.0, 0.62);
+          diffuseColor.rgb = mix(diffuseColor.rgb, mossCol, clamp(patches, 0.0, 1.0) * 0.85);
+        }`,
+      );
+  };
+  m.customProgramCacheKey = () => 'mossy-stone-v1';
+}
+
+/** Beyond: light flows along the teal glyph inlays instead of a steady glow. */
+function flowingGlyph(m: THREE.MeshStandardMaterial) {
+  m.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <emissivemap_fragment>',
+      `#include <emissivemap_fragment>
+      if (eraF > 4.5) {
+        float marks = step(0.45, fract((vEraWorld.x + vEraWorld.z) * 5.0 + floor(vEraWorld.y * 9.0) * 0.37));
+        float flow = pow(0.5 + 0.5 * sin(uTime * 2.2 - (vEraWorld.x + vEraWorld.y * 0.5) * 2.5), 3.0);
+        totalEmissiveRadiance *= 0.35 + marks * (0.4 + flow * 1.8);
+      }`,
+    );
+  };
+  m.customProgramCacheKey = () => 'flowing-glyph-v1';
+}
+
 function materialRules(m: THREE.MeshStandardMaterial): Partial<EraMatOptions> {
   const n = m.name;
+  if (n.startsWith('ancient_glyph')) {
+    flowingGlyph(m);
+    return {};
+  }
+  if (n === 'shard_arch_mat' || n === 'ruin_column_mat' || /^block_.*_mat$/.test(n)) {
+    mossyStone(m);
+    return {};
+  }
   if (n === 'tree_leaves') {
     m.alphaTest = 0.5;
     // Exported as alpha-blended, which makes the loader turn depth writes off; as an opaque cut-out the
@@ -134,6 +196,25 @@ export function instanceOf(name: AssetName, node?: string): THREE.Object3D | nul
   // Nodes are exported at the origin; any transform left on the node is quantization scale/offset
   // and must be kept (resetting it would shrink the model).
   return copy;
+}
+
+const beyondCopies = new WeakMap<THREE.Material, THREE.Material>();
+/**
+ * The same ground-cover material, but existing only in Beyond (litter, extra plants): the richest generation
+ * gets the most ground detail.
+ */
+export function beyondOnly(m: THREE.Material): THREE.Material {
+  let c = beyondCopies.get(m);
+  if (!c) {
+    const src = m as THREE.MeshStandardMaterial;
+    const copy = new THREE.MeshStandardMaterial();
+    copy.copy(src);
+    copy.onBeforeCompile = () => {};
+    copy.customProgramCacheKey = () => '';
+    c = patchEraMaterial(copy, { vertexWorld: CLUMP_WIND, minEra: 5, vertexEra: true });
+    beyondCopies.set(m, c);
+  }
+  return c;
 }
 
 /** Load progress for the preload bar: fraction of PRELOAD assets ready. */

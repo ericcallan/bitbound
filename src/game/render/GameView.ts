@@ -6,7 +6,7 @@ import { Particles } from './Particles';
 import { PostPipeline, type PostFrame, type QualitySetting } from './post/Pipeline';
 import { PixelSprite } from './sprites';
 import { TerrainView } from './terrain';
-import { loadHdSky, type HdSkyData } from './sky';
+import { loadHdSky, type HdSkyData, type SkyName } from './sky';
 import { RETRO_ROWS, RetroLayer, TILE_PX } from './retro/RetroLayer';
 import { SHADOW_PROXY_LAYER, ValleyDressing } from './dressing';
 import { PipModel } from '../pip/PipModel';
@@ -84,6 +84,8 @@ export class GameView {
   private chamberLight: THREE.PointLight;
   private dayEnv: THREE.Texture;
   /** The real (HDRI) sky for the modern generations, once loaded. */
+  private hdSkies: Partial<Record<SkyName, HdSkyData>> = {};
+  /** The real sky in use this frame (null: the older generations' procedural sky). */
   private hdSky: HdSkyData | null = null;
   private hdActive = false;
   /** The 8-bit tile renderer (2D only). */
@@ -166,7 +168,7 @@ export class GameView {
     this.scene.fog = new THREE.Fog('#bfe3ff', 90, 380);
     this.dayEnv = skyEnvironment(gl);
     this.scene.environment = this.dayEnv;
-    void loadHdSky(gl).then((d) => (this.hdSky = d));
+    for (const n of ['day', 'golden'] as const) void loadHdSky(gl, n).then((d) => (this.hdSkies[n] = d));
     this.scene.environmentIntensity = 0.55;
 
     this.hemi = new THREE.HemisphereLight('#cfeeff', '#6c8a4a', 0.85);
@@ -485,24 +487,40 @@ export class GameView {
 
     // --- lights follow the action. From Modern HD up the real sky lights the scene and sets the sun.
     const lookEra = split ? 4 : this.eraAt(camTarget);
-    const hd = !!this.hdSky && !split && lookEra >= 4;
+    // Modern HD: late-afternoon daylight. Beyond: a low golden sun behind the valley.
+    this.hdSky = split || lookEra < 4 ? null : (this.hdSkies[lookEra === 5 ? 'golden' : 'day'] ?? this.hdSkies.day ?? null);
+    const hd = !!this.hdSky;
     this.hdActive = hd;
     this.scene.environment = hd ? this.hdSky!.env : this.dayEnv;
     this.scene.background = hd ? this.hdSky!.background : null;
+    if (hd) {
+      this.scene.environmentRotation.copy(this.hdSky!.rotation);
+      this.scene.backgroundRotation.copy(this.hdSky!.rotation);
+    } else {
+      this.scene.environmentRotation.set(0, 0, 0);
+      this.scene.backgroundRotation.set(0, 0, 0);
+    }
+    const golden = hd && lookEra === 5;
+    // The visible sky is darker and richer than the photograph in both modern generations.
+    this.scene.backgroundIntensity = golden ? 0.9 : hd ? 0.82 : 1;
     const fog = this.scene.fog as THREE.Fog;
-    fog.color.set(hd ? '#c4d4e2' : '#bfe3ff');
-    fog.near = hd ? 40 : 90;
-    fog.far = hd ? 330 : 380;
-    const keyDir = hd ? this.hdSky!.sunDir : SUN_DIR;
+    fog.color.set(golden ? '#c7b9a4' : hd ? '#9fb2c4' : '#bfe3ff');
+    fog.near = golden ? 25 : hd ? 30 : 90;
+    fog.far = golden ? 220 : hd ? 260 : 380;
+    const keyDir = hd ? this.hdSky!.keyDir : SUN_DIR;
     this.sun.position.copy(camTarget).addScaledVector(keyDir, 45);
     this.sun.target.position.copy(camTarget);
     eraUniforms.uSunView.value.copy(keyDir).transformDirection(cam.matrixWorldInverse);
     this.chamberLight.intensity = 5 + Math.sin(t * 2) * 1.2 + (g.puzzle.plateLatched ? 4 : 0);
     // Lighting rig per generation at the camera focus: the real sky carries the ambient light from Modern HD
     // up (warm sun, cool sky-lit shadows); older generations keep the even, front-lit rig.
-    const rig = hd
-      ? { hemi: 0.1, env: 0.8, sun: 2.9, color: '#fff0d6', sky: '#cfe4ff', ground: '#4f6a34' }
-      : lookEra === 5
+    const rig = golden
+      ? // warm, low key; the sky's cool light fills the long shadows
+        { hemi: 0.08, env: 1.15, sun: 4.2, color: '#ffbf80', sky: '#9fb8e8', ground: '#3c4a2a' }
+      : hd
+        ? // grounded late afternoon: less fill, a slightly warm sun
+          { hemi: 0.05, env: 0.55, sun: 2.5, color: '#ffe6c4', sky: '#b8cfee', ground: '#3f5530' }
+        : lookEra === 5
         ? { hemi: 0.4, env: 0.5, sun: 3.6, color: '#ffe2b8', sky: '#cfeeff', ground: '#6c8a4a' }
         : { hemi: 0.85, env: 0.55, sun: 2.7, color: '#fff0d8', sky: '#cfeeff', ground: '#6c8a4a' };
     const k = Math.min(1, dt * 2);

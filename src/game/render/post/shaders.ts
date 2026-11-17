@@ -207,6 +207,7 @@ uniform vec2 uRetroSize;
 uniform float uRetro2D;
 uniform float uLaneZ;
 uniform mat4 uViewProj;
+uniform vec3 uSunW;
 
 ${DEPTH_HELPERS}
 
@@ -363,14 +364,26 @@ vec3 stylized(vec2 uv) {
   return mix(col, vec3(0.1, 0.07, 0.2), ink * 0.85);
 }
 
-// --- Modern HD: clean PBR with bloom and filmic tone mapping
-vec3 modern(vec2 uv) {
+vec3 viewDirOf(vec2 uv) { return normalize(worldOf(uv, 1.0) - uCamWorld[3].xyz); }
+
+// --- Modern HD: grounded late afternoon. PBR with ambient occlusion, distance and height fog, restrained
+// bloom, lower exposure and a firmer contrast curve.
+vec3 modern(vec2 uv, float d) {
   vec3 col = texture2D(tColor, uv).rgb;
-  if (uHasBloom > 0.5) col += texture2D(tBloom, uv).rgb * 0.3;
-  col = aces(col * 0.95);
+  if (uHasAO > 0.5) col *= mix(1.0, texture2D(tAO, uv).r, 0.8);
+  if (d < 0.99999) {
+    vec3 w = worldOf(uv, d);
+    float vd = viewDistOf(d);
+    float fog = (1.0 - exp(-max(vd - 18.0, 0.0) * 0.0075)) * exp(-max(w.y + 1.0, 0.0) * 0.045) * 0.62;
+    col = mix(col, vec3(0.3, 0.38, 0.48), fog);
+  }
+  if (uHasBloom > 0.5) col += texture2D(tBloom, uv).rgb * 0.22;
+  col = aces(col * 0.8);
+  col = mix(col, col * col * (3.0 - 2.0 * col), 0.28);
+  col = max(mix(vec3(luma(col)), col, 1.08), 0.0);
   col = toSRGB(col);
   vec2 q = uv - 0.5;
-  return col * (1.0 - dot(q, q) * 0.5);
+  return col * (1.0 - dot(q, q) * 0.6);
 }
 
 // --- Beyond: depth of field, AO, bloom, light shafts, atmosphere, grade, CA, grain
@@ -402,27 +415,30 @@ vec3 beyond(vec2 uv, float d) {
   col.r = mix(col.r, texture2D(tColor, uv + cdir).r, 0.6);
   col.b = mix(col.b, texture2D(tColor, uv - cdir).b, 0.6);
   if (uHasAO > 0.5) col *= mix(1.0, texture2D(tAO, uv).r, 0.95);
-  // atmosphere: distance + height fog, brighter toward the sun
+  // atmosphere: golden-hour haze, warm toward the low sun and cool away from it, thicker near the ground
   float rays = uHasRays > 0.5 ? texture2D(tRays, uv).r : 0.0;
+  vec3 vdir = viewDirOf(uv);
+  float toSun = max(dot(vdir, normalize(uSunW)), 0.0);
+  vec3 haze = mix(vec3(0.34, 0.42, 0.58), vec3(1.0, 0.68, 0.4), pow(toSun, 3.0));
   if (d < 0.99999) {
     vec3 w = worldOf(uv, d);
-    float beyondFocus = max(0.0, vd - uFocusDist);
-    float fog = (1.0 - exp(-beyondFocus * 0.01)) * exp(-max(w.y + 2.0, 0.0) * 0.05) * 0.5;
-    col = mix(col, vec3(0.42, 0.6, 0.9) + uSunColor * rays * 0.5, fog);
-  }
-  if (d >= 0.99999) {
-    // deeper, more saturated sky with a warm glow toward the sun
-    col = mix(col, vec3(0.12, 0.34, 0.86), 0.35 * smoothstep(0.25, 1.0, uv.y));
+    float beyondFocus = max(0.0, vd - uFocusDist * 0.6);
+    float fog = (1.0 - exp(-beyondFocus * 0.008)) * exp(-max(w.y + 2.0, 0.0) * 0.05) * 0.36;
+    col = mix(col, haze + uSunColor * rays * 0.6, fog);
+  } else {
+    // the sky: deep blue overhead, a warm band along the horizon, a glow around the sun
+    float horizon = 1.0 - smoothstep(-0.02, 0.32, vdir.y);
+    col *= mix(vec3(0.7, 0.82, 1.08), vec3(1.4, 1.02, 0.66), clamp(horizon * 0.85 + pow(toSun, 5.0) * 0.8, 0.0, 1.0));
   }
   if (uHasBloom > 0.5) col += texture2D(tBloom, uv).rgb * 0.5;
   col += uSunColor * rays * 0.7;
-  col = aces(col * 1.0);
+  col = aces(col * 0.86);
   // grade: filmic contrast, richer saturation, cool lifted shadows, warm highlights
-  col = mix(col, col * col * (3.0 - 2.0 * col), 0.35);
-  col = max(mix(vec3(luma(col)), col, 1.18), 0.0);
+  col = mix(col, col * col * (3.0 - 2.0 * col), 0.5);
+  col = max(mix(vec3(luma(col)), col, 1.28), 0.0);
   float l = luma(col);
   col += (1.0 - l) * vec3(-0.01, 0.015, 0.035) * (1.0 - l);
-  col *= mix(vec3(1.0), vec3(1.05, 1.0, 0.94), smoothstep(0.45, 1.0, l));
+  col *= mix(vec3(1.0), vec3(1.09, 1.0, 0.86), smoothstep(0.4, 1.0, l));
   col = toSRGB(col);
   col += (hash12(gl_FragCoord.xy + fract(uTime) * 917.0) - 0.5) * 0.035;
   vec2 q = uv - 0.5;
@@ -447,7 +463,7 @@ void main() {
   else if (era < 1.5) col = pixelEra(fc, 280.0, false);
   else if (era < 2.5) col = early3D(fc);
   else if (era < 3.5) col = stylized(uv);
-  else if (era < 4.5) col = modern(uv);
+  else if (era < 4.5) col = modern(uv, depth);
   else col = beyond(uv, depth);
 
   vec3 w = worldOf(uv, depth);

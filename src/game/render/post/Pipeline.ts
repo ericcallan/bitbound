@@ -185,6 +185,7 @@ export class PostPipeline {
       uRetro2D: { value: 0 },
       uLaneZ: { value: 0 },
       uViewProj: { value: new THREE.Matrix4() },
+      uSunW: { value: new THREE.Vector3(0, 1, 0) },
 
     });
     this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.comp);
@@ -265,8 +266,8 @@ export class PostPipeline {
     gl.render(scene, camera);
 
     const beyond = f.maxEra >= 5;
-    // --- AO (Beyond)
-    const doAO = beyond && tier.ao;
+    // --- AO (Modern HD and Beyond)
+    const doAO = heavy && tier.ao;
     if (doAO) {
       this.aoMat.uniforms.uTexel.value.set(1 / this.sceneSize.x, 1 / this.sceneSize.y);
       this.aoMat.uniforms.uProj.value.copy(camera.projectionMatrix);
@@ -352,6 +353,7 @@ export class PostPipeline {
     }
     u.uRetro2D.value = f.retro && f.retro2D ? 1 : 0;
     u.uLaneZ.value = f.laneZ;
+    u.uSunW.value.copy(f.sunDir);
     u.uViewProj.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 
     this.pass(gl, this.comp, null);

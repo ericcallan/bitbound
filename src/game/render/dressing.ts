@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getAsset, loadAsset, type AssetName } from './assets';
+import { beyondOnly, getAsset, loadAsset, type AssetName } from './assets';
 import { GORGES, LANE_BACK, LANE_FRONT, VALLEY_COLLIDE, valleyHeight, valleySplat, WATER_Y } from '../level/valley';
 import { rng } from '../math';
 
@@ -29,6 +29,8 @@ interface AddOptions {
   /** Always the LOD (far hillsides). */
   farOnly?: boolean;
   shadow?: boolean;
+  /** Exists only in Beyond. */
+  beyond?: boolean;
 }
 
 interface CellMesh {
@@ -100,7 +102,7 @@ export class ValleyDressing {
     return { key, i };
   }
 
-  private instance(asset: AssetName, node: string, list: Placement[], cell: number, thin: boolean, band: 0 | 1 | 2 | 3, shadow: boolean) {
+  private instance(asset: AssetName, node: string, list: Placement[], cell: number, thin: boolean, band: 0 | 1 | 2 | 3, shadow: boolean, beyond = false) {
     const src = getAsset(asset)?.scene.getObjectByName(node);
     if (!src || list.length === 0) return;
     getAsset(asset)!.scene.updateMatrixWorld(true);
@@ -113,7 +115,7 @@ export class ValleyDressing {
       // The part's full transform in the asset (nodes sit at the origin; quantization keeps the real
       // scale and offset on the node, so it must be kept, not cancelled).
       const local = part.matrixWorld.clone();
-      const inst = new THREE.InstancedMesh(part.geometry, part.material, list.length);
+      const inst = new THREE.InstancedMesh(part.geometry, beyond ? beyondOnly(part.material as THREE.Material) : part.material, list.length);
       list.forEach((p, i) => {
         q.setFromAxisAngle(up, p.rot);
         m4.compose(new THREE.Vector3(p.x, valleyHeight(p.x, p.z) + (p.dy ?? 0), p.z), q, new THREE.Vector3(p.scale, p.scale, p.scale));
@@ -145,7 +147,7 @@ export class ValleyDressing {
         this.instance(asset, node, ps, i, false, 1, false);
         if (shadow) this.instance(asset, o.lod, ps, i, false, 3, true);
         this.instance(asset, o.lod, ps, i, false, 2, shadow);
-      } else this.instance(asset, node, ps, i, !!o.thin, 0, shadow);
+      } else this.instance(asset, node, ps, i, !!o.thin, 0, shadow, !!o.beyond);
     }
     this.counts[node] = (this.counts[node] ?? 0) + list.length;
   }
@@ -159,6 +161,32 @@ export class ValleyDressing {
       box.getCenter(c.center);
       c.radius = Math.min(CELL, box.getSize(new THREE.Vector3()).length() / 2);
     }
+  }
+
+  /**
+   * Beyond's ground detail near the path: pebbles and leaf litter on and beside it, twigs under the trees,
+   * clover in the grass, and thistles behind the path only (nothing tall in front of it).
+   */
+  private scatterBeyondDetail(x0: number, x1: number) {
+    const r = rng(77);
+    const lists: Record<string, Placement[]> = { pebbles: [], twigs: [], leaf_litter: [], clover: [], thistle: [] };
+    for (let i = 0; i < 16000; i++) {
+      const x = x0 + r() * (x1 - x0);
+      const z = LANE_BACK - 10 + r() * (LANE_FRONT + 6 - (LANE_BACK - 10));
+      if (valleyHeight(x, z) < WATER_Y + 0.1 || this.inGorge(x)) continue;
+      const s = this.slope(x, z);
+      if (s > 0.8) continue;
+      const [rock, path, forest] = valleySplat(x, z, s);
+      const k = r();
+      const rot = r() * 6.28;
+      if (path > 0.3 && k < 0.07) lists.pebbles.push({ x, z, scale: 0.6 + r() * 0.6, rot, dy: -0.01 });
+      else if (path > 0.3 && k < 0.15) lists.leaf_litter.push({ x, z, scale: 0.8 + r() * 0.6, rot });
+      else if (forest > 0.4 && k < 0.2) lists.leaf_litter.push({ x, z, scale: 1 + r() * 0.8, rot });
+      else if (forest > 0.4 && k < 0.3) lists.twigs.push({ x, z, scale: 0.8 + r() * 0.6, rot });
+      else if (rock < 0.2 && path < 0.3 && forest < 0.4 && k < 0.16) lists.clover.push({ x, z, scale: 0.8 + r() * 0.8, rot });
+      else if (z < LANE_BACK - 0.5 && forest < 0.4 && k > 0.985) lists.thistle.push({ x, z, scale: 0.8 + r() * 0.5, rot });
+    }
+    for (const [node, list] of Object.entries(lists)) this.add('vegetation', node, list, { thin: true, beyond: true, shadow: false });
   }
 
   private build() {
@@ -224,6 +252,7 @@ export class ValleyDressing {
     this.add('vegetation', 'flower_white', flowers[0], { thin: true });
     this.add('vegetation', 'flower_violet', flowers[1], { thin: true });
     this.add('vegetation', 'fern', ferns, { thin: true });
+    this.scatterBeyondDetail(x0, x1);
     this.add('rocks', 'rock_a', rocks[0]);
     this.add('rocks', 'rock_b', rocks[1]);
     this.add('rocks', 'rock_c', rocks[2]);
