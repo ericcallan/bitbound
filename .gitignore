@@ -1,3 +1,9 @@
 node_modules
 dist
 .DS_Store
+
+# Re-downloadable sources (python3 scripts/fetch_polyhaven.py)
+assets/source-textures/polyhaven/
+assets/previews/
+assets/exports/
+assets/source-textures/baked/

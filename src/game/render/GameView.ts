@@ -203,6 +203,7 @@ export class GameView {
 
   dispose() {
     this.unsub();
+    this.level.dispose();
     this.post.dispose();
     this.pip.dispose();
     this.pipSprite.dispose();

@@ -40,10 +40,6 @@ export const PATTERN = {
   metal: 7,
   water: 8,
   mural: 9,
-  /** City facades: lit windows. */
-  facade: 10,
-  /** Wet asphalt: puddles go mirror-smooth in the modern generations. */
-  wet: 11,
 } as const;
 
 /** GLSL shared by vertex and fragment stages: per-point era resolution. */
@@ -134,37 +130,12 @@ vec3 eraPattern(vec3 col, vec3 p, float kind, float era) {
   } else if (kind < 8.5) {
     float w = sin(p.x * 2.0 + uTime * 1.6) * 0.5 + sin(p.z * 3.1 - uTime * 1.2) * 0.5;
     f = 0.9 + 0.12 * w;
-  } else if (kind < 9.5) {
-    f = 1.0;
-  } else if (kind < 10.5) {
-    // facade panels
-    vec3 pc = floor(vec3(p.x / 3.2, p.y / 4.4, p.z / 3.2));
-    f = 0.82 + eraHash(pc) * 0.3;
   } else {
-    // asphalt: grain plus darker wet patches
-    f = (0.85 + (n - 0.5) * amp) * (era > 3.5 ? 0.75 + 0.35 * fbm(p * 0.6) : 1.0);
-    float puddle = smoothstep(0.56, 0.64, fbm(vec3(p.x * 0.33, 0.0, p.z * 0.33)));
-    f *= 1.0 - puddle * 0.35;
+    f = 1.0;
   }
   return col * f;
 }
 
-/** Lit windows on city facades (works in every generation; the post pass pixelates it). */
-vec3 eraWindows(vec3 p, vec3 nW, float era) {
-  if (abs(nW.y) > 0.5) return vec3(0.0);
-  float u = abs(nW.z) > abs(nW.x) ? p.x : p.z;
-  vec2 cell = floor(vec2(u / 1.6, p.y / 2.2));
-  vec2 f = fract(vec2(u / 1.6, p.y / 2.2));
-  float inWin = step(0.18, f.x) * step(f.x, 0.82) * step(0.22, f.y) * step(f.y, 0.78);
-  float h = eraHash(vec3(cell, nW.x * 3.0 + nW.z * 7.0));
-  float lit = step(0.52, h);
-  float flick = era > 3.5 ? 0.85 + 0.15 * sin(uTime * (1.0 + h * 3.0) + h * 40.0) : 1.0;
-  vec3 warm = vec3(1.0, 0.72, 0.4);
-  vec3 cool = vec3(0.45, 0.85, 1.0);
-  vec3 pink = vec3(1.0, 0.35, 0.75);
-  vec3 c = h > 0.86 ? pink : (h > 0.68 ? cool : warm);
-  return c * inWin * lit * flick * 1.6;
-}
 `;
 
 export interface EraMatOptions {
@@ -204,6 +175,15 @@ export function eraMaterial(o: EraMatOptions): THREE.MeshStandardMaterial {
     vertexColors: o.vertexColors ?? false,
   };
   const m = o.physical ? new THREE.MeshPhysicalMaterial({ ...params, ...o.physical }) : new THREE.MeshStandardMaterial(params);
+  return patchEraMaterial(m, o);
+}
+
+/**
+ * Teach any standard/physical material (including ones loaded from glTF) the generation rules:
+ * Early-3D vertex snapping, flat/cel lighting in the older generations, and the per-pixel era lookup
+ * used by ripples, rifts, censor fields and Pip's Regress bubble.
+ */
+export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: Partial<EraMatOptions> = {}): T {
   const local = { uPattern: { value: o.pattern ?? 0 }, uFlatBoost: { value: o.flatBoost ?? 1 } };
   const vertexWorld = o.vertexWorld ?? '';
   m.onBeforeCompile = (shader) => {
@@ -244,21 +224,9 @@ export function eraMaterial(o: EraMatOptions): THREE.MeshStandardMaterial {
           roughnessFactor = clamp(roughnessFactor * (0.65 + 0.7 * rn), 0.04, 1.0);
           if (uPattern > 7.5 && uPattern < 8.5) roughnessFactor = 0.03;
         }
-        if (eraF > 3.5 && uPattern > 10.5) {
-          float puddle = smoothstep(0.56, 0.64, fbm(vec3(vEraWorld.x * 0.33, 0.0, vEraWorld.z * 0.33)));
-          roughnessFactor = mix(roughnessFactor, 0.035, puddle);
-        }`,
+`,
       )
-      .replace(
-        '#include <emissivemap_fragment>',
-        `#include <emissivemap_fragment>
-        if (uPattern > 9.5 && uPattern < 10.5) {
-          // geometric (un-bumped) normal so the window grid is stable per face
-          vec3 nWorld = normalize(cross(dFdx(vEraWorld), dFdy(vEraWorld)));
-          nWorld = sign(nWorld) * step(0.5, abs(nWorld));
-          totalEmissiveRadiance += eraWindows(vEraWorld, nWorld, eraF);
-        }`,
-      )
+
       .replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
@@ -309,7 +277,7 @@ export function eraMaterial(o: EraMatOptions): THREE.MeshStandardMaterial {
         #include <opaque_fragment>`,
       );
   };
-  m.customProgramCacheKey = () => `era-v2${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical ? '-phys' : ''}`;
+  m.customProgramCacheKey = () => `era-v2${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}`;
   return m;
 }
 

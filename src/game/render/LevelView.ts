@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { eraMaterial, PATTERN, sharedEraMaterial } from './eraMaterial';
 import { EraSwapRegistry, eras as E } from './eraSwap';
-import { buildDecor, M, type Animated, type AnimCtx } from './decor';
+import { buildDecor, fillAssetSlots, M, type Animated, type AnimCtx } from './decor';
+import { onAssetLoaded, preloadAssets } from './assets';
 import { STAIR, type Level, type SolidDef } from '../level/meadows';
 import type { Era } from '../era/EraSystem';
 import { rng } from '../math';
@@ -75,6 +76,7 @@ const GRASS_WIND = /* glsl */ `
 export class LevelView {
   group = new THREE.Group();
   eras = new EraSwapRegistry();
+  private unsubAssets: () => void;
   /** Generation-masked laser walls; GameView shows them only where they exist. */
   /** Generation-masked solids; GameView tells each one whether its collider exists right now. */
   masked: { id: string; set: (on: boolean, t: number) => void }[] = [];
@@ -99,6 +101,10 @@ export class LevelView {
       this.group.add(obj);
       if (anim) this.anims.push(anim);
     }
+    // Blender assets replace their placeholders as they arrive.
+    fillAssetSlots(this.group);
+    this.unsubAssets = onAssetLoaded(() => fillAssetSlots(this.group));
+    void preloadAssets();
     this.buildGrass();
     this.buildWater();
     this.buildBackground();
@@ -610,6 +616,10 @@ export class LevelView {
         this.group.add(strip);
       }
     }
+  }
+
+  dispose() {
+    this.unsubAssets();
   }
 
   update(t: number, dt: number, ctx: AnimCtx, eraAt: (p: THREE.Vector3) => Era) {

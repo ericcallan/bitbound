@@ -4,6 +4,35 @@ import { PATTERN, sharedEraMaterial } from './eraMaterial';
 import { eras as E, type EraSwapRegistry } from './eraSwap';
 import type { DecorDef } from '../level/meadows';
 import { rng } from '../math';
+import { instanceOf, type AssetName } from './assets';
+
+/**
+ * A placeholder for a Blender asset: shows `fallback` until the GLB has loaded, then `fillAssetSlots`
+ * (called by the owning view whenever an asset arrives) swaps in the real model.
+ */
+export function assetSlot(asset: AssetName, node: string, fallback: THREE.Object3D, scale = 1, rotY = 0) {
+  const group = new THREE.Group();
+  group.add(fallback);
+  group.userData.assetSlot = { asset, node, scale, rotY, filled: false };
+  return group;
+}
+export function fillAssetSlots(root: THREE.Object3D) {
+  const todo: THREE.Object3D[] = [];
+  root.traverse((o) => {
+    const s = o.userData.assetSlot;
+    if (s && !s.filled) todo.push(o);
+  });
+  for (const g of todo) {
+    const s = g.userData.assetSlot;
+    const obj = instanceOf(s.asset, s.node);
+    if (!obj) continue;
+    g.clear();
+    obj.scale.setScalar(s.scale);
+    obj.rotation.y = s.rotY;
+    g.add(obj);
+    s.filled = true;
+  }
+}
 
 export const M = {
   trunk: () => sharedEraMaterial('trunk', { color: '#7a4a2e', pattern: PATTERN.wood }),
@@ -251,7 +280,9 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       rR.scale.set(1.3, 0.75, 1);
       rR.rotation.y = r() * 3;
       rR.position.y = 0.3 * s;
-      reg.variants(g, [[r8, E(0)], [rR, E(1, 5)]], anchor, false);
+      // Modern HD and Beyond swap in a baked, scanned-texture rock from the Blender pipeline.
+      const rHD = assetSlot('rocks', ['rock_a', 'rock_b', 'rock_c'][Math.floor(r() * 3)], rR.clone(), s * 1.05, r() * Math.PI * 2);
+      reg.variants(g, [[r8, E(0)], [rR, E(1, 3)], [rHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'statue': {
