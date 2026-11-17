@@ -2,7 +2,7 @@ import { World, overlaps, type Collider } from '../collision/World';
 import { LEVEL, type Level } from '../level/meadows';
 import { NO_INTENT, PlayerController, type MoveIntent, type PlayerEvent } from '../player/PlayerController';
 import { DimensionShift, type ShiftBlock } from '../shift/DimensionShift';
-import { EraSystem, ERA_NAMES, ERA_TITLES, type Bubble, type Era } from '../era/EraSystem';
+import { EraSystem, ERA_BLURBS, ERA_NAMES, ERA_TITLES, generationFlag, type Bubble, type Era } from '../era/EraSystem';
 import { CameraRig, type CameraContext } from '../camera/CameraRig';
 import { BrokenPassage } from '../puzzle/BrokenPassage';
 import { PaintedStair } from '../puzzle/PaintedStair';
@@ -867,7 +867,7 @@ export class Game {
     if (to === '3d') this.camera.resetOrbit(0, 0);
     this.emit('shiftStart', { pos: { ...this.player.pos }, text: to });
     if (to === '3d' && !this.save.firstShiftDone) {
-      this.changeEra(2, 3.0, v3(this.player.pos.x, this.player.pos.y + 0.5, 0));
+      this.changeEra(2, 3.0, v3(this.player.pos.x, this.player.pos.y + 0.5, 0), false);
     }
     return null;
   }
@@ -878,15 +878,21 @@ export class Game {
       this.save.firstShiftDone = true;
       this.setAction('surprised');
       this.lookAtCamera = 2.2;
-      this.showBanner(ERA_NAMES[2], ERA_TITLES[2], 2);
+      this.showBanner(generationFlag(2), ERA_TITLES[2], 2);
       this.say('firstShift');
       this.persist();
     }
   }
 
-  changeEra(e: Era, dur = 2.4, center?: V3) {
+  /**
+   * Start a generation change. Every change is flagged ("Generation 3 (1996): Early 3D"); story moments pass
+   * `flag = false` and raise their own, timed to their cinematic, with the chapter's title under it.
+   */
+  changeEra(e: Era, dur = 2.4, center?: V3, flag = true) {
     const c = center ?? v3(this.player.pos.x, this.player.pos.y + 0.5, this.player.pos.z);
-    if (this.era.start(e, c, dur)) this.emit('eraStart', { pos: c, value: e });
+    if (!this.era.start(e, c, dur)) return;
+    this.emit('eraStart', { pos: c, value: e });
+    if (flag) this.showBanner(generationFlag(e), ERA_BLURBS[e], e, 2.6);
   }
 
   // ---------------------------------------------------------------- cinematics
@@ -973,10 +979,10 @@ export class Game {
           this.setAction('inspect');
           this.camera.shake = 0.3;
           this.emit('shard', { pos: { ...L.shard } });
-          this.changeEra(1, 2.8, L.shard);
+          this.changeEra(1, 2.8, L.shard, false);
           this.say('shard');
         });
-        this.once('banner', 1.6, () => this.showBanner(ERA_NAMES[1], ERA_TITLES[1], 1));
+        this.once('banner', 1.6, () => this.showBanner(generationFlag(1), ERA_TITLES[1], 1));
         if (c.t > 3.0) {
           this.endCine();
           this.checkpoint = 'shard';
@@ -1008,10 +1014,10 @@ export class Game {
           this.camera.overrideGoal = 1;
           this.camera.overrideRate = 2.4;
           this.setAction('fistpump');
-          this.changeEra(3, 3.2, v3(L.plate.x, 1, L.plate.z));
+          this.changeEra(3, 3.2, v3(L.plate.x, 1, L.plate.z), false);
         });
         this.once('bridge', 0.35, () => this.emit('bridgeStart', { pos: v3(67, 0, 0) }));
-        this.once('banner', 1.4, () => this.showBanner(ERA_NAMES[3], ERA_TITLES[3], 3));
+        this.once('banner', 1.4, () => this.showBanner(generationFlag(3), ERA_TITLES[3], 3));
         this.once('release', 3.7, () => {
           this.camera.overrideGoal = 0;
           this.camera.overrideRate = 2.0;
@@ -1032,9 +1038,9 @@ export class Game {
           this.cells = MAX_CELLS;
           this.emit('checkpoint', { pos: { ...L.beacon }, text: 'beacon' });
           this.setAction('dance');
-          this.changeEra(4, 3.0, v3(L.beacon.x, 2, -1.6));
+          this.changeEra(4, 3.0, v3(L.beacon.x, 2, -1.6), false);
         });
-        this.once('banner', 1.2, () => this.showBanner(ERA_NAMES[4], ERA_TITLES[4], 4));
+        this.once('banner', 1.2, () => this.showBanner(generationFlag(4), ERA_TITLES[4], 4));
         if (c.t > 3.2) {
           this.action = 'none';
           this.endCine();
@@ -1077,8 +1083,8 @@ export class Game {
           this.setBubble(null, true, true);
           this.say('reflection');
         });
-        this.once('era', 0.7, () => this.changeEra(5, 4.2, v3(L.gate.x, L.gate.y + 1.5, 0)));
-        this.once('banner', 2.4, () => this.showBanner(ERA_NAMES[5], ERA_TITLES[5], 5, 3.6));
+        this.once('era', 0.7, () => this.changeEra(5, 4.2, v3(L.gate.x, L.gate.y + 1.5, 0), false));
+        this.once('banner', 2.4, () => this.showBanner(generationFlag(5), ERA_TITLES[5], 5, 3.6));
         this.once('release', 4.6, () => {
           this.camera.overrideGoal = 0;
           this.camera.overrideRate = 1.4;

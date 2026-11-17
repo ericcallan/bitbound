@@ -155,10 +155,8 @@ export class PixelSprite {
   }
   set(frame: number, flip = false) {
     const t = this.frames[Math.max(0, Math.min(this.frames.length - 1, frame))];
-    if (this.mat.map !== t) {
-      this.mat.map = t;
-      this.mat.needsUpdate = true;
-    }
+    // swapping one map for another needs no shader re-check (it's only forced when a map appears or goes)
+    this.mat.map = t;
     this.sprite.scale.x = (flip ? -1 : 1) * this.width;
     this.sprite.scale.y = this.height;
   }

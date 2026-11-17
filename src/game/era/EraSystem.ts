@@ -17,6 +17,12 @@ export const ERA_TITLES = [
   'Beacon Ridge',
   'Beyond the Frame',
 ] as const;
+/** The year each generation stands for: when its look was the state of the art. */
+export const ERA_YEARS = [1985, 1991, 1996, 2002, 2013, 2026] as const;
+/** Generation names for sentences and flags (ERA_NAMES are the HUD's capitals). */
+export const ERA_LABELS = ['8-Bit', '16-Bit', 'Early 3D', 'Stylized', 'Modern HD', 'Beyond'] as const;
+/** The flag shown on every switch: "Generation 3 (1996): Early 3D". */
+export const generationFlag = (e: Era) => `Generation ${e + 1} (${ERA_YEARS[e]}): ${ERA_LABELS[e]}`;
 export const ERA_BLURBS = [
   'Chunky sprites, 16 colours',
   'Painted pixels, rich palette',

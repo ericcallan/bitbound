@@ -10,9 +10,12 @@ import { PauseMenu } from './ui/PauseMenu';
 import { SettingsPanel } from './ui/SettingsPanel';
 import { WorldMap } from './ui/WorldMap';
 import { FinaleCard } from './ui/FinaleCard';
-import { Gallery } from './ui/Gallery';
 import { audio } from './game/audio/AudioEngine';
 import { startRouter } from './ui/router';
+import { Loader } from './ui/Loader';
+
+/** Art & Design is its own download, fetched when it's opened (or when the page is an /art/ address). */
+const Gallery = lazy(() => import('./ui/Gallery').then((m) => ({ default: m.Gallery })));
 
 /** Development-only debug overlay (` to toggle); not part of production builds. */
 const DebugOverlay = import.meta.env.DEV ? lazy(() => import('./dev/DebugOverlay').then((m) => ({ default: m.DebugOverlay }))) : null;
@@ -33,6 +36,7 @@ export function App() {
     // Dev builds: ?scenario=<name> starts straight into a fixed, reproducible game state.
     if (import.meta.env.DEV) {
       void import('./dev/perf');
+      void import('./dev/probe');
       void import('./dev/scenarios').then((m) => {
         const sc = m.requestedScenario();
         if (sc) m.bootScenario(sc);
@@ -42,8 +46,10 @@ export function App() {
 
   useEffect(() => audio.setVolumes(settings.music, settings.sfx), [settings.music, settings.sfx]);
 
-  // The title screen gets its own attract-mode world; gameplay gets a fresh one per session.
-  const menuGame = useMemo(() => (screen === 'menu' ? makeMenuGame() : null), [screen]);
+  // The title screen gets its own attract-mode world; gameplay gets a fresh one per session. While Art & Design
+  // is open the title's world (and the whole canvas) stays, paused: coming back is instant and nothing reloads.
+  const titleWorld = screen === 'menu' || screen === 'gallery';
+  const menuGame = useMemo(() => (titleWorld ? makeMenuGame() : null), [titleWorld]);
   const game = screen === 'game' ? session.game : null;
 
   useEffect(() => {
@@ -54,9 +60,10 @@ export function App() {
 
   return (
     <div className="app" ref={wrap} onContextMenu={(e) => e.preventDefault()}>
-      {screen !== 'gallery' && ready && (
+      {ready && (
         <Canvas
-          className="world-canvas"
+          className={`world-canvas ${screen === 'gallery' ? 'world-canvas--paused' : ''}`}
+          frameloop={screen === 'gallery' ? 'never' : 'always'}
           shadows={{ type: THREE.PCFShadowMap }}
           dpr={[1, 1.5]}
           flat
@@ -76,8 +83,13 @@ export function App() {
           {mapOpen && <WorldMap overlay onClose={() => useUI.getState().setMap(false)} />}
         </>
       )}
-      {screen === 'gallery' && <Gallery />}
+      {screen === 'gallery' && (
+        <Suspense fallback={null}>
+          <Gallery />
+        </Suspense>
+      )}
       {settingsOpen && <SettingsPanel />}
+      <Loader />
       {settings.showFps && <FpsCounter />}
       {DebugOverlay && (
         <Suspense fallback={null}>

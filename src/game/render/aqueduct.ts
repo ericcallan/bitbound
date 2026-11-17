@@ -50,7 +50,7 @@ export class AqueductView {
   /** Water running along the top of each half toward its break (a strip flush with the deck). */
   private channel(h: Half) {
     const len = h.x1 - h.x0;
-    const m = eraMaterial({ color: '#1c4744', roughness: 0.12, pattern: PATTERN.water, transparent: true, opacity: 0.86, minEra: 2 });
+    const m = eraMaterial({ color: '#1c4744', roughness: 0.12, pattern: PATTERN.water, transparent: true, opacity: 0.86, minEra: 2, structural: true });
     m.envMapIntensity = 0.35;
     const strip = new THREE.Mesh(new THREE.PlaneGeometry(len - 0.1, 0.46, Math.ceil(len * 2), 1), m);
     strip.rotation.x = -Math.PI / 2;

@@ -22,6 +22,8 @@ interface Entry {
   grow: boolean;
   s: number;
   base: THREE.Vector3;
+  /** Also shown in these generations while `when()` holds (a stand-in until its replacement has loaded). */
+  standIn?: { mask: EraMask; when: () => boolean };
 }
 
 /**
@@ -31,9 +33,9 @@ interface Entry {
 export class EraSwapRegistry {
   private entries: Entry[] = [];
 
-  add(obj: THREE.Object3D, mask: EraMask, grow = true, anchor?: THREE.Vector3) {
+  add(obj: THREE.Object3D, mask: EraMask, grow = true, anchor?: THREE.Vector3, standIn?: Entry['standIn']) {
     const a = anchor ?? obj.getWorldPosition(new THREE.Vector3());
-    this.entries.push({ obj, anchor: a.clone(), mask, grow, s: -1, base: obj.scale.clone() });
+    this.entries.push({ obj, anchor: a.clone(), mask, grow, s: -1, base: obj.scale.clone(), standIn });
     return obj;
   }
 
@@ -48,7 +50,7 @@ export class EraSwapRegistry {
   update(eraAt: EraAt, dt: number, instant = false) {
     for (const e of this.entries) {
       const era = eraAt(e.anchor);
-      const on = (e.mask & (1 << era)) !== 0;
+      const on = (e.mask & (1 << era)) !== 0 || (!!e.standIn && (e.standIn.mask & (1 << era)) !== 0 && e.standIn.when());
       if (!e.grow || instant || e.s < 0) {
         e.s = on ? 1 : 0;
       } else {

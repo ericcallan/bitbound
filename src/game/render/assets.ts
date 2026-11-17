@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { track, trackBytes } from './loadProgress';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -133,7 +134,13 @@ function materialRules(m: THREE.MeshStandardMaterial): Partial<EraMatOptions> {
     projectedStone(m);
     return { cutaway: true };
   }
-  if (n === 'shard_arch_mat' || n === 'ruin_column_mat' || /^block_.*_mat$/.test(n)) {
+  if (/^block_.*_mat$/.test(n)) {
+    // steps, slabs and plinths Pip stands on: solid, collider-sized, so the camera already keeps out of them.
+    // Cutting their front faces would show their empty inside.
+    mossyStone(m);
+    return {};
+  }
+  if (n === 'shard_arch_mat' || n === 'ruin_column_mat') {
     mossyStone(m);
     return { cutaway: true };
   }
@@ -213,8 +220,17 @@ function prepare(gltf: GLTF) {
 export function loadAsset(name: AssetName): Promise<GLTF> {
   let p = cache.get(name);
   if (!p) {
-    p = loader.loadAsync(assetUrl(name)).then((g) => {
+    const url = assetUrl(name);
+    p = track(
+      url,
+      loader.loadAsync(url, (e) => e.lengthComputable && trackBytes(url, e.loaded, e.total)),
+      600_000,
+    ).then((g) => {
       prepare(g);
+      g.scene.traverse((o) => {
+        const geo = (o as THREE.Mesh).geometry;
+        if (geo) sharedGeometry.add(geo);
+      });
       loaded.set(name, g);
       for (const l of listeners) l();
       return g;
@@ -223,6 +239,10 @@ export function loadAsset(name: AssetName): Promise<GLTF> {
   }
   return p;
 }
+
+/** Geometry owned by the asset cache: shared by every view (and copy), so a view must never dispose it. */
+const sharedGeometry = new WeakSet<THREE.BufferGeometry>();
+export const isSharedGeometry = (g: THREE.BufferGeometry) => sharedGeometry.has(g);
 
 export function getAsset(name: AssetName): GLTF | null {
   return loaded.get(name) ?? null;

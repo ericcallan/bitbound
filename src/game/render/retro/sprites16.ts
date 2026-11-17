@@ -72,7 +72,7 @@ export class Sprite16 {
     this.map.repeat.set(((flip ? -1 : 1) * e.w) / W, e.h / H);
     // canvas rows run top-down; texture v runs bottom-up
     this.map.offset.set((flip ? e.x + e.w : e.x) / W, 1 - (e.y + e.h) / H);
-    this.map.needsUpdate = true;
+    // offset and repeat are uniforms: no texture upload (needsUpdate would re-upload the whole sheet each frame)
     const ox = flip ? e.w - e.ox : e.ox;
     this.sprite.center.set(ox / e.w, e.oy / e.h);
     this.sprite.scale.set((e.w / sheet.ppu) * this.scale, (e.h / sheet.ppu) * this.scale, 1);

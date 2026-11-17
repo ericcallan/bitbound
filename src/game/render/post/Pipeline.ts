@@ -249,7 +249,23 @@ export class PostPipeline {
     gl.render(this.scene, this.cam);
   }
 
-  private resize(gl: THREE.WebGLRenderer, scale: number) {
+  /** The render scale the targets are allocated at, and how long a different one has been wanted. */
+  private allocScale = 0;
+  private scaleWait = 0;
+
+  private resize(gl: THREE.WebGLRenderer, wanted: number, dt: number) {
+    // Auto quality renders the modern generations at a lower scale on slow machines, the older ones at full.
+    // A ripple, bubble or field crossing that line would re-create every target each time, so the size only
+    // follows once the wanted scale has held for a moment (a window resize still applies at once).
+    if (this.allocScale === 0) this.allocScale = wanted;
+    if (wanted !== this.allocScale) {
+      this.scaleWait += dt;
+      if (this.scaleWait > 1.5) {
+        this.allocScale = wanted;
+        this.scaleWait = 0;
+      }
+    } else this.scaleWait = 0;
+    const scale = this.allocScale;
     gl.getDrawingBufferSize(this.size);
     const w = Math.max(4, Math.round(this.size.x * scale));
     const h = Math.max(4, Math.round(this.size.y * scale));
@@ -275,8 +291,8 @@ export class PostPipeline {
     this.autoTune(dt, heavy);
     const tier = TIERS[heavy ? this.tier : 2];
     const scale = heavy ? tier.scale : 1;
-    this.lastScale = scale;
-    this.resize(gl, scale);
+    this.resize(gl, scale, dt);
+    this.lastScale = this.allocScale;
     const u = this.comp.uniforms;
     u.uInvProj.value.copy(camera.projectionMatrixInverse);
     u.uCamWorld.value.copy(camera.matrixWorld);
@@ -399,7 +415,8 @@ export class PostPipeline {
     this.aoBlurRT.dispose();
     this.raysRT.dispose();
     for (const r of [...this.down, ...this.up]) r.dispose();
-    for (const m of [this.aoMat, this.blurMat, this.preMat, this.downMat, this.upMat, this.raysMat, this.comp]) m.dispose();
+    // The pass materials are not disposed: that would delete their compiled programs, which the next view's
+    // pipeline (New Game after the title, the title after the warm-up) would then compile again mid-play.
     this.black.dispose();
     this.white.dispose();
   }

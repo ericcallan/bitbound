@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
+import { track, trackBytes, trackDone, trackStart } from './loadProgress';
 
 /**
  * The scanned material textures (public/assets/textures). Colour maps ship as KTX2 / Basis ETC1S and stay
@@ -39,8 +40,18 @@ function configure(t: THREE.Texture, srgb: boolean) {
   return t;
 }
 
+/**
+ * An image as a texture, with the standard loader. (Off-thread decoding, createImageBitmap or decode() before
+ * upload, was tried and measured: the textures it produced cost noticeably more GPU time per frame in Beyond, so
+ * it isn't used. The warm-up uploads every texture behind the loader, so decoding never lands in play.)
+ */
+export function loadImageTexture(url: string): Promise<THREE.Texture> {
+  return new THREE.TextureLoader().loadAsync(url);
+}
+
 function loadWebp(name: string, srgb: boolean, holder: { value: THREE.Texture }) {
-  new THREE.TextureLoader().load(`${base}assets/textures/${name}.webp`, (t) => (holder.value = configure(t, srgb)));
+  const url = `${base}assets/textures/${name}.webp`;
+  void track(url, loadImageTexture(url), 500_000).then((t) => (holder.value = configure(t, srgb)));
 }
 
 /** A shared uniform holding the named texture (e.g. 'grass_albedo', 'rock_normal') once it has loaded. */
@@ -55,13 +66,16 @@ export function textureUniform(name: string): { value: THREE.Texture } {
     loadWebp(name, false, holder);
     return holder;
   }
-  const go = () =>
+  const url = `${base}assets/textures/${name}.ktx2`;
+  const go = () => {
+    trackStart(url, 250_000);
     ktx2!.load(
-      `${base}assets/textures/${name}.ktx2`,
-      (t) => (holder.value = configure(t, true)),
-      undefined,
-      () => loadWebp(name, true, holder),
+      url,
+      (t) => (trackDone(url), (holder.value = configure(t, true))),
+      (e) => e.lengthComputable && trackBytes(url, e.loaded, e.total),
+      () => (trackDone(url), loadWebp(name, true, holder)),
     );
+  };
   if (ktx2) go();
   else pending.push(go);
   return holder;

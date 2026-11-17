@@ -1,4 +1,6 @@
 import { SHIFT_BLOCK_LABEL } from '../game/shift/DimensionShift';
+import { warmUp } from '../game/render/warmup';
+import { loadState, setPhase } from '../game/render/loadProgress';
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import type * as THREE from 'three';
@@ -6,7 +8,7 @@ import { GameView } from '../game/render/GameView';
 import { roomAt, type Game } from '../game/sim/Game';
 import { audio, type Surface } from '../game/audio/AudioEngine';
 import { valleyHeight, valleySplat, WATER_Y } from '../game/level/valley';
-import { session } from './session';
+import { makeShowcaseGame, session } from './session';
 import { useUI, type HudState } from './store';
 
 
@@ -125,6 +127,19 @@ export function Stage({ game, menu = false }: { game: Game; menu?: boolean }) {
     return () => view.dispose();
   }, [view, gl]);
 
+  // The title warms everything up behind the loader (render/warmup.ts): after it, nothing compiles in play.
+  // Not while Art & Design is open over it (a visit straight to /art/): that page shouldn't compete with it.
+  const onTitle = useUI((s) => s.screen === 'menu');
+  useEffect(() => {
+    if (!menu || !onTitle) return;
+    audio.prepare();
+    warmUp(gl, view, makeShowcaseGame).catch((e) => {
+      console.warn('warm-up failed', e);
+      setPhase('done');
+      window.dispatchEvent(new Event('bitbound:loadfailed'));
+    });
+  }, [menu, onTitle, gl, view]);
+
   useFrame((_, dt) => {
     const ui = useUI.getState();
     const input = session.input;
@@ -170,8 +185,8 @@ export function Stage({ game, menu = false }: { game: Game; menu?: boolean }) {
 
   useFrame((_, dt) => view.update(Math.min(dt, 0.1)), 0);
   useFrame(() => {
-    // the title's pixel scene covers the screen: skip the 3D frame
-    if (menu && session.menuCovered) return;
+    // the title's pixel scene covers the screen, or the loader does: skip the 3D frame
+    if (menu && (session.menuCovered || loadState().phase !== 'done')) return;
     view.render(gl);
   }, 1);
   return null;

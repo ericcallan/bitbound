@@ -66,6 +66,12 @@ export const eraUniforms = {
   uPip: { value: new THREE.Vector3() },
   /** 1 while the 2D view draws 8-bit through the tile renderer (render/retro), which replaces the ground. */
   uRetro2D: { value: 0 },
+  /**
+   * 1 while the world itself is 8- or 16-bit in that 2D view (or rippling into or out of it): the tile layer
+   * then draws the ground, so the terrain gives way to it. A bubble alone doesn't count: the tiles don't draw
+   * a Beyond world's ground, so the terrain must stay.
+   */
+  uRetroTiles: { value: 0 },
   uNoiseTex: { value: makeNoiseTexture() },
   /** Cutaway (3D): scenery inside a narrow cone from Pip to the camera dissolves, so he is never hidden. */
   uCutCam: { value: new THREE.Vector3() },
@@ -107,6 +113,7 @@ uniform float uTime;
 uniform float uValleyX;
 uniform vec3 uPip;
 uniform float uRetro2D;
+uniform float uRetroTiles;
 uniform sampler2D uNoiseTex;
 uniform vec3 uCutCam;
 uniform vec3 uCutPip;
@@ -220,7 +227,13 @@ export interface EraMatOptions {
    * scattered Blender vegetation is 4 (Modern HD and Beyond).
    */
   minEra?: number;
-  /** Level ground (and backdrop) the retro tile renderers draw themselves: hidden wherever 2D shows 8- or 16-bit. */
+  /**
+   * The ground and structure of the world (terrain, river, aqueduct water): below `minEra` it gives way only to
+   * the 2D tile renderers, which draw their own. In 3D nothing replaces it, so inside an older generation's
+   * bubble (or a split view's retro band) it stays, drawn in that generation's look, and never leaves a hole.
+   */
+  structural?: boolean;
+  /** Level ground (and backdrop) the retro tile renderers draw themselves: hidden where they draw it (uRetroTiles). */
   retroTile?: boolean;
   /**
    * Resolve the generation per vertex instead of per pixel. For small, dense geometry (leaf cards, grass,
@@ -284,9 +297,11 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
   const local = { uPattern: { value: o.pattern ?? 0 }, uFlatBoost: { value: o.flatBoost ?? 1 } };
   const vertexWorld = o.vertexWorld ?? '';
   const discardRule = [
-    o.hideInValley ? 'if (vEraWorld.x < uValleyX && eraF > 1.5) discard;' : '',
-    o.minEra ? `if (eraF < ${(o.minEra - 0.5).toFixed(1)}) discard;` : '',
-    o.retroTile ? 'if (uRetro2D > 0.5 && eraF < 1.5) discard;' : '',
+    // the old box ground gives way to the terrain inside the valley: always in 3D, and in 2D from Early 3D up
+    o.hideInValley ? 'if (vEraWorld.x < uValleyX && (eraF > 1.5 || uRetroTiles < 0.5)) discard;' : '',
+    o.minEra ? `if (${o.structural ? 'uRetroTiles > 0.5 && ' : ''}eraF < ${(o.minEra - 0.5).toFixed(1)}) discard;` : '',
+    // only while the tiles draw the world: a bubble in a Beyond world keeps its boxes, drawn in its generation
+    o.retroTile ? 'if (uRetroTiles > 0.5 && eraF < 1.5) discard;' : '',
     o.cutaway ? CUTAWAY_GLSL : '',
   ].join('\n');
   // Chain onto any patch already on the material (e.g. the terrain splat shader).
@@ -399,7 +414,7 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
   };
   const prevKey = m.customProgramCacheKey.bind(m);
   m.customProgramCacheKey = () =>
-    `${prevKey()}|era-v4${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.minEra ? '-me' + o.minEra : ''}${o.retroTile ? '-rt' : ''}${o.vertexEra ? '-ve' : ''}${o.cutaway ? '-cut' : ''}`;
+    `${prevKey()}|era-v4${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.minEra ? '-me' + o.minEra : ''}${o.structural ? '-st' : ''}${o.retroTile ? '-rt' : ''}${o.vertexEra ? '-ve' : ''}${o.cutaway ? '-cut' : ''}`;
   return m;
 }
 

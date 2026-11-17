@@ -15,6 +15,7 @@ import { RETRO_ROWS, RetroLayer, TILE_PX } from './retro/RetroLayer';
 import { Sprite16 } from './retro/sprites16';
 import { RETRO16_ROWS, RetroLayer16, TILE16_PX } from './retro/RetroLayer16';
 import { SHADOW_PROXY_LAYER, ValleyDressing } from './dressing';
+import { isSharedGeometry } from './assets';
 import { PipModel } from '../pip/PipModel';
 import { PipGLB } from '../pip/PipGLB';
 import type { Game, GameEvent } from '../sim/Game';
@@ -38,6 +39,15 @@ export interface ViewOptions {
 }
 
 const envCache = new WeakMap<THREE.WebGLRenderer, THREE.Texture>();
+
+/** Lighting colours by hex, parsed once (the rig eases toward them every frame). */
+const colors = new Map<string, THREE.Color>();
+function colorOf(hex: string) {
+  let c = colors.get(hex);
+  if (!c) colors.set(hex, (c = new THREE.Color(hex)));
+  return c;
+}
+const SPLIT_SCRATCH = { ray: new THREE.Raycaster(), plane: new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), hit: new THREE.Vector3(), v: new THREE.Vector3(), p2: new THREE.Vector2() };
 
 /** Image-based lighting: a PMREM of the procedural sky over a green ground bounce. */
 function skyEnvironment(gl: THREE.WebGLRenderer) {
@@ -87,8 +97,8 @@ export class GameView {
   aqueduct: AqueductView | null = null;
   /** Extra sky rotation (radians about +y): the title set's lighting angle. */
   skyYaw = 0;
-  /** Forest, grass, flowers and rocks scattered over the valley (Modern HD and Beyond). */
-  dressing = new ValleyDressing();
+  /** Forest, grass, flowers and rocks scattered over the valley (Modern HD and Beyond). Not on the title. */
+  dressing: ValleyDressing;
   /** The Blender-built Pip, used from Modern HD on once its asset has loaded. */
   pipHD = new PipGLB();
   pipSprite = new PixelSprite('pip', 1, 1);
@@ -194,6 +204,7 @@ export class GameView {
   ) {
     this.options = options;
     this.gl = gl;
+    this.dressing = new ValleyDressing(!options.title);
     initTextures(gl);
     this.retro = new RetroLayer(game.level);
     this.retro16 = new RetroLayer16(game.level);
@@ -315,9 +326,11 @@ export class GameView {
     this.pipSprite16.dispose();
     this.sun.dispose();
     this.chamberLight.dispose();
+    // the view's own geometry only: the asset cache's is shared with the next view (New Game after the title),
+    // which would otherwise upload all of it again
     this.scene.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (m.geometry) m.geometry.dispose();
+      if (m.geometry && !isSharedGeometry(m.geometry)) m.geometry.dispose();
     });
   }
 
@@ -461,13 +474,11 @@ export class GameView {
   /** In split mode, place the world-space band edges under the screen-space ones (lane plane z = 0). */
   private updateSplit(cam: THREE.PerspectiveCamera, targetY: number) {
     if (this.fixedSplit) return;
-    const ray = new THREE.Raycaster();
-    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
-    const hit = new THREE.Vector3();
+    const { ray, plane, hit, v, p2 } = SPLIT_SCRATCH;
+    const sy = v.set(0, targetY, 0).project(cam).y;
     for (let i = 0; i < 5; i++) {
       const sx = this.splitScreen[i] * 2 - 1;
-      const sy = new THREE.Vector3(0, targetY, 0).project(cam).y;
-      ray.setFromCamera(new THREE.Vector2(sx, sy), cam);
+      ray.setFromCamera(p2.set(sx, sy), cam);
       if (ray.ray.intersectPlane(plane, hit)) this.splitWorldX[i] = hit.x;
     }
   }
@@ -488,6 +499,7 @@ export class GameView {
     const tr = g.era.transition;
     const shows = (e: number) => (tr ? tr.from === e || tr.to === e : g.era.era === e);
     const mode = !flat ? null : shows(0) ? 8 : shows(1) ? 16 : null;
+    eraUniforms.uRetroTiles.value = mode ? 1 : 0;
     this.retroCamW = mode ? Math.min(1, this.retroCamW + dt * 1.5) : Math.max(0, this.retroCamW - dt * 1.5);
     if (!flat) this.retroCamW = 0;
     if (mode) this.retroMode = mode;
@@ -627,11 +639,11 @@ export class GameView {
     rig.hemi *= fill;
     rig.env *= fill;
     this.hemi.intensity += (rig.hemi - this.hemi.intensity) * k;
-    this.hemi.color.lerp(new THREE.Color(rig.sky), k);
-    this.hemi.groundColor.lerp(new THREE.Color(rig.ground), k);
+    this.hemi.color.lerp(colorOf(rig.sky), k);
+    this.hemi.groundColor.lerp(colorOf(rig.ground), k);
     this.scene.environmentIntensity += (rig.env - this.scene.environmentIntensity) * k;
     this.sun.intensity += (rig.sun - this.sun.intensity) * k;
-    this.sun.color.lerp(new THREE.Color(rig.color), k);
+    this.sun.color.lerp(colorOf(rig.color), k);
 
     // --- Pip: a sprite in 8-bit, the rig from Early 3D on
     const p = g.player;
@@ -793,6 +805,14 @@ export class GameView {
       if (f.fieldMin[i].y > -900) fieldMax = Math.max(fieldMax, f.fieldEra[i]);
     }
     f.maxEra = split ? 5 : Math.max(f.eraFrom, f.eraTo, bub ? bub.era : 0, fieldMax);
+    // which generations can be on screen at all this frame (a bitmask)
+    let shown = split ? 63 : (1 << f.eraFrom) | (1 << f.eraTo) | (bub ? 1 << bub.era : 0);
+    for (let i = 0; i < 4; i++) if (f.fieldMin[i].y > -900) shown |= 1 << f.fieldEra[i];
+    for (let i = 0; i < MAX_RIFTS; i++) if (f.rifts[i].w > 0.01) shown |= 1 << f.riftEra[i];
+    // The sun's shadow map is only read from Stylized up (8-bit, 16-bit and Early 3D light themselves, flat):
+    // skip drawing it while none of those can be on screen.
+    this.gl.shadowMap.autoUpdate = false;
+    this.gl.shadowMap.needsUpdate = (shown & 0b111000) !== 0;
     // The valley terrain exists from Early 3D up and its Blender dressing from Modern HD up: skip them
     // entirely (not just per pixel) while no such generation can be on screen.
     const valley = (!split || !!this.options.immersive) && !this.title;
@@ -840,13 +860,15 @@ export class GameView {
     // and light shafts aim at the sky's actual sun.
     this.level.skyMesh.visible = this.level.skyMesh.visible && !this.hdActive;
     f.sunDir.copy(this.hdActive ? this.hdSky!.sunDir : SKY_SUN);
-    this.retro.update(g.world);
+    // The tile layers redraw (and re-upload a large texture) when the level's solids change. Only while their
+    // generation can be on screen in 2D: a puzzle solved in Beyond doesn't pay for a picture nobody sees.
+    if (retro2D && shown & 1) this.retro.update(g.world);
     f.retro = this.retro;
     f.retro2D = retro2D;
     f.letterbox = smoothstep(0, 1, this.retroCamW);
     f.retroK = this.retroK;
     f.letterboxRows = this.retroRows;
-    this.retro16.update(g.world);
+    if (retro2D && shown & 2) this.retro16.update(g.world);
     f.retro16 = this.retro16;
     f.camXY.set(this.camera.position.x, this.camera.position.y);
     f.laneZ = g.shift.laneZ;

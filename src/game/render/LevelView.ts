@@ -170,8 +170,10 @@ export class LevelView {
     const hd = assetSlot(aq ? 'aqueduct' : 'gateway', aq ?? `block_${s.id}`, new THREE.Group());
     hd.position.set(anchor.x, min.y, anchor.z);
     this.group.add(old, hd);
-    this.eras.add(old, aq ? E(0, 1) : E(0, 3), false, anchor);
-    this.eras.add(hd, aq ? E(2, 5) : E(4, 5), false, anchor);
+    // until the model has loaded (or if its node is missing) the box stands in, so the block is never invisible
+    const hdEras = aq ? E(2, 5) : E(4, 5);
+    this.eras.add(old, aq ? E(0, 1) : E(0, 3), false, anchor, { mask: hdEras, when: () => !hd.userData.assetSlot.filled });
+    this.eras.add(hd, hdEras, false, anchor);
   }
 
   private buildSolidInner(s: SolidDef) {

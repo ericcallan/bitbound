@@ -59,6 +59,11 @@ wistful. There are no villains.
 - **Title screen:** a composed live scene with a generation timeline. 8-bit and 16-bit are their own pixel scenes
   (`src/ui/title/pixelTitle.ts`: 240 rows in the 8-bit palette only, and 224 rows from the 16-bit tiles and
   pre-rendered sprites), reached through a mosaic transition; the 3D set stops rendering behind them.
+- **Generation flag:** every switch says which generation it is, as "Generation 3 (1996): Early 3D" (8-bit 1985,
+  16-bit 1991, Early 3D 1996, Stylized 2002, Modern HD 2013, Beyond 2026), in that generation's own banner style;
+  the title's timeline shows the same line.
+- **Older generations inside a newer world** (the Regress bubble, the sleep field): the ground and cliffs stay,
+  drawn in that generation's look, so nothing turns see-through.
 - **Sound:** valley ambience, the river, footsteps by surface, and the hidden chamber's reverb.
 
 See **docs/GRAPHICS_REPORT.md** for measurements and shortcomings, and **docs/ASSETS.md** for sources, tools and
@@ -93,6 +98,15 @@ output `dist`).
   [Facebook Sharing Debugger](https://developers.facebook.com/tools/debug/), the
   [LinkedIn Post Inspector](https://www.linkedin.com/post-inspector/), a Slack message and Messages.
 
+## Performance
+
+The page opens on a loader (plain HTML, on screen at the first paint) while the world downloads and then warms
+up: every shader for every generation is compiled and every texture and model uploaded behind it
+(`src/game/render/warmup.ts`), so the title appears finished and nothing compiles in play. Measured: the first
+switch into each generation, shifts, the bubble and puzzle events cause no frame over 33 ms. The valley's plant
+scatter is worked out once in small slices; the tile images, the shadow map and auto quality only do work when it
+shows. Numbers, method and what didn't work: **docs/PERF.md** (`node scripts/hitch-bench.mjs` to re-measure).
+
 ## Development tools (dev builds only)
 
 - **Scenarios:** `?scenario=aqueduct` (also `start`, `ruins`, `ruins3d`, `chamber`, `stair`, `plateau`,
@@ -101,7 +115,11 @@ output `dist`).
 - **Debug overlay:** the backquote key. Generation, position, velocity, ground, shift eligibility and the exact
   reason it's blocked, camera obstruction, fps, draw calls; layers for collision boxes, camera rays, the route
   graph and more.
-- **GPU timing:** `await window.__perf(3)` in the console.
+- **GPU timing:** `await window.__perf(3)` in the console. **Hitches:** `node scripts/hitch-bench.mjs` (dev server
+  running) records worst frames, long tasks and shader compiles per step of a scripted route.
+- **Holes:** `await window.__holes(0)` compares the ground's depth with and without an 8-bit bubble around Pip
+  (`e2e/holes.spec.ts` sweeps the whole route with it). In dev, any shader compiled after the warm-up is logged
+  as `[warm] late compile`.
 
 ## Architecture
 
@@ -124,7 +142,9 @@ src/test/     Vitest suites + a bot that plays the whole game through the real i
 
 ## Verification
 
-`npm test` runs 114 tests: a full bot playthrough, a resume matrix, fuzz, Halo Path rules, valley height-field
+`npm test` runs 123 tests: a full bot playthrough, the era discard rules (no holes in the ground), the
+generation flag, a resume matrix, fuzz, Halo Path rules, valley height-field
 collision across the whole level (no puzzle can be walked round), readability, the 8-bit palette and tile limits,
 the 3D camera across the whole level, shift feedback, and traversal (every jump checked against Pip's measured
-jump; see **docs/TRAVERSAL.md**). `npm run test:e2e` runs the browser tests. See **QA.md** and **docs/AUDIT.md**.
+jump; see **docs/TRAVERSAL.md**). `npm run test:e2e` runs the browser tests, including a sweep of the whole route for see-through holes with 8-bit
+and 16-bit bubbles in 2D and 3D, the loader, and the generation flag. See **QA.md** and **docs/AUDIT.md**.

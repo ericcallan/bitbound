@@ -12,6 +12,27 @@ interface Placement {
   dy?: number;
 }
 
+/** One instanced mesh of the scatter: a node of an asset, the placements in one cell, and how it's drawn. */
+interface PlanMesh {
+  asset: AssetName;
+  node: string;
+  list: Placement[];
+  /** Ground height plus dy for each placement, worked out once. */
+  ys: Float32Array;
+  cell: number;
+  thin: boolean;
+  band: 0 | 1 | 2 | 3;
+  shadow: boolean;
+  beyond: boolean;
+  /** Instance matrices per mesh part, once worked out (shared by every view that builds the dressing). */
+  matrices?: Float32Array[];
+}
+interface Plan {
+  meshes: PlanMesh[];
+  cells: number;
+  counts: Record<string, number>;
+}
+
 /**
  * Scatters Blender vegetation and rocks across the valley from the same height field and material
  * weights the terrain uses: the forest edge behind the path, grass and flowers in the meadows, ferns in
@@ -55,11 +76,11 @@ export class ValleyDressing {
   /** Ground-cover density multiplier (quality tiers). */
   density = 1;
   private cells: { center: THREE.Vector3; radius: number; meshes: CellMesh[] }[] = [];
-  private cellIndex = new Map<string, number>();
 
-  constructor() {
-    const need: AssetName[] = ['tree', 'vegetation', 'rocks'];
-    Promise.all(need.map(loadAsset)).then(() => this.build());
+  /** `active = false` (the title view, which never shows it): nothing is built. */
+  constructor(active = true) {
+    if (!active) return;
+    void prepareScatter().then(() => this.build());
   }
 
   /**
@@ -82,79 +103,28 @@ export class ValleyDressing {
     }
   }
 
-  private slope(x: number, z: number) {
-    const e = 0.5;
-    return Math.hypot((valleyHeight(x + e, z) - valleyHeight(x - e, z)) / (2 * e), (valleyHeight(x, z + e) - valleyHeight(x, z - e)) / (2 * e));
-  }
-
-  private inGorge(x: number) {
-    return GORGES.some(([a, b]) => x > a - 2.5 && x < b + 2.5);
-  }
-
-  /** Interiors (the hidden chamber) stay clear of plants and trees. */
-  private indoors(x: number, z: number, margin = 0.6) {
-    return PADS.some(([x0, x1, z0, z1]) => x > x0 - margin && x < x1 + margin && z > z0 - margin && z < z1 + margin);
-  }
-
-  private cellFor(p: Placement, far: boolean) {
-    const key = `${Math.floor(p.x / CELL)}:${far ? 1 : 0}`;
-    let i = this.cellIndex.get(key);
-    if (i === undefined) {
-      i = this.cells.length;
-      this.cells.push({ center: new THREE.Vector3(), radius: 0, meshes: [] });
-      this.cellIndex.set(key, i);
-    }
-    return { key, i };
-  }
-
-  private instance(asset: AssetName, node: string, list: Placement[], cell: number, thin: boolean, band: 0 | 1 | 2 | 3, shadow: boolean, beyond = false) {
-    const src = getAsset(asset)?.scene.getObjectByName(node);
-    if (!src || list.length === 0) return;
-    getAsset(asset)!.scene.updateMatrixWorld(true);
-    const parts: THREE.Mesh[] = [];
-    src.traverse((o) => (o as THREE.Mesh).isMesh && parts.push(o as THREE.Mesh));
-    const m4 = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const up = new THREE.Vector3(0, 1, 0);
-    for (const part of parts) {
-      // The part's full transform in the asset (nodes sit at the origin; quantization keeps the real
-      // scale and offset on the node, so it must be kept, not cancelled).
-      const local = part.matrixWorld.clone();
-      const inst = new THREE.InstancedMesh(part.geometry, beyond ? beyondOnly(part.material as THREE.Material) : part.material, list.length);
-      list.forEach((p, i) => {
-        q.setFromAxisAngle(up, p.rot);
-        m4.compose(new THREE.Vector3(p.x, valleyHeight(p.x, p.z) + (p.dy ?? 0), p.z), q, new THREE.Vector3(p.scale, p.scale, p.scale));
-        m4.multiply(local);
-        inst.setMatrixAt(i, m4);
+  /** Instanced meshes from the shared plan: only copying, all the arithmetic was done once. */
+  private build() {
+    if (this.ready || !plan) return;
+    this.cells = Array.from({ length: plan.cells }, () => ({ center: new THREE.Vector3(), radius: 0, meshes: [] as CellMesh[] }));
+    for (const pm of plan.meshes) {
+      const parts = meshParts(pm);
+      const mats = matricesFor(pm);
+      parts.forEach((part, k) => {
+        const inst = new THREE.InstancedMesh(part.geometry, pm.beyond ? beyondOnly(part.material as THREE.Material) : part.material, pm.list.length);
+        inst.instanceMatrix.array.set(mats[k]);
+        inst.instanceMatrix.needsUpdate = true;
+        inst.castShadow = pm.shadow;
+        inst.receiveShadow = true;
+        if (pm.band === 3) inst.layers.set(SHADOW_PROXY_LAYER);
+        inst.computeBoundingSphere();
+        this.group.add(inst);
+        this.cells[pm.cell].meshes.push({ mesh: inst, full: pm.list.length, thin: pm.thin, band: pm.band, shadow: pm.shadow });
       });
-      inst.castShadow = shadow;
-      inst.receiveShadow = true;
-      if (band === 3) inst.layers.set(SHADOW_PROXY_LAYER);
-      inst.computeBoundingSphere();
-      this.group.add(inst);
-      this.cells[cell].meshes.push({ mesh: inst, full: list.length, thin, band, shadow });
     }
-  }
-
-  private add(asset: AssetName, node: string, list: Placement[], o: AddOptions = {}) {
-    if (list.length === 0) return;
-    const byCell = new Map<number, Placement[]>();
-    for (const p of list) {
-      const { i } = this.cellFor(p, !!o.farOnly);
-      if (!byCell.has(i)) byCell.set(i, []);
-      byCell.get(i)!.push(p);
-    }
-    const shadow = o.shadow ?? asset !== 'vegetation';
-    for (const [i, ps] of byCell) {
-      if (o.farOnly) this.instance(asset, o.lod ?? node, ps, i, false, 0, shadow);
-      else if (o.lod) {
-        // Near: the detailed tree is drawn, but its shadow comes from the LOD (a fraction of the triangles).
-        this.instance(asset, node, ps, i, false, 1, false);
-        if (shadow) this.instance(asset, o.lod, ps, i, false, 3, true);
-        this.instance(asset, o.lod, ps, i, false, 2, shadow);
-      } else this.instance(asset, node, ps, i, !!o.thin, 0, shadow, !!o.beyond);
-    }
-    this.counts[node] = (this.counts[node] ?? 0) + list.length;
+    this.counts = plan.counts;
+    this.finishCells();
+    this.ready = true;
   }
 
   /** Each cell's bounds from its meshes' instance bounds. */
@@ -167,101 +137,215 @@ export class ValleyDressing {
       c.radius = Math.min(CELL, box.getSize(new THREE.Vector3()).length() / 2);
     }
   }
+}
 
-  /**
-   * Beyond's ground detail near the path: pebbles and leaf litter on and beside it, twigs under the trees,
-   * clover in the grass, and thistles behind the path only (nothing tall in front of it).
-   */
-  private scatterBeyondDetail(x0: number, x1: number) {
-    const r = rng(77);
-    const lists: Record<string, Placement[]> = { pebbles: [], twigs: [], leaf_litter: [], clover: [], thistle: [] };
-    for (let i = 0, n = Math.round((x1 - x0) * 210); i < n; i++) {
-      const x = x0 + r() * (x1 - x0);
-      const z = LANE_BACK - 10 + r() * (LANE_FRONT + 6 - (LANE_BACK - 10));
-      if (valleyHeight(x, z) < WATER_Y + 0.1 || this.inGorge(x) || this.indoors(x, z)) continue;
-      const s = this.slope(x, z);
-      if (s > 0.8) continue;
-      const [rock, path, forest] = valleySplat(x, z, s);
-      const k = r();
-      const rot = r() * 6.28;
-      if (path > 0.3 && k < 0.07) lists.pebbles.push({ x, z, scale: 0.6 + r() * 0.6, rot, dy: -0.01 });
-      else if (path > 0.3 && k < 0.15) lists.leaf_litter.push({ x, z, scale: 0.8 + r() * 0.6, rot });
-      else if (forest > 0.4 && k < 0.2) lists.leaf_litter.push({ x, z, scale: 1 + r() * 0.8, rot });
-      else if (forest > 0.4 && k < 0.3) lists.twigs.push({ x, z, scale: 0.8 + r() * 0.6, rot });
-      else if (rock < 0.2 && path < 0.3 && forest < 0.4 && k < 0.16) lists.clover.push({ x, z, scale: 0.8 + r() * 0.8, rot });
-      else if (z < LANE_BACK - 0.5 && forest < 0.4 && k > 0.985) lists.thistle.push({ x, z, scale: 0.8 + r() * 0.5, rot });
+// ------------------------------------------------------------------ the plan, worked out once per page
+
+function slope(x: number, z: number) {
+  const e = 0.5;
+  return Math.hypot((valleyHeight(x + e, z) - valleyHeight(x - e, z)) / (2 * e), (valleyHeight(x, z + e) - valleyHeight(x, z - e)) / (2 * e));
+}
+const inGorge = (x: number) => GORGES.some(([a, b]) => x > a - 2.5 && x < b + 2.5);
+/** Interiors (the hidden chamber) stay clear of plants and trees. */
+const indoors = (x: number, z: number, margin = 0.6) => PADS.some(([x0, x1, z0, z1]) => x > x0 - margin && x < x1 + margin && z > z0 - margin && z < z1 + margin);
+
+/** Placements for the whole valley. A generator: it yields every few hundred samples so the work can be sliced. */
+function* scatterPlan(): Generator<void, Plan> {
+  const meshes: PlanMesh[] = [];
+  const cellIndex = new Map<string, number>();
+  const counts: Record<string, number> = {};
+  const cellFor = (p: Placement, far: boolean) => {
+    const key = `${Math.floor(p.x / CELL)}:${far ? 1 : 0}`;
+    let i = cellIndex.get(key);
+    if (i === undefined) cellIndex.set(key, (i = cellIndex.size));
+    return i;
+  };
+  const mesh = (asset: AssetName, node: string, list: Placement[], cell: number, thin: boolean, band: 0 | 1 | 2 | 3, shadow: boolean, beyond = false) => {
+    const ys = new Float32Array(list.length);
+    list.forEach((p, i) => (ys[i] = valleyHeight(p.x, p.z) + (p.dy ?? 0)));
+    meshes.push({ asset, node, list, ys, cell, thin, band, shadow, beyond });
+  };
+  const add = (asset: AssetName, node: string, list: Placement[], o: AddOptions = {}) => {
+    if (list.length === 0) return;
+    const byCell = new Map<number, Placement[]>();
+    for (const p of list) {
+      const i = cellFor(p, !!o.farOnly);
+      if (!byCell.has(i)) byCell.set(i, []);
+      byCell.get(i)!.push(p);
     }
-    for (const [node, list] of Object.entries(lists)) this.add('vegetation', node, list, { thin: true, beyond: true, shadow: false });
+    const shadow = o.shadow ?? asset !== 'vegetation';
+    for (const [i, ps] of byCell) {
+      if (o.farOnly) mesh(asset, o.lod ?? node, ps, i, false, 0, shadow);
+      else if (o.lod) {
+        // Near: the detailed tree is drawn, but its shadow comes from the LOD (a fraction of the triangles).
+        mesh(asset, node, ps, i, false, 1, false);
+        if (shadow) mesh(asset, o.lod, ps, i, false, 3, true);
+        mesh(asset, o.lod, ps, i, false, 2, shadow);
+      } else mesh(asset, node, ps, i, !!o.thin, 0, shadow, !!o.beyond);
+    }
+    counts[node] = (counts[node] ?? 0) + list.length;
+  };
+
+  const r = rng(2026);
+  const x0 = -26;
+  const x1 = 262;
+  // --- forest edge: behind the path, on the rising meadow below the cliffs
+  const trees: Placement[] = [];
+  const greats: Placement[] = [];
+  const hillTrees: Placement[] = [];
+  for (let x = x0; x < x1; x += 3.2) {
+    for (let row = 0; row < 3; row++) {
+      const tx = x + (r() - 0.5) * 2.6;
+      const tz = LANE_BACK - 6.5 - row * 3.4 - r() * 2.2;
+      if (inGorge(tx) || indoors(tx, tz, 2.5) || slope(tx, tz) > 0.7 || r() < 0.25) continue;
+      if (row === 1 && r() < 0.12) greats.push({ x: tx, z: tz - 1.5, scale: 0.75 + r() * 0.2, rot: r() * 6.28, dy: -0.05 });
+      else trees.push({ x: tx, z: tz, scale: 0.7 + r() * 0.5, rot: r() * 6.28, dy: -0.05 });
+    }
+    yield;
   }
-
-  private build() {
-    if (this.ready) return;
-    const r = rng(2026);
-    const x0 = -26;
-    const x1 = 262;
-    // --- forest edge: behind the path, on the rising meadow below the cliffs
-    const trees: Placement[] = [];
-    const greats: Placement[] = [];
-    const hillTrees: Placement[] = [];
-    for (let x = x0; x < x1; x += 3.2) {
-      for (let row = 0; row < 3; row++) {
-        const tx = x + (r() - 0.5) * 2.6;
-        const tz = LANE_BACK - 6.5 - row * 3.4 - r() * 2.2;
-        if (this.inGorge(tx) || this.indoors(tx, tz, 2.5) || this.slope(tx, tz) > 0.7 || r() < 0.25) continue;
-        if (row === 1 && r() < 0.12) greats.push({ x: tx, z: tz - 1.5, scale: 0.75 + r() * 0.2, rot: r() * 6.28, dy: -0.05 });
-        else trees.push({ x: tx, z: tz, scale: 0.7 + r() * 0.5, rot: r() * 6.28, dy: -0.05 });
-      }
-    }
-    // a scattering on the hillsides beyond the cliffs, for depth
-    for (let i = 0; i < Math.round((x1 - x0) * 0.9); i++) {
-      const tx = x0 - 20 + r() * (x1 - x0 + 40);
-      const tz = LANE_BACK - 26 - r() * 40;
-      if (this.slope(tx, tz) < 0.6) hillTrees.push({ x: tx, z: tz, scale: 0.8 + r() * 0.7, rot: r() * 6.28, dy: -0.05 });
-    }
-    this.add('tree', 'meadow_tree', trees, { lod: 'meadow_tree_lod1' });
-    this.add('tree', 'meadow_tree', hillTrees, { lod: 'meadow_tree_lod1', farOnly: true, shadow: false });
-    this.add('tree', 'great_tree', greats);
-
-    // --- ground cover
-    const grass: Placement[] = [];
-    const tall: Placement[] = [];
-    const flowers: [Placement[], Placement[]] = [[], []];
-    const ferns: Placement[] = [];
-    const rocks: [Placement[], Placement[], Placement[]] = [[], [], []];
-    for (let i = 0, n = Math.round((x1 - x0) * 340); i < n; i++) {
-      const x = x0 + r() * (x1 - x0);
-      const z = LANE_BACK - 22 + r() * (LANE_FRONT + 16 - (LANE_BACK - 22));
-      const h = valleyHeight(x, z);
-      if (h < WATER_Y + 0.15 || this.inGorge(x) || this.indoors(x, z)) continue;
-      const s = this.slope(x, z);
-      if (s > 0.9) continue;
-      const [rock, path, forest] = valleySplat(x, z, s);
-      const grassW = 1 - rock - path - forest;
-      const onLane = z > LANE_BACK + 0.4 && z < LANE_FRONT - 0.4;
-      // Between the path and the 2D camera nothing may grow tall enough to hide Pip or an enemy.
-      const foreground = z > LANE_FRONT - 0.4 && z < LANE_FRONT + 5;
-      const k = r();
-      if (onLane && k < 0.85) continue; // keep the walkway readable
-      if (forest > 0.5) {
-        if (k < 0.08) ferns.push({ x, z, scale: 0.8 + r() * 0.7, rot: r() * 6.28 });
-        else if (k < 0.2) grass.push({ x, z, scale: 0.7 + r() * 0.4, rot: r() * 6.28 });
-      } else if (grassW > 0.45) {
-        if (k < 0.55) grass.push({ x, z, scale: foreground ? 0.6 + r() * 0.3 : 0.75 + r() * 0.6, rot: r() * 6.28 });
-        else if (k < 0.62 && z < LANE_BACK) tall.push({ x, z, scale: 0.8 + r() * 0.5, rot: r() * 6.28 });
-        else if (k < 0.64) flowers[r() < 0.6 ? 0 : 1].push({ x, z, scale: 0.45 + r() * 0.25, rot: r() * 6.28 });
-      }
-      if (k > 0.9985 && !onLane && !foreground) rocks[Math.floor(r() * 3)].push({ x, z, scale: 0.5 + r() * 0.9, rot: r() * 6.28, dy: -0.12 });
-    }
-    this.add('vegetation', 'grass_clump', grass, { thin: true });
-    this.add('vegetation', 'tall_grass', tall, { thin: true });
-    this.add('vegetation', 'flower_white', flowers[0], { thin: true });
-    this.add('vegetation', 'flower_violet', flowers[1], { thin: true });
-    this.add('vegetation', 'fern', ferns, { thin: true });
-    this.scatterBeyondDetail(x0, x1);
-    this.add('rocks', 'rock_a', rocks[0]);
-    this.add('rocks', 'rock_b', rocks[1]);
-    this.add('rocks', 'rock_c', rocks[2]);
-    this.finishCells();
-    this.ready = true;
+  // a scattering on the hillsides beyond the cliffs, for depth
+  for (let i = 0; i < Math.round((x1 - x0) * 0.9); i++) {
+    const tx = x0 - 20 + r() * (x1 - x0 + 40);
+    const tz = LANE_BACK - 26 - r() * 40;
+    if (slope(tx, tz) < 0.6) hillTrees.push({ x: tx, z: tz, scale: 0.8 + r() * 0.7, rot: r() * 6.28, dy: -0.05 });
   }
+  add('tree', 'meadow_tree', trees, { lod: 'meadow_tree_lod1' });
+  add('tree', 'meadow_tree', hillTrees, { lod: 'meadow_tree_lod1', farOnly: true, shadow: false });
+  add('tree', 'great_tree', greats);
+  yield;
+
+  // --- ground cover
+  const grass: Placement[] = [];
+  const tall: Placement[] = [];
+  const flowers: [Placement[], Placement[]] = [[], []];
+  const ferns: Placement[] = [];
+  const rocks: [Placement[], Placement[], Placement[]] = [[], [], []];
+  for (let i = 0, n = Math.round((x1 - x0) * 340); i < n; i++) {
+    if (i % 256 === 0) yield;
+    const x = x0 + r() * (x1 - x0);
+    const z = LANE_BACK - 22 + r() * (LANE_FRONT + 16 - (LANE_BACK - 22));
+    const h = valleyHeight(x, z);
+    if (h < WATER_Y + 0.15 || inGorge(x) || indoors(x, z)) continue;
+    const s = slope(x, z);
+    if (s > 0.9) continue;
+    const [rock, path, forest] = valleySplat(x, z, s);
+    const grassW = 1 - rock - path - forest;
+    const onLane = z > LANE_BACK + 0.4 && z < LANE_FRONT - 0.4;
+    // Between the path and the 2D camera nothing may grow tall enough to hide Pip or an enemy.
+    const foreground = z > LANE_FRONT - 0.4 && z < LANE_FRONT + 5;
+    const k = r();
+    if (onLane && k < 0.85) continue; // keep the walkway readable
+    if (forest > 0.5) {
+      if (k < 0.08) ferns.push({ x, z, scale: 0.8 + r() * 0.7, rot: r() * 6.28 });
+      else if (k < 0.2) grass.push({ x, z, scale: 0.7 + r() * 0.4, rot: r() * 6.28 });
+    } else if (grassW > 0.45) {
+      if (k < 0.55) grass.push({ x, z, scale: foreground ? 0.6 + r() * 0.3 : 0.75 + r() * 0.6, rot: r() * 6.28 });
+      else if (k < 0.62 && z < LANE_BACK) tall.push({ x, z, scale: 0.8 + r() * 0.5, rot: r() * 6.28 });
+      else if (k < 0.64) flowers[r() < 0.6 ? 0 : 1].push({ x, z, scale: 0.45 + r() * 0.25, rot: r() * 6.28 });
+    }
+    if (k > 0.9985 && !onLane && !foreground) rocks[Math.floor(r() * 3)].push({ x, z, scale: 0.5 + r() * 0.9, rot: r() * 6.28, dy: -0.12 });
+  }
+  add('vegetation', 'grass_clump', grass, { thin: true });
+  add('vegetation', 'tall_grass', tall, { thin: true });
+  add('vegetation', 'flower_white', flowers[0], { thin: true });
+  add('vegetation', 'flower_violet', flowers[1], { thin: true });
+  add('vegetation', 'fern', ferns, { thin: true });
+  yield;
+
+  // --- Beyond's ground detail near the path: pebbles and leaf litter on and beside it, twigs under the trees,
+  // clover in the grass, and thistles behind the path only (nothing tall in front of it).
+  const d = rng(77);
+  const lists: Record<string, Placement[]> = { pebbles: [], twigs: [], leaf_litter: [], clover: [], thistle: [] };
+  for (let i = 0, n = Math.round((x1 - x0) * 210); i < n; i++) {
+    if (i % 256 === 0) yield;
+    const x = x0 + d() * (x1 - x0);
+    const z = LANE_BACK - 10 + d() * (LANE_FRONT + 6 - (LANE_BACK - 10));
+    if (valleyHeight(x, z) < WATER_Y + 0.1 || inGorge(x) || indoors(x, z)) continue;
+    const s = slope(x, z);
+    if (s > 0.8) continue;
+    const [rock, path, forest] = valleySplat(x, z, s);
+    const k = d();
+    const rot = d() * 6.28;
+    if (path > 0.3 && k < 0.07) lists.pebbles.push({ x, z, scale: 0.6 + d() * 0.6, rot, dy: -0.01 });
+    else if (path > 0.3 && k < 0.15) lists.leaf_litter.push({ x, z, scale: 0.8 + d() * 0.6, rot });
+    else if (forest > 0.4 && k < 0.2) lists.leaf_litter.push({ x, z, scale: 1 + d() * 0.8, rot });
+    else if (forest > 0.4 && k < 0.3) lists.twigs.push({ x, z, scale: 0.8 + d() * 0.6, rot });
+    else if (rock < 0.2 && path < 0.3 && forest < 0.4 && k < 0.16) lists.clover.push({ x, z, scale: 0.8 + d() * 0.8, rot });
+    else if (z < LANE_BACK - 0.5 && forest < 0.4 && k > 0.985) lists.thistle.push({ x, z, scale: 0.8 + d() * 0.5, rot });
+  }
+  for (const [node, list] of Object.entries(lists)) add('vegetation', node, list, { thin: true, beyond: true, shadow: false });
+  add('rocks', 'rock_a', rocks[0]);
+  add('rocks', 'rock_b', rocks[1]);
+  add('rocks', 'rock_c', rocks[2]);
+  return { meshes, cells: cellIndex.size, counts };
+}
+
+let plan: Plan | null = null;
+let preparing: Promise<void> | null = null;
+
+/** Run a generator in slices of a few milliseconds, yielding to the browser between them. */
+function sliced<T>(gen: Generator<void, T>, budgetMs = 5): Promise<T> {
+  return new Promise((resolve) => {
+    const step = () => {
+      const end = performance.now() + budgetMs;
+      for (;;) {
+        const r = gen.next();
+        if (r.done) return resolve(r.value);
+        if (performance.now() > end) return void setTimeout(step, 0);
+      }
+    };
+    step();
+  });
+}
+
+/**
+ * The scatter, worked out once per page in small slices (never a long frame): placements, ground heights and,
+ * once the assets are in, every instance matrix. Views then only copy. The loader waits for it.
+ */
+export function prepareScatter(): Promise<void> {
+  preparing ??= (async () => {
+    plan = await sliced(scatterPlan());
+    await Promise.all((['tree', 'vegetation', 'rocks'] as AssetName[]).map(loadAsset));
+    const p = plan;
+    await sliced(
+      (function* () {
+        for (const pm of p.meshes) {
+          matricesFor(pm);
+          yield;
+        }
+      })(),
+    );
+  })();
+  return preparing;
+}
+
+function meshParts(pm: PlanMesh) {
+  const src = getAsset(pm.asset)?.scene.getObjectByName(pm.node);
+  const parts: THREE.Mesh[] = [];
+  src?.traverse((o) => (o as THREE.Mesh).isMesh && parts.push(o as THREE.Mesh));
+  return parts;
+}
+
+const m4 = new THREE.Matrix4();
+const q = new THREE.Quaternion();
+const up = new THREE.Vector3(0, 1, 0);
+const pos = new THREE.Vector3();
+const scl = new THREE.Vector3();
+function matricesFor(pm: PlanMesh) {
+  if (pm.matrices) return pm.matrices;
+  getAsset(pm.asset)!.scene.updateMatrixWorld(true);
+  pm.matrices = meshParts(pm).map((part) => {
+    // The part's full transform in the asset (nodes sit at the origin; quantization keeps the real
+    // scale and offset on the node, so it must be kept, not cancelled).
+    const local = part.matrixWorld;
+    const out = new Float32Array(pm.list.length * 16);
+    pm.list.forEach((p, i) => {
+      q.setFromAxisAngle(up, p.rot);
+      m4.compose(pos.set(p.x, pm.ys[i], p.z), q, scl.set(p.scale, p.scale, p.scale));
+      m4.multiply(local);
+      m4.toArray(out, i * 16);
+    });
+    return out;
+  });
+  return pm.matrices;
 }

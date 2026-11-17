@@ -2889,3 +2889,46 @@ kbd {
 .timeline-demo .gen-timeline {
   width: max-content;
 }
+
+/* "Generation 3 (1996): Early 3D": the generation and year small, the name large, on one line */
+.banner__title {
+  white-space: nowrap;
+}
+.banner__gen {
+  font-size: 0.46em;
+  letter-spacing: 0.06em;
+  opacity: 0.9;
+  vertical-align: 0.32em;
+  margin-right: 0.15em;
+}
+.banner[data-era='0'] .banner__gen {
+  text-shadow: 2px 2px 0 #000;
+}
+.banner[data-era='3'] .banner__gen {
+  -webkit-text-stroke: 1.5px #120c2a;
+  text-shadow: 3px 3px 0 #120c2a;
+}
+/* the shown generation, spelled out under the timeline: "Generation 3 (1996): Early 3D" */
+.gen-timeline__flag {
+  position: absolute;
+  right: 4px;
+  top: calc(100% + 2px);
+  font: 600 13px var(--font-m);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 4px rgba(2, 8, 20, 0.9);
+}
+.timeline-demo .gen-timeline__flag {
+  right: auto;
+  left: 4px;
+}
+
+/* behind the loader (index.html #boot), the title's entrance animations wait until it lifts */
+body.is-loading .menu,
+body.is-loading .menu * {
+  animation-play-state: paused !important;
+}
+.world-canvas--paused {
+  visibility: hidden;
+}

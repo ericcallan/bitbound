@@ -45,9 +45,22 @@ function Banner({ hud }: { hud: HudState }) {
   if (!hud.banner) return null;
   return (
     <div className="banner" data-era={hud.banner.era} key={hud.banner.id}>
-      <div className="banner__title">{hud.banner.title}</div>
+      <div className="banner__title">
+        <BannerTitle text={hud.banner.title} />
+      </div>
       <div className="banner__sub">{hud.banner.subtitle}</div>
     </div>
+  );
+}
+
+/** "Generation 3 (1996): Early 3D" reads as one line, with the generation's name set large. */
+function BannerTitle({ text }: { text: string }) {
+  const m = /^(Generation \d \(\d{4}\):) (.+)$/.exec(text);
+  if (!m) return <>{text}</>;
+  return (
+    <>
+      <span className="banner__gen">{m[1]}</span> {m[2]}
+    </>
   );
 }
 

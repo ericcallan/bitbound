@@ -80,8 +80,16 @@ export function terrainMaterial(minEra = 2) {
         tXZ = vTerrW.xz;
         bool early3D = tEra > 1.5 && tEra < 2.5;
         bool stylized = tEra > 2.5 && tEra < 3.5;
+        // 8-bit and 16-bit (inside a bubble or a retro band in 3D): no photographs, the tile set's flat colours
+        bool retro = tEra < 1.5;
         // Early 3D: textures sampled at a very low resolution (a forced coarse mip), like the first 3D consoles.
-        if (early3D) { gXZx *= 22.0; gXZy *= 22.0; gZYx *= 22.0; gZYy *= 22.0; gXYx *= 22.0; gXYy *= 22.0; }
+        // 8-bit and 16-bit (inside a bubble or field, or a retro band, in 3D): coarser still, so the ground keeps
+        // the scans' own colours (a cliff matches across a generation's edge) as broad flat regions, which the
+        // post pass then reduces to that generation's palette.
+        if (early3D || retro) {
+          float k = retro ? 80.0 : 22.0;
+          gXZx *= k; gXZy *= k; gZYx *= k; gZYy *= k; gXYx *= k; gXYy *= k;
+        }
         // Beyond: relief (steep parallax) mapping on the ground near the camera, from the scanned height of
         // the dominant top layer, so stones, clods and leaf litter stand out of the surface.
         if (tEra > 4.5 && camDist < 16.0 && wn.y > 0.7 && wR < 0.5) {
@@ -121,6 +129,8 @@ export function terrainMaterial(minEra = 2) {
         A.rgb *= mix(vec3(1.0), vec3(0.85, 0.95, 0.72), W.w);
         terrRough = clamp(A.a, 0.35, 1.0);
         if (early3D) A.rgb = floor(A.rgb * 9.0 + 0.5) / 9.0;
+        // retro: one tone per ground kind where a layer dominates (the tiles' crisp edges, not a blend)
+        if (retro) A.rgb = W.y > 0.5 ? aR.rgb : W.z > 0.5 ? aP.rgb : W.w > 0.5 ? aF.rgb * vec3(0.85, 0.95, 0.72) : A.rgb;
         if (stylized) {
           // soft painted bands of light and dark across the ground, and a crisp path edge
           float band = floor(noiseT(vTerrW.xz * 0.012).y * 4.0) / 4.0;
@@ -157,7 +167,7 @@ export function terrainMaterial(minEra = 2) {
         }
         diffuseColor.rgb = A.rgb;
         vec3 pTop = vec3(0.0);
-        if (!stylized) {
+        if (!stylized && !retro) {
           if (W.x > EPS) pTop += topN(t_grassN, 3.5) * W.x;
           if (W.z > EPS) pTop += topN(t_pathN, 3.0) * W.z;
           if (W.w > EPS) pTop += topN(t_forestN, 4.0) * W.w;
@@ -169,7 +179,7 @@ export function terrainMaterial(minEra = 2) {
         }
         // whiteout-style perturbation of the geometric world normal
         vec3 pert = vec3(pTop.x, 0.0, pTop.y) * 0.9;
-        if (W.y > EPS && !stylized) {
+        if (W.y > EPS && !stylized && !retro) {
           vec3 nRx = textureGrad(t_rockN, vTerrW.zy / 6.0, gZYx / 6.0, gZYy / 6.0).xyz * 2.0 - 1.0;
           vec3 nRy = textureGrad(t_rockN, vTerrW.xz / 6.0, gXZx / 6.0, gXZy / 6.0).xyz * 2.0 - 1.0;
           vec3 nRz = textureGrad(t_rockN, vTerrW.xy / 6.0, gXYx / 6.0, gXYy / 6.0).xyz * 2.0 - 1.0;
@@ -189,7 +199,7 @@ export function terrainMaterial(minEra = 2) {
       );
   };
   m.customProgramCacheKey = () => 'terrain-splat-v4';
-  return patchEraMaterial(m, minEra > 0 ? { minEra } : {});
+  return patchEraMaterial(m, minEra > 0 ? { minEra, structural: true } : {});
 }
 
 /**
@@ -206,7 +216,7 @@ export class TerrainView {
     const d = VALLEY.z1 - VALLEY.z0;
     this.water = new THREE.Mesh(
       new THREE.PlaneGeometry(VALLEY_COLLIDE.x1 + 12 - VALLEY.x0, d, 64, 48),
-      eraMaterial({ color: '#1e3f3a', roughness: 0.14, metalness: 0, pattern: PATTERN.water, transparent: true, opacity: 0.93, minEra: 2 }),
+      eraMaterial({ color: '#1e3f3a', roughness: 0.14, metalness: 0, pattern: PATTERN.water, transparent: true, opacity: 0.93, minEra: 2, structural: true }),
     );
     this.water.rotation.x = -Math.PI / 2;
     this.water.position.set((VALLEY.x0 + VALLEY_COLLIDE.x1 + 12) / 2, WATER_Y, (VALLEY.z0 + VALLEY.z1) / 2);

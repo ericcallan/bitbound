@@ -47,6 +47,17 @@
   [headers.values]
     Content-Type = "image/ktx2"
 
+# the texture decoder (a third-party build that only changes with three.js) and the UI art
+[[headers]]
+  for = "/basis/*"
+  [headers.values]
+    Cache-Control = "public, max-age=2592000"
+
+[[headers]]
+  for = "/ui/*"
+  [headers.values]
+    Cache-Control = "public, max-age=86400"
+
 [[headers]]
   for = "/site.webmanifest"
   [headers.values]

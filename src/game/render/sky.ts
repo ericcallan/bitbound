@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { HDRLoader } from 'three/examples/jsm/loaders/HDRLoader.js';
+import { loadImageTexture } from './textures';
+import { track, trackBytes } from './loadProgress';
 
 /**
  * The real skies for the modern generations (Poly Haven, CC0), prepared by scripts/blender/create_sky.py: a
@@ -39,8 +41,8 @@ export function loadHdSky(gl: THREE.WebGLRenderer, name: SkyName = 'day'): Promi
   if (p) return p;
   const base = `${import.meta.env.BASE_URL}assets/sky/${name}`;
   p = Promise.all([
-    new HDRLoader().loadAsync(`${base}_env.hdr`),
-    new THREE.TextureLoader().loadAsync(`${base}_sky.jpg`),
+    track(`${base}_env.hdr`, new HDRLoader().loadAsync(`${base}_env.hdr`, (e) => e.lengthComputable && trackBytes(`${base}_env.hdr`, e.loaded, e.total)), 350_000),
+    track(`${base}_sky.jpg`, loadImageTexture(`${base}_sky.jpg`), 70_000),
     fetch(`${base}.json`).then((r) => r.json() as Promise<{ dir: [number, number, number] }>),
   ]).then(([hdr, bg, sun]) => {
     hdr.mapping = THREE.EquirectangularReflectionMapping;

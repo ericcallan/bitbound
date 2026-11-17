@@ -94,11 +94,21 @@ export class AudioEngine {
   } | null = null;
   private nextBird = 0;
 
+  /**
+   * Build the audio graph without starting it. Opening the audio device takes ~100 ms of main thread, so the
+   * title does this behind its loader; browsers allow it before any click (the context starts suspended), and
+   * the first click (init) only resumes it.
+   */
+  prepare() {
+    if (!this.ctx) this.create();
+  }
+
   init() {
-    if (this.ctx) {
-      if (this.ctx.state === 'suspended') void this.ctx.resume();
-      return;
-    }
+    if (!this.ctx) this.create();
+    if (this.ctx?.state === 'suspended') void this.ctx.resume();
+  }
+
+  private create() {
     const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
     const ctx = new Ctx();
@@ -324,7 +334,8 @@ export class AudioEngine {
   private schedule() {
     const ctx = this.ctx!;
     const stepDur = 60 / this.tempo / 2;
-    while (this.nextTime < ctx.currentTime + 0.12) {
+    // notes are booked 0.3 s ahead, so a stalled main thread (a long load, a busy frame) never leaves a gap
+    while (this.nextTime < ctx.currentTime + 0.3) {
       this.playStep(this.nextTime, stepDur);
       this.nextTime += stepDur;
       this.step++;

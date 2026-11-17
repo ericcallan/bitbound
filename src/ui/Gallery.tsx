@@ -12,13 +12,13 @@ import { SKY_SUN } from '../game/render/LevelView';
 import { drawFace, PIP_COLORS } from '../game/pip/face';
 import { makeShowcaseGame } from './session';
 import type { Expression, PipAction } from '../game/sim/Game';
-import { ERA_NAMES, ERAS, type Era } from '../game/era/EraSystem';
+import { ERA_NAMES, ERAS, generationFlag, type Era } from '../game/era/EraSystem';
 import { audio } from '../game/audio/AudioEngine';
 import { v3 } from '../game/math';
 import { ART_PAGES, artPage, type ArtCard } from '../content/artCopy';
 import { SHARE } from '../shareCopy';
 import { ShareButton } from './ShareButton';
-import { GenerationTimeline } from './MainMenu';
+import { GenerationTimeline } from './GenerationTimeline';
 import { PipGLB } from '../game/pip/PipGLB';
 import { PixelSprite } from '../game/render/sprites';
 import { Sprite16 } from '../game/render/retro/sprites16';
@@ -415,7 +415,7 @@ function EnvironmentSheet() {
         </div>
         <div className="sheet__poses">
           {(['split', ...ERAS] as const).map((e) => (
-            <button key={String(e)} className={`chip chip--era ${era === e ? 'is-on' : ''}`} onClick={() => setEra(e)}>
+            <button key={String(e)} className={`chip chip--era ${era === e ? 'is-on' : ''}`} title={e === 'split' ? undefined : generationFlag(e)} onClick={() => setEra(e)}>
               {e === 'split' ? 'All six' : ERA_NAMES[e]}
             </button>
           ))}

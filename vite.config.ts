@@ -220,5 +220,13 @@ function share(): Plugin {
 
 export default defineConfig({
   plugins: [react(), share()],
+  build: {
+    rollupOptions: {
+      output: {
+        // three.js and React change far less often than the game: their own file stays cached across releases
+        manualChunks: (id: string) => (/node_modules\/(three|react|react-dom|scheduler|@react-three|zustand)\//.test(id) ? 'vendor' : undefined),
+      },
+    },
+  },
   test: { environment: 'node', include: ['src/test/**/*.test.ts'] },
 } as never);

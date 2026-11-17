@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useUI } from './store';
 import { canContinue, session, startGame } from './session';
 import { audio } from '../game/audio/AudioEngine';
-import { ERA_NAMES, type Era } from '../game/era/EraSystem';
+import type { Era } from '../game/era/EraSystem';
 import { CHAPTERS } from '../game/sim/Game';
 import { LEVEL } from '../game/level/meadows';
 import { loadSave } from '../game/save/save';
 import { SPRITES } from '../game/render/sprites';
-import { Portrait } from './Portrait';
 import { ShareButton } from './ShareButton';
 import { PixelTitleView } from './title/PixelTitleView';
+import { GenerationTimeline } from './GenerationTimeline';
 
 /**
  * Dev only: ?shot=og shows the title scene with just the wordmark and one line, for the link-preview image
@@ -168,38 +168,6 @@ function PixelPip({ scale = 5 }: { scale?: number }) {
   return <canvas ref={ref} className="frame-card__pixel" style={{ width: 16 * scale, height: 16 * scale }} />;
 }
 
-/**
- * The six generations as a timeline of Pip's face, top right. Hovering or focusing one ripples the title
- * scene into that generation; leaving the timeline returns it to the selected one (Beyond until you pick).
- */
-export function GenerationTimeline({ shown, selected, onPreview, onSelect }: { shown: Era; selected: Era; onPreview: (e: Era | null) => void; onSelect: (e: Era) => void }) {
-  return (
-    <nav className="gen-timeline" aria-label="Graphics generation" onMouseLeave={() => onPreview(null)}>
-      <span className="gen-timeline__line" aria-hidden />
-      {ERA_NAMES.map((name, i) => {
-        const e = i as Era;
-        return (
-          <button
-            key={name}
-            className={`gen-timeline__item ${shown === e ? 'is-shown' : ''} ${selected === e ? 'is-selected' : ''}`}
-            aria-pressed={selected === e}
-            aria-label={`Show the title scene in ${name}`}
-            onMouseEnter={() => onPreview(e)}
-            onFocus={() => onPreview(e)}
-            onBlur={() => onPreview(null)}
-            onClick={() => onSelect(e)}
-          >
-            <span className="gen-timeline__face">
-              <Portrait expression="happy" era={e} size={34} />
-            </span>
-            <span className="gen-timeline__name">{name}</span>
-          </button>
-        );
-      })}
-    </nav>
-  );
-}
-
 export function MainMenu() {
   const [hasSave, setHasSave] = useState(false);
   const [leaving, setLeaving] = useState(false);
@@ -207,7 +175,8 @@ export function MainMenu() {
   const [phone, setPhone] = useState(() => !SHOT && isPhoneLike());
   const [selected, setSelected] = useState<Era>(5);
   const [preview, setPreview] = useState<Era | null>(null);
-  const ui = useUI();
+  // actions only: the title needn't re-render when unrelated state changes
+  const ui = useUI.getState();
   const nav = useRef<HTMLElement>(null);
   const summary = useMemo(() => (hasSave ? saveSummary() : null), [hasSave]);
   const shown = preview ?? selected;
