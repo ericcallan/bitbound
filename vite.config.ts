@@ -1,13 +1,13 @@
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
-import { SHARE } from './src/shareCopy';
+import { SHARE, SITE_URL } from './src/shareCopy';
 
 /**
  * Sharing and search, in one place.
  *
  * Link previews (Slack, iMessage/SMS, X, Discord, LinkedIn, Facebook, WhatsApp, Telegram) need absolute URLs, so
- * the site's address is filled into index.html at build time: SITE_URL if set (use it for a custom domain), else
- * the host's own production address (Vercel: VERCEL_PROJECT_PRODUCTION_URL; Netlify: URL).
+ * the site's address (https://bitbound.world, src/shareCopy.ts) is filled into index.html at build time, so preview
+ * deployments still point previews and canonical links at the real site.
  *
  * The site stays out of search engines until launch: a noindex meta tag, an X-Robots-Tag header (vercel.json,
  * netlify.toml) and robots.txt rules for search and AI crawlers. Link-preview fetchers are allowed in robots.txt
@@ -36,14 +36,9 @@ const PREVIEW_BOTS = [
 /** Search engines and AI crawlers, named so the intent is explicit (the catch-all below covers the rest). */
 const BLOCKED_BOTS = ['Googlebot', 'Bingbot', 'Applebot', 'DuckDuckBot', 'YandexBot', 'Baiduspider', 'GPTBot', 'ClaudeBot', 'CCBot', 'Google-Extended', 'PerplexityBot', 'Bytespider', 'Amazonbot'];
 
+/** bitbound.world (src/shareCopy.ts); SITE_URL overrides it, e.g. to test previews on a staging address. */
 function siteUrl() {
-  const raw =
-    process.env.SITE_URL ||
-    (process.env.VERCEL_PROJECT_PRODUCTION_URL && `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`) ||
-    (process.env.VERCEL_URL && `https://${process.env.VERCEL_URL}`) ||
-    process.env.URL ||
-    'http://localhost:5173';
-  return raw.replace(/\/+$/, '');
+  return (process.env.SITE_URL || SITE_URL).replace(/\/+$/, '');
 }
 
 export function robotsTxt(isPublic: boolean) {

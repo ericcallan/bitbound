@@ -69,9 +69,8 @@ output `dist`).
 
 - **Link previews** (Slack, iMessage and SMS, X, Discord, LinkedIn, Facebook, WhatsApp, Telegram): Open Graph
   and X card tags, a 1200×630 image (`public/og.jpg`) and a square one (`public/og-square.jpg`), the web app
-  manifest and icons, and JSON-LD. Absolute URLs are filled in at build time from `SITE_URL`, or the host's own
-  production address if that isn't set. **Set `SITE_URL` for a custom domain.** The copy lives in
-  `src/shareCopy.ts`. Regenerate the images from the live title scene with `npm run og` (dev server running).
+  manifest and icons, and JSON-LD. Every link points at **https://bitbound.world** (set in `src/shareCopy.ts`
+  with the copy; a `SITE_URL` environment variable overrides it for a staging test). Regenerate the images from the live title scene with `npm run og` (dev server running).
 - **The Share button** (title screen, end card) opens the system share sheet where there is one, otherwise copies
   the link.
 - **Kept out of search for now:** a `noindex` meta tag, an `X-Robots-Tag: noindex` header from the host config,

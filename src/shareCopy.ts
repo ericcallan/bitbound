@@ -1,3 +1,6 @@
+/** The public address: every share link, preview image and canonical URL points here. */
+export const SITE_URL = 'https://bitbound.world';
+
 /** What Bitbound says about itself when shared: link previews (vite.config.ts) and the Share button (ui/share.ts). */
 export const SHARE = {
   title: 'Bitbound',

@@ -1,10 +1,13 @@
-import { SHARE } from '../shareCopy';
+import { SHARE, SITE_URL } from '../shareCopy';
 
 export type ShareResult = 'shared' | 'copied' | 'cancelled' | 'failed';
 
-/** The address to share: the game's root, marked as a shared link (never a dev scenario or other query). */
+/**
+ * The address to share: the game's root on bitbound.world (on a local dev server, that server), marked as a shared
+ * link, never carrying a dev scenario or any other query.
+ */
 export function shareUrl() {
-  const u = new URL(import.meta.env.BASE_URL, location.origin);
+  const u = new URL(import.meta.env.BASE_URL, import.meta.env.PROD ? SITE_URL : location.origin);
   u.searchParams.set('utm_source', 'share');
   return u.toString();
 }
