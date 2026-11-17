@@ -13,6 +13,7 @@ import { useUI } from '../ui/store';
  *   ...&era=4                                           override the generation (0–5)
  *   ...&mode=3d                                         override the perspective
  *   ...&freeze=1                                        stop animation once loaded (for visual baselines)
+ *   ...&x=56&y=0                                        stand somewhere else
  *
  * Scenarios never write to the player's save, and they turn off the drifting Beyond rifts.
  * Only available in dev builds.
@@ -64,6 +65,7 @@ export const SCENARIOS: Record<string, Scenario> = {
     camera: { target: { x: 57, y: 1, z: -7 }, yaw: 0.6, pitch: 0.65, fov: 50, dist: 9 },
     save: LATE,
   },
+  passage: { label: 'Broken Passage (the ruin and the machine)', era: 1, mode: '2d', pos: { x: 53, y: 0, z: 0 }, save: LATE },
   stair: { label: 'Painted Stair', era: 4, mode: '2d', pos: { x: 104, y: 0, z: 0 }, save: LATE },
   plateau: { label: 'Plateau', era: 5, mode: '2d', pos: { x: 140, y: 9, z: 0 }, save: LATE },
   aqueduct: { label: 'Broken aqueduct', era: 5, mode: '2d', pos: { x: 219, y: 12.5, z: 0 }, save: LATE },
@@ -91,6 +93,10 @@ export function requestedScenario(): { name: string; s: Scenario; freeze: boolea
   if (era !== null) s.era = Math.max(0, Math.min(5, Number(era))) as Era;
   const mode = q.get('mode');
   if (mode === '2d' || mode === '3d') s.mode = mode;
+  // &x=56&y=0: stand somewhere else in the same state
+  const x = q.get('x');
+  const y = q.get('y');
+  if (x !== null) s.pos = { x: Number(x), y: y !== null ? Number(y) : s.pos.y, z: s.mode === '2d' ? 0 : s.pos.z };
   return { name, s, freeze: q.get('freeze') === '1' };
 }
 
@@ -106,7 +112,11 @@ export function bootScenario(sc: { name: string; s: Scenario; freeze: boolean })
   if (!session.input) throw new Error('input not ready');
   setSaveWrites(false);
   // test runs (freeze) render at a fixed quality, so auto-tuning can't change what a baseline sees
-  if (sc.freeze) useUI.getState().updateSettings({ quality: 'high' });
+  if (sc.freeze) {
+    useUI.getState().updateSettings({ quality: 'high' });
+    // a frozen scenario is a still picture: no input from the start
+    session.inputLocked = true;
+  }
   const s = sc.s;
   const save: SaveData = { ...newSave(), ...s.save, era: s.era };
   const g = new Game(session.input, save, 'play');

@@ -26,6 +26,8 @@ export interface SolidDef {
   only2d?: boolean;
   /** Generations in which this solid exists (bitmask; undefined = all). */
   genMask?: number;
+  /** How the 8- and 16-bit tile layers draw it when its own look is invisible (the aqueduct's 2D-only span). */
+  retroLook?: Look;
 }
 
 export interface EnemyDef {
@@ -239,7 +241,7 @@ export const LEVEL = {
     // near half always overlaps the far one and the deck reads as continuous; in 3D they are 9 units apart.
     solid('aqA', 'platform', 'stone', 214, SEAL - 1, -6.2, 220 + AQ_OVERLAP, SEAL, -4.6),
     solid('aqB', 'platform', 'stone', 220 - AQ_OVERLAP, SEAL - 1, 4.6, 226, SEAL, 6.2),
-    solid('aqLane', 'platform', 'invisible', 214, SEAL - 0.3, -0.45, 226, SEAL, 0.45, { only2d: true }),
+    solid('aqLane', 'platform', 'invisible', 214, SEAL - 0.3, -0.45, 226, SEAL, 0.45, { only2d: true, retroLook: 'stone' }),
     ground('p7', 226, 254, SEAL),
     // World edges
     solid('edgeL', 'invisible', 'invisible', -9, BOTTOM, -30, -8, 40, 30),

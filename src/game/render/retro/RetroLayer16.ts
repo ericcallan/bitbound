@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { World } from '../../collision/World';
 import type { Level, SolidDef } from '../../level/meadows';
-import { isRetroTile } from './RetroLayer';
+import { backgroundShows, isRetroTile, laneLayer, tileFor } from './RetroLayer';
 
 /** 16-bit: 24 px per world unit and 224 rows, like the mid-90s consoles. */
 export const TILE16_PX = 24;
@@ -97,12 +97,25 @@ export class RetroLayer16 {
     this.signature = sig;
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.size.x, this.size.y);
+    // Structures behind the path, drawn first as a darker, cooler background layer (see laneLayer).
     for (const s of present) {
+      if (laneLayer(s) !== 'back' || tileFor(s) === 'grass' || !backgroundShows(s, present)) continue;
       const px0 = Math.round((s.box.min.x - this.x0) * TILE16_PX);
       const px1 = Math.round((s.box.max.x - this.x0) * TILE16_PX);
       const py0 = Math.round((this.y1 - s.box.max.y) * TILE16_PX);
       const py1 = Math.round((this.y1 - s.box.min.y) * TILE16_PX);
-      if (s.look === 'grass' || s.look === 'hedge') {
+      ctx.fillStyle = this.patterns.stone;
+      ctx.fillRect(px0, py0, px1 - px0, py1 - py0);
+      ctx.fillStyle = 'rgba(24, 30, 72, 0.62)';
+      ctx.fillRect(px0, py0, px1 - px0, py1 - py0);
+    }
+    for (const s of present) {
+      if (laneLayer(s) !== 'lane') continue;
+      const px0 = Math.round((s.box.min.x - this.x0) * TILE16_PX);
+      const px1 = Math.round((s.box.max.x - this.x0) * TILE16_PX);
+      const py0 = Math.round((this.y1 - s.box.max.y) * TILE16_PX);
+      const py1 = Math.round((this.y1 - s.box.min.y) * TILE16_PX);
+      if (tileFor(s) === 'grass') {
         ctx.fillStyle = this.patterns.earth;
         ctx.fillRect(px0, py0, px1 - px0, py1 - py0);
         ctx.fillStyle = this.patterns.grassTop;

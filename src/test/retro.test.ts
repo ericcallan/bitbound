@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUSH_COLORS, CLOUD_COLORS, HILL_COLORS, isRetroTile, SKY_INDEX, TILE_PX, TILES } from '../game/render/retro/RetroLayer';
+import { BUSH_COLORS, CLOUD_COLORS, HILL_COLORS, isRetroTile, laneLayer, SKY_INDEX, TILE_PX, TILES } from '../game/render/retro/RetroLayer';
 import { PALETTE_8 } from '../game/render/post/Pipeline';
 import { BACKDROP, SPRITES } from '../game/render/sprites';
 import { LEVEL } from '../game/level/meadows';
@@ -47,9 +47,22 @@ describe('8-bit tile renderer', () => {
     expect(tiles.length).toBeGreaterThan(10);
     expect(tiles.some((s) => s.id === 'g1')).toBe(true);
     for (const s of tiles) {
-      expect(s.look).not.toBe('invisible');
+      expect(s.retroLook ?? s.look).not.toBe('invisible');
       if (s.genMask !== undefined) expect(s.genMask & 1).toBe(1);
     }
     for (const s of LEVEL.solids) if (s.genMask !== undefined && (s.genMask & 1) === 0) expect(isRetroTile(s)).toBe(false);
+  });
+
+  it('draws only the path as solid ground: structures behind it are background, nothing in front covers Pip', () => {
+    const byId = new Map(LEVEL.solids.map((s) => [s.id, s]));
+    // the hidden chamber and the ruin's facade stand behind the path: background, not ground
+    for (const id of ['facade', 'chamberFloor', 'chamberBack', 'cliff', 'aqA']) expect(laneLayer(byId.get(id)!), id).toBe('back');
+    // the device's pedestal, the alcove walls and the near aqueduct half are in front: not tiles at all
+    for (const id of ['devicePedestal', 'alcoveFront', 'aqB']) expect(isRetroTile(byId.get(id)!), id).toBe(false);
+    // the ground Pip walks on, and the aqueduct's 2D-only span, are foreground tiles
+    for (const id of ['g4', 'aqLane', 'p6']) {
+      expect(laneLayer(byId.get(id)!), id).toBe('lane');
+      expect(isRetroTile(byId.get(id)!), id).toBe(true);
+    }
   });
 });

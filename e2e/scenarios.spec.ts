@@ -16,6 +16,7 @@ const CASES: [string, number[]][] = [
   ['start', [0]],
   ['ruins', [0, 1, 4]],
   ['ruins3d', [2, 3, 4, 5]],
+  ['passage', [0, 1, 4]],
   ['chamber', [4, 5]],
   ['stair', [1, 4]],
   ['plateau', [4, 5]],

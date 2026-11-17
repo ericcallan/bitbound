@@ -27,7 +27,7 @@ const hash = (x: number, y: number) => (((x * 73856093) ^ (y * 19349663)) >>> 0)
  *  - earth: the soil below, with darker cracks and a few pale pebbles;
  *  - stone: masonry for ruins and structures.
  */
-export const TILES: Record<'grassTop' | 'earth' | 'stone', Tile> = {
+export const TILES: Record<'grassTop' | 'earth' | 'stone' | 'backStone', Tile> = {
   grassTop: tile((x, y) => {
     const tuft = (x * 5 + 3) % 7 < 2 ? 1 : 0;
     if (y < 2) return 8; // bright grass edge
@@ -50,6 +50,15 @@ export const TILES: Record<'grassTop' | 'earth' | 'stone', Tile> = {
     if (ly === 0 || lx === 0) return 9; // lit edge
     return 15;
   }),
+  // Structures behind the path: dark, low-contrast masonry, so they read as background (as 8-bit games drew them)
+  backStone: tile((x, y) => {
+    const offset = y < 8 ? 0 : 4;
+    const lx = (x + TILE_PX - offset) % 8;
+    const ly = y % 8;
+    if (ly === 7 || lx === 7) return 0; // mortar
+    if (ly === 0 && lx < 6) return 2; // faint lit edge
+    return 1;
+  }),
 };
 
 /** Backdrop scenery colours (PALETTE_8): hills and bushes are two colours each, flat, like 1985. */
@@ -57,13 +66,38 @@ export const HILL_COLORS = [7, 6] as const;
 export const BUSH_COLORS = [8, 7] as const;
 
 /** Which tile set a solid uses. */
-function tileFor(s: SolidDef): 'grass' | 'stone' {
-  return s.look === 'grass' || s.look === 'hedge' ? 'grass' : 'stone';
+export function tileFor(s: SolidDef): 'grass' | 'stone' {
+  const look = s.retroLook ?? s.look;
+  return look === 'grass' || look === 'hedge' ? 'grass' : 'stone';
 }
 
-/** Does this solid appear as ground in the 8-bit tile layer? */
+/**
+ * Where a solid stands relative to the 2D path. Only solids on the path are solid in 2D, so only they are drawn
+ * as foreground tiles; structures behind it (the hidden chamber, the ruin's facade, the relief cliff, the far
+ * aqueduct half) are drawn as a dark background layer; anything in front of the path is left out of the tiles,
+ * so it can never cover Pip.
+ */
+export function laneLayer(s: SolidDef): 'lane' | 'back' | 'front' {
+  if (s.box.min.z <= 0.45 && s.box.max.z >= -0.45) return 'lane';
+  return s.box.max.z < 0 ? 'back' : 'front';
+}
+
+/**
+ * A background structure is only worth drawing where it rises above the path's ground in front of it: the hidden
+ * chamber's floor, level with the ground, would otherwise peek out at the edges as a dark sliver.
+ */
+export function backgroundShows(s: SolidDef, all: SolidDef[]) {
+  let ground = -Infinity;
+  for (const o of all) {
+    if (laneLayer(o) !== 'lane' || o.box.max.x <= s.box.min.x || o.box.min.x >= s.box.max.x) continue;
+    ground = Math.max(ground, o.box.max.y);
+  }
+  return s.box.max.y > ground + 0.05;
+}
+
+/** Does this solid appear in the 8-bit tile layer (as ground on the path, or as background behind it)? */
 export function isRetroTile(s: SolidDef) {
-  return TILE_LOOKS.has(s.look) && (s.genMask === undefined || (s.genMask & 1) !== 0);
+  return TILE_LOOKS.has(s.retroLook ?? s.look) && (s.genMask === undefined || (s.genMask & 1) !== 0) && laneLayer(s) !== 'front';
 }
 
 /**
@@ -128,7 +162,7 @@ export class RetroLayer {
       );
       return this.ctx.createPattern(c, 'repeat')!;
     };
-    this.patterns = { grassTop: pattern(TILES.grassTop), earth: pattern(TILES.earth), stone: pattern(TILES.stone) };
+    this.patterns = { grassTop: pattern(TILES.grassTop), earth: pattern(TILES.earth), stone: pattern(TILES.stone), backStone: pattern(TILES.backStone) };
 
     const rows = BACKDROP.cloud;
     this.cloud = document.createElement('canvas');
@@ -152,7 +186,7 @@ export class RetroLayer {
       this.clouds.push({ x: Math.round(x), y: Math.min(this.y1 - 2, Math.round(top + 6 + r() * 3)) });
     }
     // Rolling hills and bushes standing on the grass, behind everything that moves.
-    const grass = this.solids.filter((s) => s.look === 'grass' && s.box.max.x - s.box.min.x > 6);
+    const grass = this.solids.filter((s) => s.look === 'grass' && laneLayer(s) === 'lane' && s.box.max.x - s.box.min.x > 6);
     for (const g of grass) {
       for (let x = g.box.min.x + 2 + r() * 4; x < g.box.max.x - 3; x += 14 + r() * 12) {
         this.hills.push({ x, y: g.box.max.y, w: 4 + r() * 4, h: 1.6 + r() * 2 });
@@ -180,7 +214,19 @@ export class RetroLayer {
     for (const c of this.clouds) ctx.drawImage(this.cloud, (c.x - this.x0) * TILE_PX, (this.y1 - c.y) * TILE_PX);
     for (const h of this.hills) this.drawHill(h.x, h.y, h.w, h.h);
     for (const b of this.bushes) this.drawBush(b.x, b.y, b.w);
+    // background structures first (only where they rise above the ground; the path's tiles cover the rest)
     for (const s of present) {
+      if (laneLayer(s) !== 'back' || tileFor(s) === 'grass' || !backgroundShows(s, present)) continue;
+      ctx.fillStyle = this.patterns.backStone;
+      ctx.fillRect(
+        Math.round((s.box.min.x - this.x0) * TILE_PX),
+        Math.round((this.y1 - s.box.max.y) * TILE_PX),
+        Math.round((s.box.max.x - s.box.min.x) * TILE_PX),
+        Math.round((s.box.max.y - s.box.min.y) * TILE_PX),
+      );
+    }
+    for (const s of present) {
+      if (laneLayer(s) !== 'lane') continue;
       const px0 = Math.round((s.box.min.x - this.x0) * TILE_PX);
       const px1 = Math.round((s.box.max.x - this.x0) * TILE_PX);
       const py0 = Math.round((this.y1 - s.box.max.y) * TILE_PX);

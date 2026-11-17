@@ -138,7 +138,7 @@ export function Stage({ game, menu = false }: { game: Game; menu?: boolean }) {
       if (input.consume('map') && !game.finaleCard) ui.setMap(!ui.mapOpen);
       const blocked = ui.paused || ui.mapOpen || ui.settingsOpen || game.finaleCard;
       game.paused = ui.paused || ui.mapOpen || ui.settingsOpen;
-      input.enabled = !blocked;
+      input.enabled = !blocked && !session.inputLocked;
       if (!ui.settings.shake) game.camera.shake = 0;
       const be = game.era.bubble ? game.era.bubble.era : -1;
       if (be !== lastBubble.current) {

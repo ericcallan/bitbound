@@ -9,7 +9,9 @@ export const session: {
   game: Game | null;
   menuGame: Game | null;
   input: BrowserInput | null;
-} = { game: null, menuGame: null, input: null };
+  /** Dev: ignore player input entirely (frozen scenarios). */
+  inputLocked: boolean;
+} = { game: null, menuGame: null, input: null, inputLocked: false };
 
 export function ensureInput(el: HTMLElement) {
   if (!session.input) session.input = new BrowserInput(el);
