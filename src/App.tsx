@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Stage } from './ui/Stage';
@@ -12,6 +12,9 @@ import { WorldMap } from './ui/WorldMap';
 import { FinaleCard } from './ui/FinaleCard';
 import { Gallery } from './ui/Gallery';
 import { audio } from './game/audio/AudioEngine';
+
+/** Development-only debug overlay (` to toggle); not part of production builds. */
+const DebugOverlay = import.meta.env.DEV ? lazy(() => import('./dev/DebugOverlay').then((m) => ({ default: m.DebugOverlay }))) : null;
 
 export function App() {
   const screen = useUI((s) => s.screen);
@@ -73,6 +76,11 @@ export function App() {
       {screen === 'gallery' && <Gallery />}
       {settingsOpen && <SettingsPanel />}
       {settings.showFps && <FpsCounter />}
+      {DebugOverlay && (
+        <Suspense fallback={null}>
+          <DebugOverlay />
+        </Suspense>
+      )}
     </div>
   );
 }
