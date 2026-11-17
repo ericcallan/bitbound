@@ -1,21 +1,9 @@
 import * as THREE from 'three';
 import { getAsset, loadAsset } from './assets';
+import { textureUniform } from './textures';
 import { eraMaterial, eraUniforms, patchEraMaterial, PATTERN } from './eraMaterial';
 import { VALLEY, VALLEY_COLLIDE, WATER_Y } from '../level/valley';
 
-const texLoader = new THREE.TextureLoader();
-const texCache = new Map<string, THREE.Texture>();
-function tex(name: string, srgb: boolean) {
-  let t = texCache.get(name);
-  if (!t) {
-    t = texLoader.load(`${import.meta.env.BASE_URL}assets/textures/${name}.webp`);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.anisotropy = 8;
-    t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-    texCache.set(name, t);
-  }
-  return t;
-}
 
 const SETS = ['grass', 'rock', 'path', 'forest'] as const;
 
@@ -28,8 +16,8 @@ export function terrainMaterial() {
   const m = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 });
   const uniforms: Record<string, THREE.IUniform> = {};
   for (const s of SETS) {
-    uniforms[`t_${s}A`] = { value: tex(`${s}_albedo`, true) };
-    uniforms[`t_${s}N`] = { value: tex(`${s}_normal`, false) };
+    uniforms[`t_${s}A`] = textureUniform(`${s}_albedo`);
+    uniforms[`t_${s}N`] = textureUniform(`${s}_normal`);
   }
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);

@@ -7,6 +7,7 @@ import { PostPipeline, type PostFrame, type QualitySetting } from './post/Pipeli
 import { PixelSprite } from './sprites';
 import { TerrainView } from './terrain';
 import { loadHdSky, type HdSkyData, type SkyName } from './sky';
+import { initTextures } from './textures';
 import { RETRO_ROWS, RetroLayer, TILE_PX } from './retro/RetroLayer';
 import { Sprite16 } from './retro/sprites16';
 import { RETRO16_ROWS, RetroLayer16, TILE16_PX } from './retro/RetroLayer16';
@@ -181,6 +182,7 @@ export class GameView {
   ) {
     this.options = options;
     this.gl = gl;
+    initTextures(gl);
     this.retro = new RetroLayer(game.level);
     this.retro16 = new RetroLayer16(game.level);
     this.level = new LevelView(game.level);

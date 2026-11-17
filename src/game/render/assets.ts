@@ -4,6 +4,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { patchEraMaterial, type EraMatOptions } from './eraMaterial';
 import { BARK_SWAY, CLUMP_WIND, LEAF_WIND } from './wind';
+import { textureUniform } from './textures';
 
 /**
  * Loads the optimised Blender assets in public/assets (Meshopt geometry, WebP textures), once each.
@@ -23,27 +24,15 @@ export const PRELOAD: AssetName[] = ['rocks', 'pip', 'terrain', 'tree', 'gateway
  * Per-material set-up by name (material names come from the Blender scripts). Scattered vegetation only
  * exists from Modern HD up (`minEra: 4`); slot-placed assets are swapped per generation by the view.
  */
-const texLoader = new THREE.TextureLoader();
-const textures = new Map<string, THREE.Texture>();
-function sharedTexture(name: string, srgb: boolean) {
-  let t = textures.get(name);
-  if (!t) {
-    t = texLoader.load(`${import.meta.env.BASE_URL}assets/textures/${name}.webp`);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
-    textures.set(name, t);
-  }
-  return t;
-}
 
 /**
  * Beyond: moss creeping over the upward faces of the ancient stone (scanned moss, broken up by noise), so
  * the ruins look weathered into the valley rather than placed on it.
  */
 function mossyStone(m: THREE.MeshStandardMaterial) {
-  const moss = sharedTexture('moss_albedo', true);
+  const moss = textureUniform('moss_albedo');
   m.onBeforeCompile = (shader) => {
-    shader.uniforms.tMoss = { value: moss };
+    shader.uniforms.tMoss = moss;
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', '#include <common>\nuniform sampler2D tMoss;')
       .replace(
@@ -66,12 +55,12 @@ function mossyStone(m: THREE.MeshStandardMaterial) {
  * at runtime, so it stays sharp at any size without a unique bake; moss on top in Beyond.
  */
 function projectedStone(m: THREE.MeshStandardMaterial) {
-  const alb = sharedTexture('stone_albedo', true);
-  const nrm = sharedTexture('stone_normal', false);
-  const moss = sharedTexture('moss_albedo', true);
+  const alb = textureUniform('stone_albedo');
+  const nrm = textureUniform('stone_normal');
+  const moss = textureUniform('moss_albedo');
   m.color.set('#ffffff');
   m.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, { tStoneA: { value: alb }, tStoneN: { value: nrm }, tMoss: { value: moss } });
+    Object.assign(shader.uniforms, { tStoneA: alb, tStoneN: nrm, tMoss: moss });
     shader.fragmentShader = shader.fragmentShader
       .replace(
         '#include <common>',
