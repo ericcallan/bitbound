@@ -42,6 +42,20 @@ interface ToneOpts {
   vibrato?: number;
 }
 
+export type Surface = 'grass' | 'path' | 'stone' | 'wood' | 'water';
+
+/** The world's sound around Pip: 0..1 levels set by the stage each frame. */
+export interface Ambience {
+  /** Outdoor ambience (0 in the retro generations, which keep their chip sound). */
+  level: number;
+  /** Closeness of running water. */
+  river: number;
+  /** Inside the hidden chamber. */
+  indoor: number;
+  /** Wind strength (higher ground is windier). */
+  gust: number;
+}
+
 /** Lightweight Web Audio synth: no samples, everything generated. */
 export class AudioEngine {
   ctx: AudioContext | null = null;
@@ -67,6 +81,18 @@ export class AudioEngine {
   musicVolume = 0.7;
   sfxVolume = 0.8;
   private playing = false;
+  /** What Pip is standing on, for footsteps (set by the stage each frame). */
+  surface: Surface = 'grass';
+  private amb: {
+    wind: GainNode;
+    windFilter: BiquadFilterNode;
+    leaves: GainNode;
+    river: GainNode;
+    drone: GainNode;
+    sfxReverb: GainNode;
+    out: GainNode;
+  } | null = null;
+  private nextBird = 0;
 
   init() {
     if (this.ctx) {
@@ -117,6 +143,132 @@ export class AudioEngine {
     this.noise = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const nd = this.noise.getChannelData(0);
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+  }
+
+  /** Looping noise through a filter: the raw material for wind, leaves and water. */
+  private noiseLoop(type: BiquadFilterType, freq: number, q: number, dest: AudioNode) {
+    const ctx = this.ctx!;
+    const src = ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.loop = true;
+    src.playbackRate.value = 0.7 + Math.random() * 0.6;
+    const f = ctx.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = freq;
+    f.Q.value = q;
+    const g = ctx.createGain();
+    g.gain.value = 0;
+    src.connect(f).connect(g).connect(dest);
+    src.start();
+    return { gain: g, filter: f };
+  }
+
+  private buildAmbience() {
+    const ctx = this.ctx!;
+    const out = ctx.createGain();
+    out.gain.value = this.sfxVolume;
+    out.connect(this.master);
+    const wind = this.noiseLoop('bandpass', 520, 0.7, out);
+    const leaves = this.noiseLoop('highpass', 4200, 0.5, out);
+    const river = this.noiseLoop('lowpass', 950, 0.6, out);
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 160;
+    river.filter.disconnect();
+    river.filter.connect(hp).connect(river.gain);
+    // a low, uneasy drone for the hidden chamber: two detuned tones
+    const drone = ctx.createGain();
+    drone.gain.value = 0;
+    drone.connect(out);
+    for (const f of [55, 55.7, 82.4]) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = f;
+      const g = ctx.createGain();
+      g.gain.value = 0.33;
+      o.connect(g).connect(drone);
+      o.start();
+    }
+    // sound effects pick up reverb indoors
+    const sfxReverb = ctx.createGain();
+    sfxReverb.gain.value = 0;
+    const room = ctx.createConvolver();
+    room.buffer = this.reverb.buffer;
+    this.sfxGain.connect(sfxReverb).connect(room).connect(out);
+    this.amb = { wind: wind.gain, windFilter: wind.filter, leaves: leaves.gain, river: river.gain, drone, sfxReverb, out };
+  }
+
+  /** Called every frame by the stage. */
+  setAmbience(a: Ambience) {
+    const ctx = this.ctx;
+    if (!ctx) return;
+    if (!this.amb) this.buildAmbience();
+    const amb = this.amb!;
+    const t = ctx.currentTime;
+    const out = a.level * (1 - a.indoor * 0.85);
+    // wind breathes: slow gusts in level and pitch
+    const breathe = 0.55 + 0.45 * Math.sin(t * 0.37) * Math.sin(t * 0.13 + 1.3);
+    amb.wind.gain.setTargetAtTime(out * (0.05 + a.gust * 0.05) * breathe, t, 0.4);
+    amb.windFilter.frequency.setTargetAtTime(380 + breathe * 420, t, 0.6);
+    amb.leaves.gain.setTargetAtTime(out * 0.014 * Math.max(0, breathe - 0.35), t, 0.3);
+    amb.river.gain.setTargetAtTime(a.level * a.river * 0.11, t, 0.3);
+    amb.drone.gain.setTargetAtTime(a.level * a.indoor * 0.05, t, 0.8);
+    amb.sfxReverb.gain.setTargetAtTime(a.indoor * 0.35, t, 0.3);
+    amb.out.gain.setTargetAtTime(this.sfxVolume, t, 0.2);
+    // birds: short chirps at random moments, panned across the stereo field
+    if (out > 0.2 && t > this.nextBird) {
+      this.bird(t, out);
+      this.nextBird = t + 1.2 + Math.random() * 4.5;
+    }
+  }
+
+  private bird(t: number, level: number) {
+    const ctx = this.ctx!;
+    const pan = ctx.createStereoPanner();
+    pan.pan.value = Math.random() * 1.6 - 0.8;
+    pan.connect(this.amb!.out);
+    const base = 2400 + Math.random() * 2200;
+    const notes = 2 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < notes; i++) {
+      const o = ctx.createOscillator();
+      o.type = 'sine';
+      const st = t + i * (0.07 + Math.random() * 0.05);
+      o.frequency.setValueAtTime(base * (0.9 + Math.random() * 0.25), st);
+      o.frequency.exponentialRampToValueAtTime(base * (1.2 + Math.random() * 0.4), st + 0.05);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0, st);
+      g.gain.linearRampToValueAtTime(0.028 * level, st + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, st + 0.07);
+      o.connect(g).connect(pan);
+      o.start(st);
+      o.stop(st + 0.09);
+    }
+  }
+
+  /** A footstep that sounds like what Pip is standing on (modern generations). */
+  private footstep(t: number, d: AudioNode) {
+    switch (this.surface) {
+      case 'grass':
+        this.noiseHit(t, 0.06, 0.03, 'bandpass', 1300, d, 0.9);
+        this.noiseHit(t + 0.012, 0.05, 0.015, 'highpass', 5200, d, 0.7);
+        break;
+      case 'path':
+        this.noiseHit(t, 0.045, 0.04, 'bandpass', 2200, d, 1.4);
+        this.noiseHit(t + 0.02, 0.03, 0.02, 'bandpass', 3400, d, 2);
+        break;
+      case 'stone':
+        this.noiseHit(t, 0.025, 0.035, 'highpass', 2600, d, 1);
+        this.tone(t, 880 + Math.random() * 120, 0.03, { type: 'triangle', gain: 0.018, dest: d });
+        break;
+      case 'wood':
+        this.tone(t, 170 + Math.random() * 20, 0.07, { type: 'sine', gain: 0.07, slideTo: 120, dest: d });
+        this.noiseHit(t, 0.04, 0.025, 'lowpass', 900, d);
+        break;
+      case 'water':
+        this.noiseHit(t, 0.16, 0.05, 'bandpass', 1400, d, 0.8, 600);
+        this.noiseHit(t + 0.03, 0.1, 0.02, 'highpass', 4000, d, 0.6);
+        break;
+    }
   }
 
   setVolumes(music: number, sfx: number) {
@@ -399,7 +551,9 @@ export class AudioEngine {
         if (value > 18) this.tone(t, 110, 0.1, { type: 'sine', gain: 0.12, slideTo: 60, dest: d });
         break;
       case 'step':
-        this.noiseHit(t, 0.03, 0.025, 'bandpass', soft ? 2500 : 4000, d, 2);
+        // retro generations keep the chip step; from Early 3D on, the step sounds like the ground
+        if (this.era >= 2) this.footstep(t, d);
+        else this.noiseHit(t, 0.03, 0.025, 'bandpass', 4000, d, 2);
         break;
       case 'collect': {
         const base = 84 + ((value % 5) as number);

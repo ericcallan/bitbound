@@ -3,7 +3,8 @@ import { useFrame, useThree } from '@react-three/fiber';
 import type * as THREE from 'three';
 import { GameView } from '../game/render/GameView';
 import { roomAt, type Game } from '../game/sim/Game';
-import { audio } from '../game/audio/AudioEngine';
+import { audio, type Surface } from '../game/audio/AudioEngine';
+import { valleyHeight, valleySplat, WATER_Y } from '../game/level/valley';
 import { session } from './session';
 import { useUI, type HudState } from './store';
 
@@ -57,6 +58,45 @@ function changed(a: HudState, b: HudState) {
   return false;
 }
 
+/** What Pip stands on, for footsteps: the terrain's material weights, or the look of the box underfoot. */
+function surfaceUnder(game: Game): Surface {
+  const p = game.player;
+  if (p.pos.y < WATER_Y + 0.25) return 'water';
+  const g = p.ground;
+  if (!g) return 'grass';
+  if (g.id === 'terrain') {
+    const [rock, path] = valleySplat(p.pos.x, p.pos.z, game.world.terrainSlope(p.pos.x, p.pos.z));
+    return rock > 0.5 ? 'stone' : path > 0.45 ? 'path' : 'grass';
+  }
+  const look = game.level.solids.find((s) => s.id === g.id)?.look;
+  if (look === 'wood' || g.kind === 'bridge') return 'wood';
+  if (look === 'grass' || look === 'hedge') return 'grass';
+  return 'stone';
+}
+
+/** Feed the world's ambience to the audio engine: outdoors from Early 3D up, the river nearby, the chamber. */
+function updateAmbience(game: Game, dt: number, st: { t: number; river: number }) {
+  const p = game.player.pos;
+  st.t -= dt;
+  if (st.t <= 0) {
+    // closeness of water: sample the height field around Pip twice a second
+    st.t = 0.5;
+    let best = 99;
+    for (let i = -6; i <= 6; i++)
+      for (let j = -6; j <= 6; j++) {
+        const x = p.x + i * 2.5;
+        const z = p.z + j * 2.5;
+        if (valleyHeight(x, z) < WATER_Y + 0.05) best = Math.min(best, Math.hypot(i * 2.5, j * 2.5));
+      }
+    st.river = best > 40 ? 0 : 1 / (1 + (best / 7) ** 2);
+  }
+  const era = game.era.displayEra;
+  const C = game.level.chamber;
+  const indoor = game.shift.mode === '3d' && p.x > C.min.x && p.x < C.max.x && p.z > C.min.z && p.z < C.max.z ? 1 : 0;
+  audio.surface = surfaceUnder(game);
+  audio.setAmbience({ level: era >= 2 ? 1 : 0, river: st.river, indoor, gust: Math.min(1, Math.max(0, p.y / 12)) });
+}
+
 /** Bridges the imperative game/render loop into R3F's frame loop. */
 export function Stage({ game, menu = false }: { game: Game; menu?: boolean }) {
   const { camera, gl } = useThree();
@@ -66,6 +106,7 @@ export function Stage({ game, menu = false }: { game: Game; menu?: boolean }) {
   const last = useRef<HudState | null>(null);
   const fpsAcc = useRef({ t: 0, n: 0 });
   const lastBubble = useRef(-1);
+  const ambienceState = useRef({ t: 0, river: 0 });
 
   useEffect(() => {
     if (menu) return;
@@ -103,6 +144,7 @@ export function Stage({ game, menu = false }: { game: Game; menu?: boolean }) {
         audio.setBubble(be);
       }
       audio.mystery = game.shift.mode === '3d' && game.player.pos.z < -1.3 && game.player.pos.x > 52 && game.player.pos.x < 62 && !game.puzzle.plateLatched;
+      updateAmbience(game, dt, ambienceState.current);
     }
     if (menu && game.camera.override) {
       game.camera.override.yaw = 0.3 + Math.sin(performance.now() / 9000) * 0.06;
