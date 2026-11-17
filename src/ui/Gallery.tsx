@@ -10,16 +10,19 @@ import { eraUniforms, eraMaterial, PATTERN } from '../game/render/eraMaterial';
 import { GameView, NEUTRAL_FRAME_EXTRAS } from '../game/render/GameView';
 import { SKY_SUN } from '../game/render/LevelView';
 import { drawFace, PIP_COLORS } from '../game/pip/face';
-import { makeMenuGame } from './session';
+import { makeShowcaseGame } from './session';
 import type { Expression, PipAction } from '../game/sim/Game';
 import { ERA_BLURBS, ERA_NAMES, ERAS, type Era } from '../game/era/EraSystem';
 import { audio } from '../game/audio/AudioEngine';
 import { v3 } from '../game/math';
 
-type Tab = 'pip' | 'world' | 'ui' | 'map';
+export type GalleryTab = 'pip' | 'world' | 'ui' | 'map';
+type Tab = GalleryTab;
+/** Which tab the gallery opens on (the title screen's "Generations" opens the environment comparison). */
+export const galleryStart: { tab: Tab } = { tab: 'pip' };
 
 export function Gallery() {
-  const [tab, setTab] = useState<Tab>('pip');
+  const [tab, setTab] = useState<Tab>(galleryStart.tab);
   const ui = useUI();
   const tabs: [Tab, string][] = [
     ['pip', 'Character'],
@@ -318,7 +321,7 @@ const VIEWS = [
 
 function WorldStage({ view, era }: { view: (typeof VIEWS)[number]; era: Era | 'split' }) {
   const { camera, gl } = useThree();
-  const game = useMemo(() => makeMenuGame(), []);
+  const game = useMemo(() => makeShowcaseGame(), []);
   const gv = useMemo(() => new GameView(game, camera as THREE.PerspectiveCamera, gl, { split: true }), [game, camera, gl]);
   useEffect(() => () => gv.dispose(), [gv]);
   useEffect(() => {

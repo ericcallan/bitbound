@@ -101,7 +101,7 @@ function updateAmbience(game: Game, dt: number, st: { t: number; river: number }
 export function Stage({ game, menu = false }: { game: Game; menu?: boolean }) {
   const { camera, gl } = useThree();
   const view = useMemo(() => {
-    return new GameView(game, camera as THREE.PerspectiveCamera, gl, { split: menu, immersive: menu });
+    return new GameView(game, camera as THREE.PerspectiveCamera, gl, { split: false, immersive: menu, title: menu });
   }, [game, camera, gl, menu]);
   const last = useRef<HudState | null>(null);
   const fpsAcc = useRef({ t: 0, n: 0 });
@@ -146,9 +146,7 @@ export function Stage({ game, menu = false }: { game: Game; menu?: boolean }) {
       audio.mystery = game.shift.mode === '3d' && game.player.pos.z < -1.3 && game.player.pos.x > 52 && game.player.pos.x < 62 && !game.puzzle.plateLatched;
       updateAmbience(game, dt, ambienceState.current);
     }
-    if (menu && game.camera.override) {
-      game.camera.override.yaw = 0.3 + Math.sin(performance.now() / 9000) * 0.06;
-    }
+
     view.setQuality(ui.settings.quality);
     game.update(Math.min(dt, 0.1));
     if (!menu) {

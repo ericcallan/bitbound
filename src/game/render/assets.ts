@@ -259,6 +259,24 @@ export function beyondOnly(m: THREE.Material): THREE.Material {
   return c;
 }
 
+const anyEraCopies = new WeakMap<THREE.Material, THREE.Material>();
+/**
+ * A copy of an asset material that exists in every generation (no `minEra`). The title set ripples through
+ * all six generations, so its plants and rocks must be there in 8-bit too; play keeps the HD-only originals.
+ */
+export function allEraMaterial(m: THREE.Material): THREE.Material {
+  let c = anyEraCopies.get(m);
+  if (!c) {
+    const copy = (m as THREE.MeshStandardMaterial).clone();
+    copy.onBeforeCompile = () => {};
+    copy.customProgramCacheKey = () => '';
+    const rules = materialRules(copy);
+    c = patchEraMaterial(copy, { ...rules, minEra: undefined });
+    anyEraCopies.set(m, c);
+  }
+  return c;
+}
+
 /** Load progress for the preload bar: fraction of PRELOAD assets ready. */
 export function preloadProgress() {
   return PRELOAD.filter((n) => loaded.has(n)).length / PRELOAD.length;

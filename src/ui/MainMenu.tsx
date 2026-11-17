@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useUI } from './store';
-import { canContinue, startGame } from './session';
+import { canContinue, session, startGame } from './session';
 import { audio } from '../game/audio/AudioEngine';
-import { ERA_NAMES } from '../game/era/EraSystem';
+import { ERA_NAMES, type Era } from '../game/era/EraSystem';
 import { CHAPTERS } from '../game/sim/Game';
 import { LEVEL } from '../game/level/meadows';
 import { loadSave } from '../game/save/save';
+import { SPRITES } from '../game/render/sprites';
+import { Portrait } from './Portrait';
+import { galleryStart } from './Gallery';
 
 function wakeAudio() {
   audio.init();
@@ -31,14 +34,31 @@ const Icon = {
       <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.54V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.54-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34H9a1.7 1.7 0 0 0 1-1.54V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.54 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87V9a1.7 1.7 0 0 0 1.54 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z" />
     </svg>
   ),
-  extras: (
+  palette: (
     <svg viewBox="0 0 24 24" aria-hidden>
-      <path d="M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z" />
+      <path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.8-.5-1.2 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3z" />
+      <circle cx="7.5" cy="11" r="1.2" fill="currentColor" />
+      <circle cx="10" cy="7.2" r="1.2" fill="currentColor" />
+      <circle cx="14.6" cy="7.2" r="1.2" fill="currentColor" />
+      <circle cx="17.2" cy="11" r="1.2" fill="currentColor" />
+    </svg>
+  ),
+  layers: (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M12 3.5l9 4.6-9 4.6-9-4.6z" />
+      <path d="M3 12.4l9 4.6 9-4.6" />
+      <path d="M3 16.4l9 4.6 9-4.6" />
     </svg>
   ),
   chevron: (
     <svg viewBox="0 0 24 24" aria-hidden>
       <path d="M9 6l6 6-6 6" />
+    </svg>
+  ),
+  arrow: (
+    <svg viewBox="0 0 48 24" aria-hidden>
+      <path d="M4 12h36" />
+      <path d="M32 5l8 7-8 7" />
     </svg>
   ),
 };
@@ -103,7 +123,7 @@ function MenuButton(props: ButtonDef & { index: number }) {
   return (
     <button
       className={`title-btn ${props.primary ? 'title-btn--primary' : ''}`}
-      style={{ animationDelay: `${0.35 + props.index * 0.07}s` }}
+      style={{ animationDelay: `${0.3 + props.index * 0.06}s` }}
       onMouseEnter={(e) => {
         if (document.activeElement !== e.currentTarget) audio.sfx('hover');
         e.currentTarget.focus({ preventScroll: true });
@@ -120,16 +140,88 @@ function MenuButton(props: ButtonDef & { index: number }) {
   );
 }
 
+/** The 8-bit Pip sprite, drawn crisp at any size (the left half of the "Break the Frame" card). */
+function PixelPip({ scale = 5 }: { scale?: number }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const cv = ref.current!;
+    const rows = SPRITES.pip[0];
+    cv.width = rows[0].length;
+    cv.height = rows.length;
+    const c = cv.getContext('2d')!;
+    const pal: Record<string, string> = { k: '#0d0b1e', o: '#0d0b1e', c: '#f4f1e6' };
+    rows.forEach((row, y) =>
+      [...row].forEach((ch, x) => {
+        if (ch === '.') return;
+        c.fillStyle = pal[ch] ?? '#0d0b1e';
+        c.fillRect(x, y, 1, 1);
+      }),
+    );
+  }, []);
+  return <canvas ref={ref} className="frame-card__pixel" style={{ width: 16 * scale, height: 16 * scale }} />;
+}
+
+/**
+ * The six generations as a timeline of Pip's face, top right. Hovering or focusing one ripples the title
+ * scene into that generation; leaving the timeline returns it to the selected one (Beyond until you pick).
+ */
+function GenerationTimeline({ shown, selected, onPreview, onSelect }: { shown: Era; selected: Era; onPreview: (e: Era | null) => void; onSelect: (e: Era) => void }) {
+  return (
+    <nav className="gen-timeline" aria-label="Graphics generation" onMouseLeave={() => onPreview(null)}>
+      <span className="gen-timeline__line" aria-hidden />
+      {ERA_NAMES.map((name, i) => {
+        const e = i as Era;
+        return (
+          <button
+            key={name}
+            className={`gen-timeline__item ${shown === e ? 'is-shown' : ''} ${selected === e ? 'is-selected' : ''}`}
+            aria-pressed={selected === e}
+            aria-label={`Show the title scene in ${name}`}
+            onMouseEnter={() => onPreview(e)}
+            onFocus={() => onPreview(e)}
+            onBlur={() => onPreview(null)}
+            onClick={() => onSelect(e)}
+          >
+            <span className="gen-timeline__face">
+              <Portrait expression="happy" era={e} size={34} />
+            </span>
+            <span className="gen-timeline__name">{name}</span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 export function MainMenu() {
   const [hasSave, setHasSave] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [confirmNew, setConfirmNew] = useState(false);
   const [phone, setPhone] = useState(() => isPhoneLike());
+  const [selected, setSelected] = useState<Era>(5);
+  const [preview, setPreview] = useState<Era | null>(null);
   const ui = useUI();
   const nav = useRef<HTMLElement>(null);
   const summary = useMemo(() => (hasSave ? saveSummary() : null), [hasSave]);
+  const shown = preview ?? selected;
 
-  // Arrow keys / d-pad move between the buttons; Enter or A selects the focused one.
+  // The title scene follows the timeline: a ripple from Pip into the shown generation.
+  useEffect(() => {
+    const g = session.menuGame;
+    if (!g) return;
+    const t = window.setTimeout(() => {
+      const p = g.player.pos;
+      g.era.start(shown, { x: p.x, y: p.y + 0.8, z: p.z }, 1.6);
+    }, 90);
+    return () => window.clearTimeout(t);
+  }, [shown]);
+
+  const pick = useCallback((e: Era) => {
+    audio.sfx('click');
+    setSelected(e);
+  }, []);
+
+  // Arrow keys / d-pad: up and down move between the buttons, left and right step through the generations.
   useEffect(() => {
     const move = (dir: 1 | -1) => {
       if (!nav.current) return;
@@ -139,17 +231,25 @@ export function MainMenu() {
       buttons[i < 0 ? 0 : (i + dir + n) % n].focus();
       audio.sfx('hover');
     };
+    const step = (dir: 1 | -1) => {
+      setPreview(null);
+      setSelected((s) => Math.max(0, Math.min(5, s + dir)) as Era);
+      audio.sfx('hover');
+    };
     const onKey = (e: KeyboardEvent) => {
       if (confirmNew) return;
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault();
         move(e.key === 'ArrowDown' ? 1 : -1);
+      } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        step(e.key === 'ArrowRight' ? 1 : -1);
       }
     };
     window.addEventListener('keydown', onKey);
-    // Gamepad: d-pad or stick to choose, A to select.
+    // Gamepad: d-pad or stick to choose, A to select, bumpers or d-pad left/right for the generation.
     let raf = 0;
-    let prev = { up: false, down: false, a: false };
+    let prev = { up: false, down: false, left: false, right: false, a: false };
     const poll = () => {
       raf = requestAnimationFrame(poll);
       const p = navigator.getGamepads?.().find((g) => g);
@@ -157,9 +257,12 @@ export function MainMenu() {
       const now = {
         up: !!p.buttons[12]?.pressed || (p.axes[1] ?? 0) < -0.6,
         down: !!p.buttons[13]?.pressed || (p.axes[1] ?? 0) > 0.6,
+        left: !!p.buttons[14]?.pressed || !!p.buttons[4]?.pressed,
+        right: !!p.buttons[15]?.pressed || !!p.buttons[5]?.pressed,
         a: !!p.buttons[0]?.pressed,
       };
       if ((now.up && !prev.up) || (now.down && !prev.down)) move(now.down ? 1 : -1);
+      if ((now.left && !prev.left) || (now.right && !prev.right)) step(now.right ? 1 : -1);
       if (now.a && !prev.a) {
         const buttons = [...nav.current.querySelectorAll('button')];
         (buttons.find((b) => b === document.activeElement) ?? buttons[0]).click();
@@ -175,7 +278,7 @@ export function MainMenu() {
 
   useEffect(() => {
     setHasSave(canContinue());
-    audio.setEra(1);
+    audio.setEra(5);
     const once = () => wakeAudio();
     window.addEventListener('pointerdown', once, { once: true });
     window.addEventListener('keydown', once, { once: true });
@@ -196,6 +299,13 @@ export function MainMenu() {
       ui.newSession();
       ui.setScreen('game');
     }, 450);
+  };
+
+  const openGallery = (tab: 'pip' | 'world') => {
+    wakeAudio();
+    audio.sfx('click');
+    galleryStart.tab = tab;
+    ui.setScreen('gallery');
   };
 
   const buttons: ButtonDef[] = [
@@ -220,45 +330,29 @@ export function MainMenu() {
         ui.setSettingsOpen(true);
       },
     },
-    {
-      icon: Icon.extras,
-      label: 'Extras',
-      meta: 'Art & design gallery',
-      onClick: () => {
-        wakeAudio();
-        audio.sfx('click');
-        ui.setScreen('gallery');
-      },
-    },
+    { icon: Icon.palette, label: 'Art & Design', onClick: () => openGallery('pip') },
+    { icon: Icon.layers, label: 'Generations', onClick: () => openGallery('world') },
   ];
 
   return (
     <div className={`menu ${leaving ? 'menu--leaving' : ''}`}>
       <div className="menu__scrim" aria-hidden />
-      <div className="menu__era-labels" aria-hidden>
-        {ERA_NAMES.map((n, i) => (
-          <span key={n}>
-            <em>{String(i + 1).padStart(2, '0')}</em>
-            {n}
-          </span>
-        ))}
-      </div>
       <div className="menu__panel">
         <h1 className="logo" aria-label="PIP — Beyond the Frame">
           <span className="logo__mark">
-            <span className="logo__orbit" aria-hidden>
-              <i />
+            <span className="logo__pixels" aria-hidden>
+              {Array.from({ length: 14 }, (_, i) => (
+                <i key={i} />
+              ))}
             </span>
-            {[0, 1, 2, 3].map((i) => (
-              <span key={i} className={`logo__spark logo__spark--${i}`} aria-hidden />
-            ))}
             <span className="logo__pip">
-              {['P', 'i', 'P'].map((c, i) => (
-                <span key={i} className={`logo__letter logo__letter--${i}`}>
+              {['P', 'I', 'P'].map((c, i) => (
+                <span key={i} className={`logo__letter logo__letter--${i}`} data-c={c}>
                   {c}
                 </span>
               ))}
             </span>
+            <span className="logo__swoosh" aria-hidden />
           </span>
           <span className="logo__sub">Beyond the Frame</span>
           <span className="logo__rule" aria-hidden>
@@ -271,6 +365,25 @@ export function MainMenu() {
           ))}
         </nav>
       </div>
+
+      <GenerationTimeline shown={shown} selected={selected} onPreview={setPreview} onSelect={pick} />
+
+      <aside className="frame-card" aria-label="Break the Frame">
+        <div className="frame-card__art" aria-hidden>
+          <div className="frame-card__flat">
+            <PixelPip />
+          </div>
+          <span className="frame-card__arrow">{Icon.arrow}</span>
+          <div className="frame-card__deep">
+            <img src={`${import.meta.env.BASE_URL}ui/pip_hd.webp`} alt="" draggable={false} />
+          </div>
+        </div>
+        <div className="frame-card__text">
+          <h2>Break the Frame</h2>
+          <p>Shift perspective to discover new paths and hidden worlds.</p>
+        </div>
+      </aside>
+
       {phone && (
         <DesktopNotice
           onContinue={() => {
@@ -299,18 +412,21 @@ export function MainMenu() {
         </div>
       )}
       <footer className="menu__footer">
-        <span className="menu__footer-meta">v0.6 · Preview build</span>
         <span className="menu__footer-hints">
           <span>
             <kbd>↑</kbd>
             <kbd>↓</kbd> Navigate
           </span>
           <span>
+            <kbd>←</kbd>
+            <kbd>→</kbd> Generation
+          </span>
+          <span>
             <kbd>Enter</kbd>
             <kbd className="pad">A</kbd> Select
           </span>
         </span>
-        <span className="menu__footer-meta menu__footer-meta--right">Best with keyboard or gamepad</span>
+        <span className="menu__footer-meta">v0.7 · Preview build · Best with keyboard or gamepad</span>
       </footer>
     </div>
   );

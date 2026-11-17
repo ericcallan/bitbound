@@ -6,6 +6,8 @@ import { Particles } from './Particles';
 import { PostPipeline, type PostFrame, type QualitySetting } from './post/Pipeline';
 import { PixelSprite } from './sprites';
 import { TerrainView } from './terrain';
+import { TitleSet } from './titleSet';
+import { TITLE } from '../level/title';
 import { loadHdSky, type HdSkyData, type SkyName } from './sky';
 import { initTextures } from './textures';
 import { RETRO_ROWS, RetroLayer, TILE_PX } from './retro/RetroLayer';
@@ -22,6 +24,7 @@ import { clamp, lerp, rng, smoothstep } from '../math';
 
 /** Direction toward the key light used for shading (front-lit so the 2D lane always reads). */
 const SUN_DIR = new THREE.Vector3(-0.45, 0.85, 0.55).normalize();
+const UP = new THREE.Vector3(0, 1, 0);
 const SPLIT_SCREEN = [1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6];
 
 export interface ViewOptions {
@@ -29,6 +32,8 @@ export interface ViewOptions {
   split?: boolean;
   /** With `split`: show the immersive valley (terrain, Blender dressing) in its bands, as in play. */
   immersive?: boolean;
+  /** The main menu: draw the composed title set (render/titleSet.ts) instead of the level. */
+  title?: boolean;
 }
 
 const envCache = new WeakMap<THREE.WebGLRenderer, THREE.Texture>();
@@ -77,6 +82,9 @@ export class GameView {
   pip = new PipModel();
   /** The immersive valley (Blender terrain) the level sits in. */
   terrain = new TerrainView();
+  title: TitleSet | null = null;
+  /** Extra sky rotation (radians about +y): the title set's lighting angle. */
+  skyYaw = 0;
   /** Forest, grass, flowers and rocks scattered over the valley (Modern HD and Beyond). */
   dressing = new ValleyDressing();
   /** The Blender-built Pip, used from Modern HD on once its asset has loaded. */
@@ -190,6 +198,14 @@ export class GameView {
     this.level = new LevelView(game.level);
     this.entities = new EntityViews(game, this.level.eras);
     this.scene.add(this.level.group, this.entities.group, this.terrain.group, this.dressing.group);
+    if (this.options.title) {
+      this.skyYaw = TITLE.skyYaw;
+      this.title = new TitleSet();
+      this.scene.add(this.title.group);
+      // the older generations' sky dome comes along to the title set (the rest of the level stays hidden)
+      this.scene.add(this.level.skyMesh);
+      this.level.skyMesh.position.set(TITLE.origin.x, 0, TITLE.origin.z);
+    }
     this.scene.add(this.pip.root, this.pip.trail, this.pipHD.root, this.pipSprite.sprite, this.pipSprite16.sprite, this.particles.mesh);
     this.scene.fog = new THREE.Fog('#bfe3ff', 90, 380);
     this.dayEnv = skyEnvironment(gl);
@@ -278,6 +294,7 @@ export class GameView {
     this.unsub();
     this.level.dispose();
     this.terrain.dispose();
+    this.title?.dispose();
     this.post.dispose();
     this.retro.dispose();
     this.retro16.dispose();
@@ -551,6 +568,9 @@ export class GameView {
     if (hd) {
       this.scene.environmentRotation.copy(this.hdSky!.rotation);
       this.scene.backgroundRotation.copy(this.hdSky!.rotation);
+      // the title set turns the sky so the low sun rakes across its cliffs from the front left
+      this.scene.environmentRotation.y += this.skyYaw;
+      this.scene.backgroundRotation.y += this.skyYaw;
     } else {
       this.scene.environmentRotation.set(0, 0, 0);
       this.scene.backgroundRotation.set(0, 0, 0);
@@ -562,7 +582,7 @@ export class GameView {
     fog.color.set(golden ? '#c7b9a4' : hd ? '#9fb2c4' : '#bfe3ff');
     fog.near = golden ? 25 : hd ? 30 : 90;
     fog.far = golden ? 220 : hd ? 260 : 380;
-    const keyDir = hd ? this.hdSky!.keyDir : SUN_DIR;
+    const keyDir = (hd ? this.hdSky!.keyDir : SUN_DIR).clone().applyAxisAngle(UP, this.skyYaw);
     this.sun.position.copy(camTarget).addScaledVector(keyDir, 45);
     this.sun.target.position.copy(camTarget);
     eraUniforms.uSunView.value.copy(keyDir).transformDirection(cam.matrixWorldInverse);
@@ -674,7 +694,7 @@ export class GameView {
 
     // Beyond motes; under the real sky in Modern HD they are fainter pollen drifting over the meadow.
     const focusEra = this.eraAt(camTarget);
-    const moteGoal = focusEra === 5 ? 1 : this.hdActive ? 0.4 : 0;
+    const moteGoal = (focusEra === 5 ? 1 : this.hdActive ? 0.4 : 0) * (this.title ? 0.3 : 1);
     this.moteFade += (moteGoal - this.moteFade) * Math.min(1, dt * 1.5);
     const mm = this.motes.material as THREE.MeshBasicMaterial;
     mm.opacity = this.moteFade * 0.85;
@@ -752,9 +772,14 @@ export class GameView {
     f.maxEra = split ? 5 : Math.max(f.eraFrom, f.eraTo, bub ? bub.era : 0, fieldMax);
     // The valley terrain exists from Early 3D up and its Blender dressing from Modern HD up: skip them
     // entirely (not just per pixel) while no such generation can be on screen.
-    const valley = !split || !!this.options.immersive;
+    const valley = (!split || !!this.options.immersive) && !this.title;
     this.terrain.group.visible = valley && f.maxEra >= 2;
     this.dressing.group.visible = valley && f.maxEra >= 4;
+    if (this.title) {
+      // the title set stands alone: the level is hundreds of units away and never in its frame
+      this.level.group.visible = this.entities.group.visible = false;
+      this.title.update(dt);
+    }
     if (this.dressing.group.visible) {
       this.dressing.density = [0.4, 0.7, 1][this.post.activeTier];
       this.dressing.update(this.camera);
@@ -773,6 +798,11 @@ export class GameView {
     // The camera target tracks Pip in play and frames the subject in cinematics/gallery views.
     f.focus.copy(camTarget);
     f.dof = split ? 0 : g.cine ? 0.6 : g.shift.mode === '2d' ? 0.55 : 0.4;
+    if (this.title) {
+      // the title: Pip in focus, the valley only slightly soft
+      f.focus.copy(pipPos);
+      f.dof = 0.12;
+    }
     // The real sky replaces the procedural dome (set after the level's era swaps have run this frame),
     // and light shafts aim at the sky's actual sun.
     this.level.skyMesh.visible = this.level.skyMesh.visible && !this.hdActive;

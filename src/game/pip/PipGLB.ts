@@ -134,11 +134,13 @@ export class PipGLB {
         mesh.castShadow = false;
         // Beyond: a glass layer over the display, adding only its reflection.
         const glass = mesh.clone();
+        // Dark glass: F0 well under a mirror's, so the sun's highlight is a glint rather than a white-out
+        // when it lines up with the camera (it does on the title screen).
         glass.material = new THREE.MeshStandardMaterial({
-          color: '#ffffff',
+          color: '#3a3a3a',
           metalness: 1,
-          roughness: 0.06,
-          envMapIntensity: 0.1,
+          roughness: 0.12,
+          envMapIntensity: 0.28,
           transparent: true,
           blending: THREE.AdditiveBlending,
           depthWrite: false,

@@ -12,7 +12,7 @@ const SETS = ['grass', 'rock', 'path', 'forest'] as const;
  * the per-vertex weights baked in Blender, with height-aware transitions, a second large-scale sample
  * to hide tiling, triplanar rock on cliffs, and Blender-baked ambient occlusion on indirect light.
  */
-export function terrainMaterial() {
+export function terrainMaterial(minEra = 2) {
   const m = new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 });
   const uniforms: Record<string, THREE.IUniform> = {};
   for (const s of SETS) {
@@ -178,7 +178,7 @@ export function terrainMaterial() {
       );
   };
   m.customProgramCacheKey = () => 'terrain-splat-v4';
-  return patchEraMaterial(m, { minEra: 2 });
+  return patchEraMaterial(m, minEra > 0 ? { minEra } : {});
 }
 
 /**
