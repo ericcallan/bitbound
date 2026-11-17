@@ -6,6 +6,7 @@ import { Particles } from './Particles';
 import { PostPipeline, type PostFrame, type QualitySetting } from './post/Pipeline';
 import { PixelSprite } from './sprites';
 import { TerrainView } from './terrain';
+import { loadHdSky, type HdSkyData } from './sky';
 import { ValleyDressing } from './dressing';
 import { PipModel } from '../pip/PipModel';
 import { PipGLB } from '../pip/PipGLB';
@@ -80,6 +81,10 @@ export class GameView {
   private sun: THREE.DirectionalLight;
   private hemi: THREE.HemisphereLight;
   private chamberLight: THREE.PointLight;
+  private dayEnv: THREE.Texture;
+  /** The real (HDRI) sky for the modern generations, once loaded. */
+  private hdSky: HdSkyData | null = null;
+  private hdActive = false;
   private blob: THREE.Mesh;
   private motes: THREE.InstancedMesh;
   private moteSeeds: Float32Array;
@@ -148,7 +153,9 @@ export class GameView {
     this.scene.add(this.level.group, this.entities.group, this.terrain.group, this.dressing.group);
     this.scene.add(this.pip.root, this.pip.trail, this.pipHD.root, this.pipSprite.sprite, this.particles.mesh);
     this.scene.fog = new THREE.Fog('#bfe3ff', 90, 380);
-    this.scene.environment = skyEnvironment(gl);
+    this.dayEnv = skyEnvironment(gl);
+    this.scene.environment = this.dayEnv;
+    void loadHdSky(gl).then((d) => (this.hdSky = d));
     this.scene.environmentIntensity = 0.55;
 
     this.hemi = new THREE.HemisphereLight('#cfeeff', '#6c8a4a', 0.85);
@@ -423,16 +430,26 @@ export class GameView {
     this.terrain.group.visible = !split;
     this.dressing.group.visible = !split;
 
-    // --- lights follow the action
-    const keyDir = SUN_DIR;
+    // --- lights follow the action. From Modern HD up the real sky lights the scene and sets the sun.
+    const lookEra = split ? 4 : this.eraAt(camTarget);
+    const hd = !!this.hdSky && !split && lookEra >= 4;
+    this.hdActive = hd;
+    this.scene.environment = hd ? this.hdSky!.env : this.dayEnv;
+    this.scene.background = hd ? this.hdSky!.background : null;
+    const fog = this.scene.fog as THREE.Fog;
+    fog.color.set(hd ? '#c4d4e2' : '#bfe3ff');
+    fog.near = hd ? 40 : 90;
+    fog.far = hd ? 330 : 380;
+    const keyDir = hd ? this.hdSky!.sunDir : SUN_DIR;
     this.sun.position.copy(camTarget).addScaledVector(keyDir, 45);
     this.sun.target.position.copy(camTarget);
     eraUniforms.uSunView.value.copy(keyDir).transformDirection(cam.matrixWorldInverse);
     this.chamberLight.intensity = 5 + Math.sin(t * 2) * 1.2 + (g.puzzle.plateLatched ? 4 : 0);
-    // Lighting rig per generation at the camera focus: Beyond trades ambient for a strong warm key.
-    const lookEra = split ? 4 : this.eraAt(camTarget);
-    const rig =
-      lookEra === 5
+    // Lighting rig per generation at the camera focus: the real sky carries the ambient light from Modern HD
+    // up (warm sun, cool sky-lit shadows); older generations keep the even, front-lit rig.
+    const rig = hd
+      ? { hemi: 0.1, env: 0.8, sun: 2.9, color: '#fff0d6', sky: '#cfe4ff', ground: '#4f6a34' }
+      : lookEra === 5
         ? { hemi: 0.4, env: 0.5, sun: 3.6, color: '#ffe2b8', sky: '#cfeeff', ground: '#6c8a4a' }
         : { hemi: 0.85, env: 0.55, sun: 2.7, color: '#fff0d8', sky: '#cfeeff', ground: '#6c8a4a' };
     const k = Math.min(1, dt * 2);
@@ -510,9 +527,10 @@ export class GameView {
     }
     this.particles.update(dt);
 
-    // Beyond motes
+    // Beyond motes; under the real sky in Modern HD they are fainter pollen drifting over the meadow.
     const focusEra = this.eraAt(camTarget);
-    this.moteFade += ((focusEra === 5 ? 1 : 0) - this.moteFade) * Math.min(1, dt * 1.5);
+    const moteGoal = focusEra === 5 ? 1 : this.hdActive ? 0.4 : 0;
+    this.moteFade += (moteGoal - this.moteFade) * Math.min(1, dt * 1.5);
     const mm = this.motes.material as THREE.MeshBasicMaterial;
     mm.opacity = this.moteFade * 0.85;
     this.motes.visible = this.moteFade > 0.01;
@@ -601,6 +619,10 @@ export class GameView {
     // The camera target tracks Pip in play and frames the subject in cinematics/gallery views.
     f.focus.copy(camTarget);
     f.dof = g.cine ? 0.6 : g.shift.mode === '2d' ? 0.55 : 0.4;
+    // The real sky replaces the procedural dome (set after the level's era swaps have run this frame),
+    // and light shafts aim at the sky's actual sun.
+    this.level.skyMesh.visible = this.level.skyMesh.visible && !this.hdActive;
+    f.sunDir.copy(this.hdActive ? this.hdSky!.sunDir : SKY_SUN);
   }
 
   render(gl: THREE.WebGLRenderer) {

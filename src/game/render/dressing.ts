@@ -116,7 +116,7 @@ export class ValleyDressing {
       } else if (grassW > 0.45) {
         if (k < 0.55) grass.push({ x, z, scale: 0.75 + r() * 0.6, rot: r() * 6.28 });
         else if (k < 0.62 && z < LANE_BACK) tall.push({ x, z, scale: 0.8 + r() * 0.5, rot: r() * 6.28 });
-        else if (k < 0.64) flowers[r() < 0.6 ? 0 : 1].push({ x, z, scale: 0.8 + r() * 0.5, rot: r() * 6.28 });
+        else if (k < 0.64) flowers[r() < 0.6 ? 0 : 1].push({ x, z, scale: 0.45 + r() * 0.25, rot: r() * 6.28 });
       }
       if (k > 0.9985 && !onLane) rocks[Math.floor(r() * 3)].push({ x, z, scale: 0.5 + r() * 0.9, rot: r() * 6.28, dy: -0.12 });
     }

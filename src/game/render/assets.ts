@@ -32,6 +32,9 @@ function materialRules(m: THREE.MeshStandardMaterial): Partial<EraMatOptions> {
     m.transparent = false;
     m.depthWrite = true;
     m.blending = THREE.NormalBlending;
+    // Leaves are matte: no mirror-like sky reflections on each card.
+    m.roughness = 0.88;
+    m.envMapIntensity = 0.45;
     m.side = THREE.DoubleSide;
     m.shadowSide = THREE.DoubleSide;
     // Foliage cut-outs thin to nothing on distant mip levels (averaged alpha falls under the cutoff).
@@ -56,12 +59,16 @@ function materialRules(m: THREE.MeshStandardMaterial): Partial<EraMatOptions> {
     m.customProgramCacheKey = () => 'leaf-coverage-v2';
     return { vertexWorld: LEAF_WIND, minEra: 4 };
   }
-  if (n.endsWith('_bark')) return { vertexWorld: BARK_SWAY, minEra: 4 };
+  if (n.endsWith('_bark')) {
+    m.envMapIntensity = 0.6;
+    return { vertexWorld: BARK_SWAY, minEra: 4 };
+  }
   if (/^rock_[abc]_mat$/.test(n)) return { minEra: 4 };
   if (n === 'vegetation_vc') {
     m.vertexColors = true;
     m.side = THREE.DoubleSide;
-    m.roughness = 0.7;
+    m.roughness = 0.85;
+    m.envMapIntensity = 0.5;
     return { vertexWorld: CLUMP_WIND, minEra: 4 };
   }
   return {};

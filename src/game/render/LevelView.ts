@@ -93,6 +93,8 @@ export class LevelView {
   private waterfallMats: THREE.ShaderMaterial[] = [];
   laneMat: THREE.MeshBasicMaterial;
   skyMat: THREE.ShaderMaterial;
+  /** The procedural sky dome (the modern generations swap in the real sky). */
+  skyMesh!: THREE.Mesh;
   frameEngine = new THREE.Group();
   private holoRings: THREE.Mesh[] = [];
   private islands: THREE.Object3D[] = [];
@@ -141,6 +143,7 @@ export class LevelView {
     sky.frustumCulled = false;
     sky.renderOrder = -10;
     this.group.add(sky);
+    this.skyMesh = sky;
     // Chapter 1's sky is a single flat colour, drawn by the post pass where nothing renders.
     this.eras.add(sky, E(1, 5), false, new THREE.Vector3(60, 0, 0));
   }
@@ -455,10 +458,12 @@ export class LevelView {
     const L = this.level;
     // Rolling hills (mid layer) — chunky steps in 8-bit, low-poly in early 3D, soft domes otherwise.
     const hillMats = [
-      sharedEraMaterial('hill1', { color: '#58b956', pattern: PATTERN.grass }),
-      sharedEraMaterial('hill2', { color: '#3f9f57', pattern: PATTERN.grass }),
-      sharedEraMaterial('hill3', { color: '#7fcf6a', pattern: PATTERN.grass }),
+      // The valley terrain replaces these inside the slice from Early 3D up.
+      sharedEraMaterial('hill1', { color: '#58b956', pattern: PATTERN.grass, hideInValley: true }),
+      sharedEraMaterial('hill2', { color: '#3f9f57', pattern: PATTERN.grass, hideInValley: true }),
+      sharedEraMaterial('hill3', { color: '#7fcf6a', pattern: PATTERN.grass, hideInValley: true }),
     ];
+    const islandTop = sharedEraMaterial('islandTop', { color: '#58b956', pattern: PATTERN.grass });
     for (let i = 0; i < 36; i++) {
       const x = -30 + i * 6.5 + r() * 4;
       const z = -18 - r() * 26;
@@ -510,7 +515,7 @@ export class LevelView {
       const rock = new THREE.Mesh(new THREE.ConeGeometry(rad, rad * 1.6, 7), M.stone());
       rock.rotation.x = Math.PI;
       rock.position.y = -rad * 0.8;
-      const top = new THREE.Mesh(new THREE.CylinderGeometry(rad * 1.02, rad, 0.6, 7), hillMats[0]);
+      const top = new THREE.Mesh(new THREE.CylinderGeometry(rad * 1.02, rad, 0.6, 7), islandTop);
       g.add(rock, top);
       const tree = new THREE.Mesh(new THREE.SphereGeometry(rad * 0.4, 10, 8), M.leafDark());
       tree.position.set(rad * 0.3, rad * 0.4, 0);
@@ -553,23 +558,25 @@ export class LevelView {
       this.group.add(g);
     }
     // Background cliff + waterfall behind the moving-platform pit.
-    const cliff = new THREE.Mesh(new THREE.BoxGeometry(5, 15, 2), LOOK_MAT.stone());
+    const cliff = new THREE.Mesh(new THREE.BoxGeometry(5, 15, 2), sharedEraMaterial('oldCliff', { color: '#aaa3bc', pattern: PATTERN.stone, hideInValley: true }));
     cliff.position.set(49.2, -1, -15);
     cliff.receiveShadow = true;
     this.group.add(cliff);
-    const cliffTop = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.4, 2.2), LOOK_MAT.grassCap());
+    const cliffTop = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.4, 2.2), LOOK_MAT.valleyCap());
     cliffTop.position.set(49.2, 6.6, -15);
     this.group.add(cliffTop);
     const fall = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 15), this.waterfallMaterial());
     fall.position.set(49.2, -1, -13.95);
     this.group.add(fall);
     // A deep meadow floor far below so pits read as height, not void.
-    const deep = new THREE.Mesh(new THREE.PlaneGeometry(700, 300), sharedEraMaterial('deep', { color: '#3f8f5a' }));
+    const deep = new THREE.Mesh(new THREE.PlaneGeometry(700, 300), sharedEraMaterial('deep', { color: '#3f8f5a', hideInValley: true }));
     deep.rotation.x = -Math.PI / 2;
     deep.position.set(70, -12, -100);
     this.group.add(deep);
     // 8-bit has nothing behind the play layer but the flat sky.
-    for (const o of [cliff, cliffTop, fall, deep]) this.eras.add(o, E(1, 5), false);
+    for (const o of [cliff, cliffTop, deep]) this.eras.add(o, E(1, 5), false);
+    // This waterfall sits inside the valley slice, which has its own terrain from Early 3D up.
+    this.eras.add(fall, E(1), false);
 
     // The Frame Engine — a vast ancient ring on the horizon, revealed at the finale.
     const ringMat = eraMaterial({ color: '#4b4566', metalness: 0.7, roughness: 0.3, pattern: PATTERN.metal });

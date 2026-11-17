@@ -87,7 +87,7 @@ export function terrainMaterial() {
         vec4 A = aG * W.x + aR * W.y + aP * W.z + aF * W.w;
         // the scanned grass reads khaki: push it toward a living meadow green, with gentle patchiness
         float patchy = texture2D(t_grassA, vTerrW.xz / 61.0).g;
-        A.rgb *= mix(vec3(1.0), mix(vec3(0.62, 1.12, 0.42), vec3(0.78, 1.08, 0.5), patchy), W.x);
+        A.rgb *= mix(vec3(1.0), mix(vec3(0.5, 0.82, 0.36), vec3(0.62, 0.86, 0.42), patchy), W.x);
         A.rgb *= mix(vec3(1.0), vec3(0.85, 0.95, 0.72), W.w);
         diffuseColor.rgb = A.rgb;
         terrRough = clamp(A.a, 0.35, 1.0);
@@ -130,11 +130,13 @@ export class TerrainView {
     const d = VALLEY.z1 - VALLEY.z0;
     this.water = new THREE.Mesh(
       new THREE.PlaneGeometry(VALLEY_COLLIDE.x1 + 12 - VALLEY.x0, d, 64, 48),
-      eraMaterial({ color: '#2a6a8a', roughness: 0.05, metalness: 0, pattern: PATTERN.water, transparent: true, opacity: 0.88, minEra: 2 }),
+      eraMaterial({ color: '#1e3f3a', roughness: 0.14, metalness: 0, pattern: PATTERN.water, transparent: true, opacity: 0.93, minEra: 2 }),
     );
     this.water.rotation.x = -Math.PI / 2;
     this.water.position.set((VALLEY.x0 + VALLEY_COLLIDE.x1 + 12) / 2, WATER_Y, (VALLEY.z0 + VALLEY.z1) / 2);
     this.water.receiveShadow = true;
+    // Deep, green-tinted river water: the sky shows as a soft sheen, not a blue mirror.
+    (this.water.material as THREE.MeshStandardMaterial).envMapIntensity = 0.55;
     this.group.add(this.water);
     void w;
     if (getAsset('terrain')) this.build();
