@@ -122,7 +122,8 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       // Modern HD and Beyond: the Blender trees (the Great Tree where the old one stood tallest).
       const great = s >= 1.2;
       const tHD = assetSlot('tree', great ? 'great_tree' : 'meadow_tree', tM.clone(), s * (great ? 0.62 : 0.78), r() * Math.PI * 2);
-      reg.variants(g, [[t8, E(0)], [t16, E(1)], [tL, E(2)], [tM, E(3)], [tHD, E(4, 5)]], anchor, false);
+      // No 8-bit variant: the first consoles had no background scenery.
+      reg.variants(g, [[t16, E(1)], [tL, E(2)], [tM, E(3)], [tHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'bush': {
@@ -143,7 +144,7 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       const bL = new THREE.Group();
       bL.add(at(ico(0.75 * s, M.leaf(), 0), -0.35 * s, 0.55 * s, 0));
       bL.add(at(ico(0.6 * s, M.leafDark(), 0), 0.45 * s, 0.45 * s, 0));
-      reg.variants(g, [[b8, E(0)], [bL, E(2)], [bR, E(1, 3, [2])], [fernHD, E(4, 5)]], anchor, false);
+      reg.variants(g, [[bL, E(2)], [bR, E(1, 3, [2])], [fernHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'bloomer': {
@@ -189,7 +190,7 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       smile.position.set(0, -0.14 * s, 0.42 * s);
       head.add(smile);
       plant.add(head);
-      reg.variants(g, [[pixelFlower, E(0)], [plant, E(1, 5)]], anchor, true);
+      reg.variants(g, [[plant, E(1, 5)]], anchor, true);
       const phase = r() * 10;
       let blink = 0;
       anim = {
@@ -246,7 +247,7 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
         dot.position.y = 0.36 + Math.sqrt(Math.max(0, 0.34 * 0.34 - 0.22 * 0.22));
         mR.add(dot);
       }
-      reg.variants(g, [[m8, E(0)], [mR, E(1, 5)]], anchor, false);
+      reg.variants(g, [[mR, E(1, 5)]], anchor, false);
       g.scale.setScalar(s);
       break;
     }
@@ -292,7 +293,7 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       rR.position.y = 0.3 * s;
       // Modern HD and Beyond swap in a baked, scanned-texture rock from the Blender pipeline.
       const rHD = assetSlot('rocks', ['rock_a', 'rock_b', 'rock_c'][Math.floor(r() * 3)], rR.clone(), s * 1.05, r() * Math.PI * 2);
-      reg.variants(g, [[r8, E(0)], [rR, E(1, 3)], [rHD, E(4, 5)]], anchor, false);
+      reg.variants(g, [[rR, E(1, 3)], [rHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'statue': {

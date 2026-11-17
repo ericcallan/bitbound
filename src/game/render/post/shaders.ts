@@ -201,6 +201,12 @@ uniform float uBubbleEra;
 uniform vec3 uFieldMin[4];
 uniform vec3 uFieldMax[4];
 uniform float uFieldEra[4];
+uniform sampler2D tRetro;
+uniform vec2 uRetroOrigin;
+uniform vec2 uRetroSize;
+uniform float uRetro2D;
+uniform float uLaneZ;
+uniform mat4 uViewProj;
 
 ${DEPTH_HELPERS}
 
@@ -233,6 +239,14 @@ vec3 nearestPal(vec3 c) {
 float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 vec3 hue(float h) { return clamp(abs(mod(h * 6.0 + vec3(0.0, 4.0, 2.0), 6.0) - 3.0) - 1.0, 0.0, 1.0); }
 
+// Where this pixel's view ray crosses the 2D lane (the plane the 8-bit tile layer lives in).
+vec3 lanePoint(vec2 uv) {
+  vec3 a = worldOf(uv, 0.1);
+  vec3 b = worldOf(uv, 0.9);
+  float t = (uLaneZ - a.z) / (b.z - a.z);
+  return a + (b - a) * t;
+}
+
 float eraAt(vec2 uv, float d) {
   if (uSplit > 0.5) {
     float e = 0.0;
@@ -241,6 +255,8 @@ float eraAt(vec2 uv, float d) {
   }
   float e;
   vec3 w = worldOf(uv, d);
+  // In 2D the empty sky is the lane itself: the generation there is the generation of that lane point.
+  if (uRetro2D > 0.5 && d >= 0.99999) { w = lanePoint(uv); d = 0.5; }
   if (d >= 0.99999) e = (uRippleActive > 0.5 && uRadius > uSkyRadius) ? uEraTo : uEraFrom;
   else e = (uRippleActive > 0.5 && distance(w, uCenter) < uRadius) ? uEraTo : uEraFrom;
   if (d < 0.99999) {
@@ -284,6 +300,20 @@ vec3 pixelEra(vec2 fc, float rows, bool eight) {
     if (edge > 0.5) col = mix(col, vec3(0.08, 0.06, 0.16), 0.6);
   }
   return col;
+}
+
+// --- 8-bit (2D): the tile layer, one world pixel at a time. Sprites in the scene are snapped to the same
+// grid and palette; everything else is the tile canvas or the flat sky.
+vec3 retroEra(vec2 uv) {
+  vec2 rp = floor((lanePoint(uv).xy - uRetroOrigin) * 16.0);
+  vec4 clip = uViewProj * vec4((rp + 0.5) / 16.0 + uRetroOrigin, uLaneZ, 1.0);
+  vec2 suv = clip.xy / clip.w * 0.5 + 0.5;
+  if (texture2D(tDepth, suv).r < 0.99999) return nearestPal(toSRGB(clamp(texture2D(tColor, suv).rgb, 0.0, 1.4)));
+  if (all(greaterThanEqual(rp, vec2(0.0))) && all(lessThan(rp, uRetroSize))) {
+    vec4 t = texelFetch(tRetro, ivec2(rp), 0);
+    if (t.a > 0.5) return t.rgb;
+  }
+  return uPal[3];
 }
 
 // --- Early 3D: low-res framebuffer, 15-bit colour with dither, short draw-distance fog
@@ -413,7 +443,7 @@ void main() {
   float depth = texture2D(tDepth, uv).r;
   float era = eraAt(uv, depth);
   vec3 col;
-  if (era < 0.5) col = pixelEra(fc, 150.0, true);
+  if (era < 0.5) col = uRetro2D > 0.5 ? retroEra(uv) : pixelEra(fc, 150.0, true);
   else if (era < 1.5) col = pixelEra(fc, 280.0, false);
   else if (era < 2.5) col = early3D(fc);
   else if (era < 3.5) col = stylized(uv);

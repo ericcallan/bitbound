@@ -1,74 +1,98 @@
 import * as THREE from 'three';
 
 /**
- * Hand-authored pixel sprites for the 8-bit generation. In 8-bit nothing is a 3D model: Pip,
- * enemies and pickups are flat 16×16 sprites in a handful of colours, exactly like the first
- * consoles. Each row is 16 characters; '.' is transparent.
+ * Hand-authored pixel sprites for the 8-bit generation, drawn in PALETTE_8 colours. Each row is 16
+ * characters; '.' is transparent.
  */
 const PAL: Record<string, string> = {
   k: '#0d0b1e', // outline
   o: '#f0862a', // burnt orange
   c: '#fff4d6', // cream
-  d: '#141a33', // screen
-  e: '#b4eeff', // eye
-  b: '#3a5fcd', // cobalt
-  p: '#8e5bd6', // purple
-  t: '#2fd6c3', // teal
-  i: '#2b2d6e', // indigo
-  w: '#fff4d6', // white-ish
-  y: '#ffcf6b', // yellow
-  r: '#b8461f', // rust
-  g: '#4cc24a', // green
-  G: '#1f8a5a', // dark green
-  s: '#c9c3d8', // stone
-  B: '#5ec8f0', // sky
+  w: '#fff4d6', // cloud white
 };
 
-const PIP_HEAD = [
-  '......t.........',
-  '......p.........',
-  '..kkkkkkkkkkkk..',
-  '.kooooooooooook.',
-  '.kcddddddddddck.',
-  '.kcddeddddeddck.',
-  '.kcddeddddeddck.',
-  '.kcddddddddddck.',
-  '.kcccccccccccck.',
-];
-const PIP_BODY = ['..kooooooooook..', '..kooottttoook..', '.ckooottttoookc.', '..kooooooooook..'];
-
+/**
+ * 8-bit Pip, 16×16 in three colours (outline, burnt orange, cream) like a 1985 console sprite:
+ * idle, two walk frames and a jump frame.
+ */
 export const SPRITES: Record<string, string[][]> = {
   pip: [
-    // idle
-    [...PIP_HEAD, ...PIP_BODY, '..kkbbbkkbbbkk..', '.kbbbbk..kbbbbk.', '.kkkkkk..kkkkkk.'],
-    // walk A
-    [...PIP_HEAD, ...PIP_BODY, '..kkbbbkkbbbkk..', '.kbbbbk...kbbbbk', '.kkkkkk...kkkkkk'],
-    // walk B
-    [...PIP_HEAD, ...PIP_BODY, '...kbbbkkbbbk...', '..kbbbbkkbbbbk..', '..kkkkkkkkkkkk..'],
-    // jump
-    [...PIP_HEAD, 'c.kooooooooook.c', 'ck.oottttoo.kc..', '..kooottttoook..', '..kooooooooook..', '...kbbbkkbbbk...', '...kkkkkkkkkk...', '................'],
-  ],
-  glitch: [
-    ['................', '................', '....kkkkkkkk....', '...kiiiiiiiik...', '..kiiiiiiiiiik..', '..kiwwiiiiwwik..', '..kiwkiiiiwkik..', '..kiiiiiiiiiik..', '..kppppppppppk..', '..kiiiiiiiiiik..', '..kiiiiiiiiiik..', '...kiiiiiiiik...', '...kkkkkkkkkk...', '...kk......kk...', '................', '................'],
-    ['................', '................', '....kkkkkkkk....', '...kiiiiiiiik...', '..kiiiiiiiiiik..', '..kiwwiiiiwwik..', '..kiwkiiiiwkik..', '..kiiiiiiiiiik..', '..kppppppppppk..', '..kiiiiiiiiiik..', '..kiiiiiiiiiik..', '...kiiiiiiiik...', '...kkkkkkkkkk...', '....kk....kk....', '................', '................'],
-  ],
-  bit: [
-    ['................', '................', '.......kk.......', '......kyyk......', '.....kyywyk.....', '....kyywyyyk....', '...kyywyyyyyk...', '...kyyyyyyyyk...', '...kyyyyyyyyk...', '....kyyyyyyk....', '.....kyyyyk.....', '......kyyk......', '.......kk.......', '................', '................', '................'],
-    ['................', '................', '.......kk.......', '.......kk.......', '......kyyk......', '......kwyk......', '......kyyk......', '......kyyk......', '......kyyk......', '......kyyk......', '.......kk.......', '.......kk.......', '................', '................', '................', '................'],
-  ],
-  enforcer: [
-    ['.....kkkkkk.....', '....kssssssk....', '....kseeeesk....', '....kssssssk....', '.....kkkkkk.....', '...kkiiiiiikk...', '..ksiiiiiiiisk..', '..ksiiiiiiiisk..', '..ksiippppiisk..', '..kkiiiiiiiikk..', '....kiiiiiik....', '....kik..kik....', '....kik..kik....', '...kssk..kssk...', '...kkkk..kkkk...', '................'],
-    ['.....kkkkkk.....', '....kssssssk....', '....kseeeesk....', '....kssssssk....', '.....kkkkkk.....', '...kkiiiiiikk...', '..ksiiiiiiiisk..', '..ksiiiiiiiisk..', '..ksiippppiisk..', '..kkiiiiiiiikk..', '....kiiiiiik....', '...kik....kik...', '...kik....kik...', '..kssk....kssk..', '..kkkk....kkkk..', '................'],
-  ],
-  warden: [
-    ['....kkkkkkkk....', '...kssssssssk...', '...ksrrrrrrsk...', '...kssssssssk...', '..kkkkkkkkkkkk..', '.kssiiiiiiiissk.', 'kssiiiyyyyiiissk', 'ksiiiiyyyyiiiisk', 'ksiiiiiiiiiiiisk', 'kkkiiiiiiiiiikkk', '..kiiiiiiiiiik..', '..kiiikkkkiiik..', '..ksssk..ksssk..', '..ksssk..ksssk..', '.kkkkkk..kkkkkk.', '................'],
-  ],
-  citizen: [
-    ['................', '................', '.....kkkkkk.....', '....kyyyyyyk....', '....kyddddyk....', '....kyddddyk....', '....kyyyyyyk....', '.....kkkkkk.....', '....kggggggk....', '...kggggggggk...', '...kgkggggkgk...', '....kggggggk....', '....kgk..kgk....', '....kbk..kbk....', '....kkk..kkk....', '................'],
+    [
+      '.......kk.......',
+      '.......kk.......',
+      '...kkkkkkkkkk...',
+      '..kooooooooook..',
+      '..kokkkkkkkkok..',
+      '..kokckkkkckok..',
+      '..kokckkkkckok..',
+      '..kokkkkkkkkok..',
+      '..kooooooooook..',
+      '...kkkkkkkkkk...',
+      '....kccooccck...',
+      '...ckccooccckc..',
+      '....kccccccck...',
+      '....kok..kok....',
+      '...kook..kook...',
+      '...kkkk..kkkk...',
+    ],
+    [
+      '.......kk.......',
+      '.......kk.......',
+      '...kkkkkkkkkk...',
+      '..kooooooooook..',
+      '..kokkkkkkkkok..',
+      '..kokckkkkckok..',
+      '..kokckkkkckok..',
+      '..kokkkkkkkkok..',
+      '..kooooooooook..',
+      '...kkkkkkkkkk...',
+      '....kccooccck...',
+      '...ckccooccckc..',
+      '....kccccccck...',
+      '...kok....kok...',
+      '..kook....kook..',
+      '..kkkk....kkkk..',
+    ],
+    [
+      '.......kk.......',
+      '.......kk.......',
+      '...kkkkkkkkkk...',
+      '..kooooooooook..',
+      '..kokkkkkkkkok..',
+      '..kokckkkkckok..',
+      '..kokckkkkckok..',
+      '..kokkkkkkkkok..',
+      '..kooooooooook..',
+      '...kkkkkkkkkk...',
+      '....kccooccck...',
+      '...ckccooccckc..',
+      '....kccccccck...',
+      '.....kokkok.....',
+      '....kookkook....',
+      '....kkkkkkkk....',
+    ],
+    [
+      '.......kk.......',
+      '.......kk.......',
+      '...kkkkkkkkkk...',
+      '..kooooooooook..',
+      '..kokkkkkkkkok..',
+      '..kokckkkkckok..',
+      '..kokckkkkckok..',
+      '..kokkkkkkkkok..',
+      '..kooooooooook..',
+      '...kkkkkkkkkk...',
+      '.c..kccooccck.c.',
+      '..ckccooccccck..',
+      '....kccccccck...',
+      '....kok..kok....',
+      '...kook...kook..',
+      '...kkk.....kkk..',
+    ],
   ],
 };
 
-/** Wide backdrop tiles: classic flat cloud and bush. */
+/** Wide backdrop tiles: the classic flat cloud. */
 export const BACKDROP: Record<string, string[]> = {
   cloud: [
     '................................',
@@ -81,16 +105,6 @@ export const BACKDROP: Record<string, string[]> = {
     '.kwwwwwwwwwwwwwwwwwwwwwwwwwwk...',
     '..kkwwwwwwwwwwwwwwwwwwwwwwwwk...',
     '....kkkkkkkkkkkkkkkkkkkkkkkk....',
-  ],
-  bush: [
-    '..........kkkkkk................',
-    '........kkggggggkk.....kkkk.....',
-    '.....kkkggggggggggkkkkkggggk....',
-    '...kkgggggggggggggggggggggggk...',
-    '..kgggggggGggggggggggGgggggggk..',
-    '.kggggGggggggggGgggggggggggGgk..',
-    'kggggggggggGgggggggggggGgggggggk',
-    'kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk',
   ],
 };
 

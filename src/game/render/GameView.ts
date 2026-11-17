@@ -7,6 +7,7 @@ import { PostPipeline, type PostFrame, type QualitySetting } from './post/Pipeli
 import { PixelSprite } from './sprites';
 import { TerrainView } from './terrain';
 import { loadHdSky, type HdSkyData } from './sky';
+import { RETRO_ROWS, RetroLayer, TILE_PX } from './retro/RetroLayer';
 import { ValleyDressing } from './dressing';
 import { PipModel } from '../pip/PipModel';
 import { PipGLB } from '../pip/PipGLB';
@@ -14,7 +15,7 @@ import type { Game, GameEvent } from '../sim/Game';
 import { MAX_RIFTS, type Era } from '../era/EraSystem';
 import { segmentHitsBox } from '../collision/World';
 import { STAIR, stairStep } from '../level/meadows';
-import { clamp, lerp } from '../math';
+import { clamp, lerp, smoothstep } from '../math';
 
 /** Direction toward the key light used for shading (front-lit so the 2D lane always reads). */
 const SUN_DIR = new THREE.Vector3(-0.45, 0.85, 0.55).normalize();
@@ -85,6 +86,11 @@ export class GameView {
   /** The real (HDRI) sky for the modern generations, once loaded. */
   private hdSky: HdSkyData | null = null;
   private hdActive = false;
+  /** The 8-bit tile renderer (2D only). */
+  private retro: RetroLayer;
+  /** 0..1: how far the 2D camera is locked to whole 8-bit pixels. */
+  private retroCamW = 0;
+  private gl: THREE.WebGLRenderer;
   private blob: THREE.Mesh;
   private motes: THREE.InstancedMesh;
   private moteSeeds: Float32Array;
@@ -126,6 +132,9 @@ export class GameView {
     fieldMin: Array.from({ length: 4 }, () => new THREE.Vector3(0, -999, 0)),
     fieldMax: Array.from({ length: 4 }, () => new THREE.Vector3(0, -999, 0)),
     fieldEra: [0, 0, 0, 0],
+    retro: null,
+    retro2D: false,
+    laneZ: 0,
   };
   private lastDt = 1 / 60;
 
@@ -148,6 +157,8 @@ export class GameView {
     options: ViewOptions = {},
   ) {
     this.options = options;
+    this.gl = gl;
+    this.retro = new RetroLayer(game.level);
     this.level = new LevelView(game.level);
     this.entities = new EntityViews(game, this.level.eras);
     this.scene.add(this.level.group, this.entities.group, this.terrain.group, this.dressing.group);
@@ -222,6 +233,7 @@ export class GameView {
     this.level.dispose();
     this.terrain.dispose();
     this.post.dispose();
+    this.retro.dispose();
     this.pip.dispose();
     this.pipHD.dispose();
     this.pipSprite.dispose();
@@ -379,6 +391,44 @@ export class GameView {
     }
   }
 
+  /**
+   * 8-bit in 2D is drawn one world pixel (1/16 unit) at a time by the tile layer. While 8-bit can be on
+   * screen, the 2D camera looks straight down the lane, sits on whole pixels and frames a whole number of
+   * screen pixels per 8-bit pixel, so the grid never swims or stretches (eased, so other generations keep
+   * their framing). Returns whether the view is fully 2D, i.e. whether the tile layer applies.
+   */
+  private lockRetroCamera(cam: THREE.PerspectiveCamera, target: THREE.Vector3, dt: number): boolean {
+    const g = this.game;
+    const flat = !this.options.split && g.shift.mode === '2d' && !g.shift.transition && g.camera.overrideW < 0.001;
+    eraUniforms.uRetro2D.value = flat ? 1 : 0;
+    const tr = g.era.transition;
+    const eight =
+      flat && ((tr ? tr.from === 0 || tr.to === 0 : g.era.era === 0) || g.era.bubble?.era === 0 || g.era.fields.some((f) => f.era === 0));
+    this.retroCamW = eight ? Math.min(1, this.retroCamW + dt * 1.5) : Math.max(0, this.retroCamW - dt * 1.5);
+    if (!flat) this.retroCamW = 0;
+    if (this.retroCamW <= 0) return flat;
+    const w = smoothstep(0, 1, this.retroCamW);
+    const laneZ = g.shift.laneZ;
+    const dist = cam.position.distanceTo(target);
+    const buf = this.gl.getDrawingBufferSize(new THREE.Vector2());
+    const H = buf.y;
+    // A 1985 frame: ~240 rows (15 tiles tall), each 8-bit pixel a whole number (k) of screen pixels.
+    const k = Math.max(1, Math.round(H / RETRO_ROWS));
+    const fov = THREE.MathUtils.radToDeg(2 * Math.atan(H / (TILE_PX * k) / (2 * dist)));
+    const snap = (v: number) => Math.round(v * TILE_PX) / TILE_PX;
+    // With an odd buffer size the screen centre sits on a half pixel: shift half a screen pixel so 8-bit
+    // pixel edges fall between screen pixels, not on their centres.
+    const half = 0.5 / (TILE_PX * k);
+    const look = new THREE.Vector3(snap(target.x) + (buf.x % 2) * half, snap(target.y) + (buf.y % 2) * half, laneZ);
+    target.lerp(look, w);
+    cam.position.lerp(new THREE.Vector3(look.x, look.y, laneZ + dist), w);
+    cam.fov += (fov - cam.fov) * w;
+    cam.lookAt(target);
+    cam.updateProjectionMatrix();
+    cam.updateMatrixWorld();
+    return flat;
+  }
+
   update(dt: number) {
     const g = this.game;
     this.t += dt;
@@ -400,6 +450,7 @@ export class GameView {
     cam.updateMatrixWorld();
     const camTarget = this.tmp.clone();
     if (split) this.updateSplit(cam, camTarget.y);
+    const retro2D = this.lockRetroCamera(cam, camTarget, dt);
 
     // --- era uniforms
     const tr = g.era.transition;
@@ -623,6 +674,10 @@ export class GameView {
     // and light shafts aim at the sky's actual sun.
     this.level.skyMesh.visible = this.level.skyMesh.visible && !this.hdActive;
     f.sunDir.copy(this.hdActive ? this.hdSky!.sunDir : SKY_SUN);
+    this.retro.update(g.world);
+    f.retro = this.retro;
+    f.retro2D = retro2D;
+    f.laneZ = g.shift.laneZ;
   }
 
   render(gl: THREE.WebGLRenderer) {

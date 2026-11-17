@@ -46,6 +46,11 @@ export interface PostFrame {
   fieldMin: THREE.Vector3[];
   fieldMax: THREE.Vector3[];
   fieldEra: number[];
+  /** The 8-bit tile layer, used wherever a 2D view shows 8-bit (null: none). */
+  retro: { texture: THREE.Texture; origin: THREE.Vector2; size: THREE.Vector2 } | null;
+  /** True while the view is fully 2D (the tile layer applies). */
+  retro2D: boolean;
+  laneZ: number;
 }
 
 const rt = (w: number, h: number, type: THREE.TextureDataType = THREE.HalfFloatType) => {
@@ -174,6 +179,12 @@ export class PostPipeline {
       uFieldMin: { value: Array.from({ length: 4 }, () => new THREE.Vector3(0, -999, 0)) },
       uFieldMax: { value: Array.from({ length: 4 }, () => new THREE.Vector3(0, -999, 0)) },
       uFieldEra: { value: [0, 0, 0, 0] },
+      tRetro: { value: this.black },
+      uRetroOrigin: { value: new THREE.Vector2() },
+      uRetroSize: { value: new THREE.Vector2(1, 1) },
+      uRetro2D: { value: 0 },
+      uLaneZ: { value: 0 },
+      uViewProj: { value: new THREE.Matrix4() },
 
     });
     this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.comp);
@@ -333,6 +344,15 @@ export class PostPipeline {
       (u.uFieldMax.value as THREE.Vector3[])[i].copy(f.fieldMax[i]);
       (u.uFieldEra.value as number[])[i] = f.fieldEra[i];
     }
+
+    u.tRetro.value = f.retro?.texture ?? this.black;
+    if (f.retro) {
+      u.uRetroOrigin.value.copy(f.retro.origin);
+      u.uRetroSize.value.copy(f.retro.size);
+    }
+    u.uRetro2D.value = f.retro && f.retro2D ? 1 : 0;
+    u.uLaneZ.value = f.laneZ;
+    u.uViewProj.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 
     this.pass(gl, this.comp, null);
   }

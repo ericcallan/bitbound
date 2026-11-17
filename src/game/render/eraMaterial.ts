@@ -29,6 +29,8 @@ export const eraUniforms = {
   uValleyX: { value: -1e9 },
   /** Pip's position, so wind shaders (grass, ground cover) part around him. */
   uPip: { value: new THREE.Vector3() },
+  /** 1 while the 2D view draws 8-bit through the tile renderer (render/retro), which replaces the ground. */
+  uRetro2D: { value: 0 },
   /** Early-3D vertex snapping grid (in NDC units per half-screen). */
   uSnapRes: { value: new THREE.Vector2(110, 80) },
 };
@@ -64,6 +66,7 @@ uniform float uFieldEra[4];
 uniform float uTime;
 uniform float uValleyX;
 uniform vec3 uPip;
+uniform float uRetro2D;
 float eraAtWorld(vec3 w) {
   if (uSplit > 0.5) {
     float e = 0.0;
@@ -171,6 +174,8 @@ export interface EraMatOptions {
    * scattered Blender vegetation is 4 (Modern HD and Beyond).
    */
   minEra?: number;
+  /** Level ground the 8-bit tile renderer draws itself: hidden wherever a 2D view shows 8-bit. */
+  retroTile?: boolean;
 }
 
 /**
@@ -202,11 +207,11 @@ export function eraMaterial(o: EraMatOptions): THREE.MeshStandardMaterial {
 export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: Partial<EraMatOptions> = {}): T {
   const local = { uPattern: { value: o.pattern ?? 0 }, uFlatBoost: { value: o.flatBoost ?? 1 } };
   const vertexWorld = o.vertexWorld ?? '';
-  const discardRule = o.hideInValley
-    ? 'if (vEraWorld.x < uValleyX && eraF > 1.5) discard;'
-    : o.minEra
-      ? `if (eraF < ${(o.minEra - 0.5).toFixed(1)}) discard;`
-      : '';
+  const discardRule = [
+    o.hideInValley ? 'if (vEraWorld.x < uValleyX && eraF > 1.5) discard;' : '',
+    o.minEra ? `if (eraF < ${(o.minEra - 0.5).toFixed(1)}) discard;` : '',
+    o.retroTile ? 'if (uRetro2D > 0.5 && eraF < 0.5) discard;' : '',
+  ].join('\n');
   // Chain onto any patch already on the material (e.g. the terrain splat shader).
   const prev = m.onBeforeCompile.bind(m);
   m.onBeforeCompile = (shader, renderer) => {
@@ -304,7 +309,7 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
   };
   const prevKey = m.customProgramCacheKey.bind(m);
   m.customProgramCacheKey = () =>
-    `${prevKey()}|era-v3${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.minEra ? '-me' + o.minEra : ''}`;
+    `${prevKey()}|era-v3${vertexWorld ? '-vw' + vertexWorld.length : ''}${o.physical || (m as unknown as THREE.MeshPhysicalMaterial).isMeshPhysicalMaterial ? '-phys' : ''}${o.hideInValley ? '-hv' : ''}${o.minEra ? '-me' + o.minEra : ''}${o.retroTile ? '-rt' : ''}`;
   return m;
 }
 

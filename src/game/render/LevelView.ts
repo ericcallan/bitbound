@@ -9,17 +9,17 @@ import type { Era } from '../era/EraSystem';
 import { rng } from '../math';
 
 const LOOK_MAT = {
-  dirt: () => sharedEraMaterial('dirt', { color: '#9a6440', pattern: PATTERN.dirt }),
-  grassCap: () => sharedEraMaterial('grassCap', { color: '#52c24a', pattern: PATTERN.grass, roughness: 0.9 }),
-  stone: () => sharedEraMaterial('stoneSolid', { color: '#aaa3bc', pattern: PATTERN.stone }),
-  chamber: () => sharedEraMaterial('chamberFloor', { color: '#8a849e', pattern: PATTERN.stone, roughness: 0.55 }),
-  ruin: () => sharedEraMaterial('ruinSolid', { color: '#c9b99e', pattern: PATTERN.ruin }),
-  hedge: () => eraMaterial({ color: '#2f8f4a', pattern: PATTERN.hedge, roughness: 0.95 }),
-  wood: () => sharedEraMaterial('woodSolid', { color: '#a8703f', pattern: PATTERN.wood }),
-  metal: () => sharedEraMaterial('metalSolid', { color: '#6e7aa0', pattern: PATTERN.metal, metalness: 0.5 }),
+  dirt: () => sharedEraMaterial('dirt', { color: '#9a6440', pattern: PATTERN.dirt, retroTile: true }),
+  grassCap: () => sharedEraMaterial('grassCap', { color: '#52c24a', pattern: PATTERN.grass, roughness: 0.9, retroTile: true }),
+  stone: () => sharedEraMaterial('stoneSolid', { color: '#aaa3bc', pattern: PATTERN.stone, retroTile: true }),
+  chamber: () => sharedEraMaterial('chamberFloor', { color: '#8a849e', pattern: PATTERN.stone, roughness: 0.55, retroTile: true }),
+  ruin: () => sharedEraMaterial('ruinSolid', { color: '#c9b99e', pattern: PATTERN.ruin, retroTile: true }),
+  hedge: () => eraMaterial({ color: '#2f8f4a', pattern: PATTERN.hedge, roughness: 0.95, retroTile: true }),
+  wood: () => sharedEraMaterial('woodSolid', { color: '#a8703f', pattern: PATTERN.wood, retroTile: true }),
+  metal: () => sharedEraMaterial('metalSolid', { color: '#6e7aa0', pattern: PATTERN.metal, metalness: 0.5, retroTile: true }),
   // Ground inside the immersive valley: replaced by the terrain in the 3D generations.
-  valleyDirt: () => sharedEraMaterial('valleyDirt', { color: '#9a6440', pattern: PATTERN.dirt, hideInValley: true }),
-  valleyCap: () => sharedEraMaterial('valleyCap', { color: '#52c24a', pattern: PATTERN.grass, roughness: 0.9, hideInValley: true }),
+  valleyDirt: () => sharedEraMaterial('valleyDirt', { color: '#9a6440', pattern: PATTERN.dirt, hideInValley: true, retroTile: true }),
+  valleyCap: () => sharedEraMaterial('valleyCap', { color: '#52c24a', pattern: PATTERN.grass, roughness: 0.9, hideInValley: true, retroTile: true }),
 };
 /** Level ground pieces whose 3D look the valley terrain takes over. */
 const VALLEY_GROUND = new Set(['g1', 'g2', 'g3']);
@@ -256,14 +256,14 @@ export class LevelView {
         mat = s.id === 'chamberFloor' ? LOOK_MAT.chamber() : LOOK_MAT.stone();
         break;
       case 'ruin':
-        mat = s.occluder ? eraMaterial({ color: '#c9b99e', pattern: PATTERN.ruin }) : LOOK_MAT.ruin();
+        mat = s.occluder ? eraMaterial({ color: '#c9b99e', pattern: PATTERN.ruin, retroTile: true }) : LOOK_MAT.ruin();
         break;
       case 'mural':
         mat = eraMaterial({ color: '#d8c8a8', pattern: PATTERN.ruin, roughness: 0.9 });
         break;
       case 'hedge':
         // A masked hedge needs its own material so it can fade on its own.
-        mat = s.genMask !== undefined ? eraMaterial({ color: '#2f8f45', pattern: PATTERN.hedge, roughness: 0.85, transparent: true }) : LOOK_MAT.hedge();
+        mat = s.genMask !== undefined ? eraMaterial({ color: '#2f8f45', pattern: PATTERN.hedge, roughness: 0.85, transparent: true, retroTile: true }) : LOOK_MAT.hedge();
         break;
       case 'wood':
         mat = LOOK_MAT.wood();
@@ -443,7 +443,7 @@ export class LevelView {
 
   /** Water at the bottom of each pit: flat in pixel eras, reflective and rippling in Beyond. */
   private buildWater() {
-    const mat = eraMaterial({ color: '#2a78b8', roughness: 0.06, metalness: 0.0, pattern: PATTERN.water, transparent: true, opacity: 0.92, hideInValley: true });
+    const mat = eraMaterial({ color: '#2a78b8', roughness: 0.06, metalness: 0.0, pattern: PATTERN.water, transparent: true, opacity: 0.92, hideInValley: true, retroTile: true });
     for (const p of this.level.pits) {
       const water = new THREE.Mesh(new THREE.PlaneGeometry(p.x1 - p.x0, 5.5, 24, 6), mat);
       water.rotation.x = -Math.PI / 2;
@@ -552,7 +552,8 @@ export class LevelView {
         s.position.set(x, r() * 0.8, 0);
         cR.add(s);
       }
-      this.eras.variants(g, [[c8, E(0)], [cL, E(2)], [cR, E(1, 5, [2])]], pos, false);
+      // 8-bit clouds are drawn by the tile renderer.
+      this.eras.variants(g, [[cL, E(2)], [cR, E(1, 5, [2])]], pos, false);
       g.userData.speed = 0.3 + r() * 0.5;
       this.clouds.push(g);
       this.group.add(g);

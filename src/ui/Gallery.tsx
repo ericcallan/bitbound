@@ -169,6 +169,9 @@ function PipLineup({ pose }: { pose: (typeof POSES)[number] }) {
       scene,
       camera as THREE.PerspectiveCamera,
       {
+        retro: null,
+        retro2D: false,
+        laneZ: 0,
         eraFrom: 0,
         eraTo: 0,
         center: new THREE.Vector3(),
