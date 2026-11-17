@@ -14,10 +14,10 @@ const cache = new Map<string, Promise<GLTF>>();
 const loaded = new Map<string, GLTF>();
 const listeners = new Set<() => void>();
 
-export type AssetName = 'rocks' | 'pip' | 'tree' | 'gateway' | 'vegetation' | 'terrain';
+export type AssetName = 'rocks' | 'pip' | 'tree' | 'gateway' | 'vegetation' | 'props' | 'terrain';
 
 /** Assets fetched as soon as the game starts. */
-export const PRELOAD: AssetName[] = ['rocks', 'pip', 'terrain', 'tree', 'gateway', 'vegetation'];
+export const PRELOAD: AssetName[] = ['rocks', 'pip', 'terrain', 'tree', 'gateway', 'vegetation', 'props'];
 
 /**
  * Per-material set-up by name (material names come from the Blender scripts). Scattered vegetation only

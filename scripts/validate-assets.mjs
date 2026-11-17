@@ -30,6 +30,7 @@ const SPEC = {
   tree: { nodes: ['great_tree', 'meadow_tree', 'meadow_tree_lod1'], maxTris: 120000, maxKB: 4000, height: [5, 16], baseTolerance: 0.5 },
   gateway: { nodes: ['shard_arch', 'ruin_column', 'block_step1', 'block_step2', 'block_float1', 'block_plinth', 'block_cliff'], maxTris: 90000, maxKB: 2500, height: [2, 32] },
   vegetation: { nodes: ['grass_clump', 'tall_grass', 'flower_white', 'flower_violet', 'fern'], maxTris: 3000, maxKB: 200, height: [0.3, 1.2] },
+  props: { nodes: ['mushroom_cluster', 'signpost'], maxTris: 20000, maxKB: 800, height: [0.3, 2] },
   terrain: { nodes: ['valley_terrain'], maxTris: 320000, maxKB: 9000, height: [3, 80] },
 };
 /** Extensions src/game/render/assets.ts can load. */

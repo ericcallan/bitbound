@@ -61,6 +61,34 @@ export const M = {
   cloud: () => sharedEraMaterial('cloud', { color: '#ffffff', roughness: 1, flatBoost: 1.08, emissive: '#cfe6ff', emissiveIntensity: 0.25 }),
 };
 
+/** Modern HD / Beyond materials for the hero plants: velvety petals, waxy leaves, glossy eyes. */
+const HD = {
+  petal: () => sharedEraMaterial('hdPetal', { color: '#ff86b4', roughness: 0.55, physical: { sheen: 1, sheenColor: new THREE.Color('#ffd1e4') } }),
+  head: () => sharedEraMaterial('hdHead', { color: '#7d48d0', roughness: 0.45, physical: { sheen: 0.7, sheenColor: new THREE.Color('#c9a6ff'), clearcoat: 0.25 } }),
+  stem: () => sharedEraMaterial('hdStem', { color: '#2e8a3e', roughness: 0.5, physical: { clearcoat: 0.3, clearcoatRoughness: 0.4 } }),
+  leaf: () => sharedEraMaterial('hdLeaf', { color: '#2a7a3a', roughness: 0.48, side: THREE.DoubleSide, physical: { clearcoat: 0.45, clearcoatRoughness: 0.35, sheen: 0.3 } }),
+  eye: () => sharedEraMaterial('hdEye', { color: '#ffffff', roughness: 0.15, physical: { clearcoat: 1, clearcoatRoughness: 0.05 } }),
+  pupil: () => sharedEraMaterial('hdPupil', { color: '#0c1024', roughness: 0.08, physical: { clearcoat: 1, clearcoatRoughness: 0.02 } }),
+};
+
+/** A pointed leaf blade: a thin, curved, two-sided shape. */
+function leafBlade(len: number, width: number, mat: THREE.Material) {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.quadraticCurveTo(len * 0.45, width, len, 0);
+  shape.quadraticCurveTo(len * 0.45, -width, 0, 0);
+  const geo = new THREE.ShapeGeometry(shape, 10);
+  // curl the blade: lift the edges and droop the tip
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i);
+    const y = pos.getY(i);
+    pos.setZ(i, Math.abs(y) * 0.6 - (x / len) ** 2 * len * 0.25);
+  }
+  geo.computeVertexNormals();
+  return new THREE.Mesh(geo, mat);
+}
+
 const box = (w: number, h: number, d: number, mat: THREE.Material) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
 const rbox = (w: number, h: number, d: number, r: number, mat: THREE.Material) =>
   new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 2, r), mat);
@@ -190,22 +218,79 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       smile.position.set(0, -0.14 * s, 0.42 * s);
       head.add(smile);
       plant.add(head);
-      reg.variants(g, [[plant, E(1, 5)]], anchor, true);
+
+      // Modern HD and Beyond: the same character, built with real detail. A curving stem, curled blades,
+      // shaped velvet petals in two rings, glossy eyes with a catch-light.
+      const plantHD = new THREE.Group();
+      const curve = new THREE.CatmullRomCurve3([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0.05 * s, stemH * 0.35, 0.02 * s),
+        new THREE.Vector3(-0.04 * s, stemH * 0.7, -0.02 * s),
+        new THREE.Vector3(0, stemH + 0.05 * s, 0),
+      ]);
+      const stemHD = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.06 * s, 10), HD.stem());
+      plantHD.add(stemHD);
+      for (const [y, a, len] of [[0.35, 0.3, 0.75], [0.6, Math.PI + 0.4, 0.65], [0.9, 1.9, 0.5]] as const) {
+        const blade = leafBlade(len * s, 0.16 * s, HD.leaf());
+        blade.position.set(0, y * s, 0);
+        blade.rotation.set(-Math.PI / 2 + 0.55, a, 0);
+        plantHD.add(blade);
+      }
+      const headHD = new THREE.Group();
+      headHD.position.y = stemH + 0.25 * s;
+      const bulbHD = new THREE.Mesh(new THREE.SphereGeometry(0.48 * s, 40, 28), HD.head());
+      bulbHD.scale.set(1, 0.92, 0.88);
+      headHD.add(bulbHD);
+      for (let ring = 0; ring < 2; ring++) {
+        const n = ring ? 11 : 9;
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * Math.PI * 2 + ring * 0.3;
+          const len = (ring ? 0.3 : 0.36) * s;
+          const petal = leafBlade(len, 0.13 * s, HD.petal());
+          petal.position.set(Math.cos(a) * 0.4 * s, Math.sin(a) * 0.4 * s, (-0.1 - ring * 0.06) * s);
+          petal.rotation.set(0, 0.35, a);
+          headHD.add(petal);
+        }
+      }
+      const eyesHD: THREE.Object3D[] = [];
+      for (const ex of [-0.17, 0.17]) {
+        const eye = new THREE.Group();
+        eye.position.set(ex * s, 0.06 * s, 0.36 * s);
+        eye.add(new THREE.Mesh(new THREE.SphereGeometry(0.12 * s, 24, 16), HD.eye()));
+        eye.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.062 * s, 20, 14), HD.pupil()), 0, 0, 0.075 * s));
+        eye.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.018 * s, 8, 6), M.white()), 0.025 * s, 0.03 * s, 0.13 * s));
+        headHD.add(eye);
+        eyesHD.push(eye);
+      }
+      const smileHD = new THREE.Mesh(new THREE.TorusGeometry(0.1 * s, 0.018 * s, 10, 24, Math.PI), HD.pupil());
+      smileHD.rotation.z = Math.PI;
+      smileHD.position.set(0, -0.14 * s, 0.4 * s);
+      headHD.add(smileHD);
+      plantHD.add(headHD);
+      plantHD.traverse((o) => ((o as THREE.Mesh).isMesh && (o.castShadow = true)));
+
+      reg.variants(g, [[plant, E(1, 3)], [plantHD, E(4, 5)]], anchor, true);
       const phase = r() * 10;
       let blink = 0;
+      const rigs = [
+        { root: plant, head, eyes, stem },
+        { root: plantHD, head: headHD, eyes: eyesHD, stem: stemHD },
+      ];
       anim = {
         update(t, ctx) {
-          if (!plant.visible) return;
           const dx = ctx.pip.x - def.pos.x;
           const want = Math.max(-0.9, Math.min(0.9, Math.atan2(dx, 3)));
-          head.rotation.y += (want - head.rotation.y) * 0.08;
           const near = Math.abs(dx) < 3 ? 1 : 0;
-          head.position.y = stemH + 0.25 * s + Math.sin(t * (2 + near * 4) + phase) * (0.04 + near * 0.06) * s;
-          head.rotation.z = Math.sin(t * 1.3 + phase) * 0.08;
-          stem.rotation.z = Math.sin(t * 1.3 + phase) * 0.04;
           blink -= 1 / 60;
           if (blink < -3 - (phase % 2)) blink = 0.12;
-          for (const e of eyes) e.scale.y = blink > 0 ? 0.15 : 1;
+          for (const k of rigs) {
+            if (!k.root.visible) continue;
+            k.head.rotation.y += (want - k.head.rotation.y) * 0.08;
+            k.head.position.y = stemH + 0.25 * s + Math.sin(t * (2 + near * 4) + phase) * (0.04 + near * 0.06) * s;
+            k.head.rotation.z = Math.sin(t * 1.3 + phase) * 0.08;
+            k.stem.rotation.z = Math.sin(t * 1.3 + phase) * 0.04;
+            for (const e of k.eyes) e.scale.y = blink > 0 ? 0.15 : 1;
+          }
         },
       };
       break;
@@ -247,7 +332,9 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
         dot.position.y = 0.36 + Math.sqrt(Math.max(0, 0.34 * 0.34 - 0.22 * 0.22));
         mR.add(dot);
       }
-      reg.variants(g, [[mR, E(1, 5)]], anchor, false);
+      // Modern HD and Beyond: a Blender cluster of wild mushrooms
+      const mHD = assetSlot('props', 'mushroom_cluster', new THREE.Group(), 1.15, r() * Math.PI * 2);
+      reg.variants(g, [[mR, E(1, 3)], [mHD, E(4, 5)]], anchor, false);
       g.scale.setScalar(s);
       break;
     }
@@ -349,7 +436,9 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       arrow.rotation.z = -Math.PI / 2;
       sg.add(at(arrow, 0.38, 1.0, 0.06));
       sg.add(at(box(0.4, 0.08, 0.02, M.cream()), 0.0, 1.0, 0.06));
-      g.add(sg);
+      // Modern HD and Beyond: a weathered Blender signpost
+      const signHD = assetSlot('props', 'signpost', new THREE.Group());
+      reg.variants(g, [[sg, E(0, 3)], [signHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'crystal': {
