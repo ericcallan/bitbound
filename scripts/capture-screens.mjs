@@ -12,6 +12,8 @@ const SHOTS = [
   ['aqueduct-modernhd-2d', '?scenario=aqueduct&era=4'],
   ['aqueduct-beyond-3d', '?scenario=aqueduct3d'],
   ['aqueduct-modernhd-3d', '?scenario=aqueduct3d&era=4'],
+  ['aqueduct-overview-beyond', '?scenario=aqueductView'],
+  ['aqueduct-overview-modernhd', '?scenario=aqueductView&era=4'],
   ['seal-beyond-3d', '?scenario=seal'],
   ['ruins-beyond-3d', '?scenario=ruins3d'],
   ['chamber-beyond-3d', '?scenario=chamber'],

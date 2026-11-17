@@ -127,6 +127,17 @@ export function terrainMaterial(minEra = 2) {
           A.rgb *= 0.88 + band * 0.24;
           A.rgb = mix(A.rgb, vec3(0.86, 0.7, 0.46), step(0.5, W.z) * 0.25);
         }
+        // Modern HD and Beyond: steep rock is bedded stone. Thin darker seams and a slightly different tone per
+        // layer, wandering a little, so cliffs read as layered formations rather than one smeared face.
+        if (tEra > 3.5 && W.y > 0.05) {
+          float wander = noiseT(vTerrW.xz * 0.03).x * 0.9 + noiseT(vTerrW.xz * 0.11).y * 0.25;
+          float layerF = vTerrW.y * 0.42 + wander;
+          float band = fract(layerF);
+          float seam = smoothstep(0.0, 0.04, band) * (1.0 - smoothstep(0.04, 0.12, band));
+          float tone = 0.84 + 0.3 * fract(sin(floor(layerF) * 12.9898) * 43758.5453);
+          vec3 layerTint = mix(vec3(1.04, 0.98, 0.9), vec3(0.94, 0.96, 1.02), step(0.5, fract(floor(layerF) * 0.5)));
+          A.rgb = mix(A.rgb, A.rgb * tone * layerTint * (1.0 - seam * 0.45), W.y);
+        }
         if (tEra > 4.5) {
           // the far heights: scree and bare rock, then snow on the flatter tops
           float n = noiseT(vTerrW.xz * 0.004).z - 0.5;

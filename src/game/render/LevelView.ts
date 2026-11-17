@@ -23,6 +23,8 @@ const LOOK_MAT = {
 };
 /** Solid blocks in the valley rebuilt as Blender stone (scripts/blender/create_gateway.py). */
 const VALLEY_BLOCKS = new Set(STONE_BLOCKS);
+/** The aqueduct halves are whole viaducts (scripts/blender/create_aqueduct.py), from Early 3D up. */
+const AQUEDUCT_HALVES: Record<string, string> = { aqA: 'aq_half_A', aqB: 'aq_half_B' };
 
 /** The sun as seen in the sky (and the source of Beyond's light shafts): low, behind the lane. */
 export const SKY_SUN = new THREE.Vector3(-0.38, 0.3, -0.87).normalize();
@@ -145,7 +147,17 @@ export class LevelView {
     this.eras.add(sky, E(1, 5), false, new THREE.Vector3(60, 0, 0));
   }
 
+  /** The seal door's meshes: they sink into the ground as it opens (GameView drives it from game.sealOpen). */
+  sealDoor = new THREE.Group();
+
   private buildSolid(s: SolidDef) {
+    if (s.id === 'sealDoor') {
+      const before = this.group.children.length;
+      this.buildSolidInner(s);
+      for (const o of this.group.children.splice(before)) this.sealDoor.add(o);
+      this.group.add(this.sealDoor);
+      return;
+    }
     if (!VALLEY_BLOCKS.has(s.id)) return this.buildSolidInner(s);
     // Steps, slabs and plinths in the valley: weathered Blender stone, exactly collider-sized, from Modern HD up.
     const before = this.group.children.length;
@@ -154,11 +166,12 @@ export class LevelView {
     for (const o of this.group.children.splice(before)) old.add(o);
     const { min, max } = s.box;
     const anchor = new THREE.Vector3((min.x + max.x) / 2, max.y, (min.z + max.z) / 2);
-    const hd = assetSlot('gateway', `block_${s.id}`, new THREE.Group());
+    const aq = AQUEDUCT_HALVES[s.id];
+    const hd = assetSlot(aq ? 'aqueduct' : 'gateway', aq ?? `block_${s.id}`, new THREE.Group());
     hd.position.set(anchor.x, min.y, anchor.z);
     this.group.add(old, hd);
-    this.eras.add(old, E(0, 3), false, anchor);
-    this.eras.add(hd, E(4, 5), false, anchor);
+    this.eras.add(old, aq ? E(0, 1) : E(0, 3), false, anchor);
+    this.eras.add(hd, aq ? E(2, 5) : E(4, 5), false, anchor);
   }
 
   private buildSolidInner(s: SolidDef) {

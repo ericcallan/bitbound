@@ -7,6 +7,7 @@ import { PostPipeline, type PostFrame, type QualitySetting } from './post/Pipeli
 import { PixelSprite } from './sprites';
 import { TerrainView } from './terrain';
 import { TitleSet } from './titleSet';
+import { AqueductView } from './aqueduct';
 import { TITLE } from '../level/title';
 import { loadHdSky, type HdSkyData, type SkyName } from './sky';
 import { initTextures } from './textures';
@@ -83,6 +84,7 @@ export class GameView {
   /** The immersive valley (Blender terrain) the level sits in. */
   terrain = new TerrainView();
   title: TitleSet | null = null;
+  aqueduct: AqueductView | null = null;
   /** Extra sky rotation (radians about +y): the title set's lighting angle. */
   skyYaw = 0;
   /** Forest, grass, flowers and rocks scattered over the valley (Modern HD and Beyond). */
@@ -198,6 +200,14 @@ export class GameView {
     this.level = new LevelView(game.level);
     this.entities = new EntityViews(game, this.level.eras);
     this.scene.add(this.level.group, this.entities.group, this.terrain.group, this.dressing.group);
+    if (!this.options.title && !this.options.split) {
+      const box = (id: string) => {
+        const c = game.world.get(id)!;
+        return new THREE.Box3(new THREE.Vector3(c.min.x, c.min.y, c.min.z), new THREE.Vector3(c.max.x, c.max.y, c.max.z));
+      };
+      this.aqueduct = new AqueductView({ aqA: box('aqA'), aqB: box('aqB') });
+      this.scene.add(this.aqueduct.group);
+    }
     if (this.options.title) {
       this.skyYaw = TITLE.skyYaw;
       this.title = new TitleSet();
@@ -295,6 +305,7 @@ export class GameView {
     this.level.dispose();
     this.terrain.dispose();
     this.title?.dispose();
+    this.aqueduct?.dispose();
     this.post.dispose();
     this.retro.dispose();
     this.retro16.dispose();
@@ -785,6 +796,15 @@ export class GameView {
     const valley = (!split || !!this.options.immersive) && !this.title;
     this.terrain.group.visible = valley && f.maxEra >= 2;
     this.dressing.group.visible = valley && f.maxEra >= 4;
+    // the seal door sinks into the ground once its glyphs are read (its collider is already gone)
+    this.level.sealDoor.position.y = -g.sealOpen * 5.3;
+    this.level.sealDoor.visible = g.sealOpen < 0.999;
+    if (this.aqueduct) {
+      // the canyon's dressing exists from Early 3D up, and only matters near the Halo Path's end
+      const near = Math.abs(camTarget.x - 220) < 90;
+      this.aqueduct.group.visible = near && f.maxEra >= 2;
+      if (this.aqueduct.group.visible) this.aqueduct.update(dt);
+    }
     if (this.title) {
       // the title set stands alone: the level is hundreds of units away and never in its frame
       this.level.group.visible = this.entities.group.visible = false;
@@ -808,7 +828,7 @@ export class GameView {
     // The camera target tracks Pip in play and frames the subject in cinematics/gallery views.
     f.focus.copy(camTarget);
     // 2D keeps the depth of field gentle: the walls and ruins just behind the lane are part of the play space.
-    f.dof = split ? 0 : g.cine ? 0.6 : g.shift.mode === '2d' ? 0.28 : 0.4;
+    f.dof = split ? 0 : g.cine ? 0.6 : g.shift.mode === '2d' ? 0.16 : 0.4;
     if (this.title) {
       // the title: Pip in focus, the valley only slightly soft
       f.focus.copy(pipPos);

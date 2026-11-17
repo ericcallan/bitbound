@@ -4,6 +4,7 @@ import { terrainMaterial } from './terrain';
 import { eraMaterial, eraUniforms, PATTERN } from './eraMaterial';
 import { TITLE, titleHeight, titleRock } from '../level/title';
 import { fbm } from '../level/valley';
+import { makeWaterfall, type Waterfall } from './waterfall';
 
 /** Deterministic random numbers, so the set is composed the same way every time. */
 function rng(seed: number) {
@@ -62,8 +63,7 @@ export class TitleSet {
   group = new THREE.Group();
   ready = false;
   private time = 0;
-  private fallMat: THREE.ShaderMaterial | null = null;
-  private mist: THREE.Sprite[] = [];
+  private fall: Waterfall | null = null;
   private shard: THREE.Mesh | null = null;
   private ringGlow: THREE.MeshStandardMaterial | null = null;
   private banners: THREE.Mesh[] = [];
@@ -422,73 +422,8 @@ export class TitleSet {
       const arc = lipZ + 0.6 + Math.sqrt(k) * 2.1;
       pts.push(new THREE.Vector3(fx, y, Math.max(arc, faceZ(y) + 0.45)));
     }
-    const widthTop = 1.6;
-    const widthBot = 2.4;
-    const pos: number[] = [];
-    const uv: number[] = [];
-    const idx: number[] = [];
-    pts.forEach((p, i) => {
-      const k = i / N;
-      const w = widthTop + (widthBot - widthTop) * k;
-      pos.push(p.x - w / 2, p.y, p.z, p.x + w / 2, p.y, p.z);
-      uv.push(0, k, 1, k);
-      if (i < N) idx.push(i * 2, i * 2 + 1, i * 2 + 2, i * 2 + 1, i * 2 + 3, i * 2 + 2);
-    });
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    g.setIndex(idx);
-    this.fallMat = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      uniforms: { uTime: eraUniforms.uTime, uNoiseTex: eraUniforms.uNoiseTex },
-      vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `
-        varying vec2 vUv; uniform float uTime; uniform sampler2D uNoiseTex;
-        void main() {
-          float x = vUv.x;
-          float edge = smoothstep(0.0, 0.2, x) * smoothstep(1.0, 0.8, x);
-          float n1 = texture2D(uNoiseTex, vec2(x * 2.2, vUv.y * 1.1 - uTime * 0.9)).r;
-          float n2 = texture2D(uNoiseTex, vec2(x * 5.0 + 0.3, vUv.y * 2.6 - uTime * 1.7)).g;
-          float streak = smoothstep(0.32, 0.78, n1 * 0.6 + n2 * 0.55);
-          vec3 col = mix(vec3(0.42, 0.62, 0.64), vec3(0.96, 0.98, 1.0), streak);
-          float lip = smoothstep(0.0, 0.06, vUv.y);
-          float foot = smoothstep(0.82, 1.0, vUv.y);
-          col = mix(col, vec3(1.0), foot * 0.6);
-          float a = edge * lip * (0.5 + 0.45 * streak) * (1.0 - foot * 0.25);
-          gl_FragColor = vec4(col * 1.05, a);
-        }`,
-    });
-    const fall = new THREE.Mesh(g, this.fallMat);
-    fall.renderOrder = 2;
-    this.group.add(fall);
-
-    // mist where it lands: soft additive puffs that rise and fade
-    const cv = document.createElement('canvas');
-    cv.width = cv.height = 64;
-    const c = cv.getContext('2d')!;
-    const grd = c.createRadialGradient(32, 32, 0, 32, 32, 32);
-    grd.addColorStop(0, 'rgba(255,255,255,0.55)');
-    grd.addColorStop(1, 'rgba(255,255,255,0)');
-    c.fillStyle = grd;
-    c.fillRect(0, 0, 64, 64);
-    const tex = new THREE.CanvasTexture(cv);
-    const base = pts[pts.length - 1];
-    for (let i = 0; i < 14; i++) {
-      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0.4, color: '#eef6f4' }));
-      sp.userData = { phase: i / 14, ox: (Math.random() - 0.5) * 2.6, oz: (Math.random() - 0.2) * 1.6, base: base.clone() };
-      this.mist.push(sp);
-      this.group.add(sp);
-    }
-    // foam ring on the pool
-    const foam = new THREE.Mesh(
-      new THREE.CircleGeometry(1.9, 32),
-      new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, color: '#ffffff', opacity: 0.85 }),
-    );
-    foam.rotation.x = -Math.PI / 2;
-    foam.position.set(base.x, T.waterY + 0.03, base.z + 0.4);
-    this.group.add(foam);
+    this.fall = makeWaterfall(pts, new THREE.Vector3(1, 0, 0), 1.6, 2.4, { waterY: T.waterY });
+    this.group.add(this.fall.group);
   }
 
   /** Boulders where rock would gather: the cliff foot, the pool shore, the terrace edge. */
@@ -635,17 +570,11 @@ export class TitleSet {
     }
     if (this.ringGlow) this.ringGlow.emissiveIntensity = 2.2 + Math.sin(t * 2.1) * 0.6;
     if (this.island) this.island.position.y = 21 + Math.sin(t * 0.35) * 0.4;
-    for (const sp of this.mist) {
-      const u = sp.userData as { phase: number; ox: number; oz: number; base: THREE.Vector3 };
-      const k = (u.phase + t * 0.12) % 1;
-      sp.position.set(u.base.x + u.ox * (0.6 + k), TITLE.waterY + 0.3 + k * 3.2, u.base.z + u.oz + k * 0.8);
-      const size = 1.6 + k * 3.4;
-      sp.scale.set(size, size, 1);
-      (sp.material as THREE.SpriteMaterial).opacity = 0.32 * Math.sin(k * Math.PI);
-    }
+    this.fall?.update(dt);
   }
 
   dispose() {
+    this.fall?.dispose();
     this.group.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.geometry && !this.borrowed.has(m.geometry)) m.geometry.dispose();

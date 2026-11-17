@@ -68,6 +68,14 @@ export const SCENARIOS: Record<string, Scenario> = {
   plateau: { label: 'Plateau', era: 5, mode: '2d', pos: { x: 140, y: 9, z: 0 }, save: LATE },
   aqueduct: { label: 'Broken aqueduct', era: 5, mode: '2d', pos: { x: 219, y: 12.5, z: 0 }, save: LATE },
   aqueduct3d: { label: 'Broken aqueduct (3D, on the far half)', era: 5, mode: '3d', pos: { x: 215.5, y: 12.5, z: -5.4 }, save: LATE },
+  aqueductView: {
+    label: 'Broken aqueduct (3D overview)',
+    era: 5,
+    mode: '3d',
+    pos: { x: 224, y: 12.5, z: 5.4 },
+    camera: { target: { x: 219, y: 8, z: 0 }, yaw: 0.85, pitch: 0.42, fov: 50, dist: 26 },
+    save: LATE,
+  },
   seal: { label: 'Seal door (3D)', era: 5, mode: '3d', pos: { x: 210, y: 12.5, z: 0 }, save: LATE },
   summit: { label: 'Summit', era: 5, mode: '2d', pos: { x: 236, y: 12.5, z: 0 }, save: LATE },
 };

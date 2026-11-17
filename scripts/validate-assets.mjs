@@ -29,6 +29,9 @@ const SPEC = {
   // roots sink into the ground by design
   tree: { nodes: ['great_tree', 'meadow_tree', 'meadow_tree_lod1'], maxTris: 120000, maxKB: 4000, height: [5, 16], baseTolerance: 0.5 },
   gateway: { nodes: ['shard_arch', 'ruin_column', 'block_step1', 'block_step2', 'block_float1', 'block_plinth', 'block_cliff'], maxTris: 90000, maxKB: 2500, height: [2, 32] },
+  // two viaduct halves from the river to the deck, plus fallen stones; textured at runtime (no images). The halves
+  // hang from their origin (the deck's underside, where the game places them), so the base check is off.
+  aqueduct: { nodes: ['aq_half_A', 'aq_half_B', 'aq_rubble'], maxTris: 60000, maxKB: 900, height: [14, 18], hangs: true },
   vegetation: { nodes: ['grass_clump', 'tall_grass', 'flower_white', 'flower_violet', 'fern'], maxTris: 3000, maxKB: 200, height: [0.3, 1.2] },
   props: { nodes: ['mushroom_cluster', 'signpost'], maxTris: 20000, maxKB: 800, height: [0.3, 2] },
   terrain: { nodes: ['valley_terrain'], maxTris: 320000, maxKB: 9000, height: [3, 80] },
@@ -76,7 +79,7 @@ for (const f of fs.readdirSync(DIR).filter((x) => x.endsWith('.glb'))) {
     for (const a of spec.animations ?? []) if (!anims.has(a)) errs.push(`missing animation ${a}`);
     if (tris > spec.maxTris) errs.push(`${tris} tris > ${spec.maxTris}`);
     if (kb > spec.maxKB) errs.push(`${kb.toFixed(0)} KB > ${spec.maxKB} KB`);
-    if (Math.abs(b.min[1]) > (spec.baseTolerance ?? 0.05) && name !== 'terrain') errs.push(`origin not at base: min y ${b.min[1].toFixed(3)}`);
+    if (Math.abs(b.min[1]) > (spec.baseTolerance ?? 0.05) && name !== 'terrain' && !spec.hangs) errs.push(`origin not at base: min y ${b.min[1].toFixed(3)}`);
     if (name !== 'rocks' && (h < spec.height[0] || h > spec.height[1])) errs.push(`height ${h.toFixed(2)} outside ${spec.height}`);
   } else errs.push('no spec (add one to scripts/validate-assets.mjs)');
   failed += errs.length ? 1 : 0;

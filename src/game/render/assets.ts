@@ -15,10 +15,10 @@ const cache = new Map<string, Promise<GLTF>>();
 const loaded = new Map<string, GLTF>();
 const listeners = new Set<() => void>();
 
-export type AssetName = 'rocks' | 'pip' | 'tree' | 'gateway' | 'vegetation' | 'props' | 'terrain';
+export type AssetName = 'rocks' | 'pip' | 'tree' | 'gateway' | 'aqueduct' | 'vegetation' | 'props' | 'terrain';
 
 /** Assets fetched as soon as the game starts. */
-export const PRELOAD: AssetName[] = ['rocks', 'pip', 'terrain', 'tree', 'gateway', 'vegetation', 'props'];
+export const PRELOAD: AssetName[] = ['rocks', 'pip', 'terrain', 'tree', 'gateway', 'aqueduct', 'vegetation', 'props'];
 
 /**
  * Per-material set-up by name (material names come from the Blender scripts). Scattered vegetation only
@@ -54,11 +54,12 @@ function mossyStone(m: THREE.MeshStandardMaterial) {
  * Large stone (chamber walls, aqueduct, the relief cliff): the scanned masonry projected from all three axes
  * at runtime, so it stays sharp at any size without a unique bake; moss on top in Beyond.
  */
-function projectedStone(m: THREE.MeshStandardMaterial) {
+function projectedStone(m: THREE.MeshStandardMaterial, scale = 2.2, tint = '#ffffff') {
+  const S = scale.toFixed(2);
   const alb = textureUniform('stone_albedo');
   const nrm = textureUniform('stone_normal');
   const moss = textureUniform('moss_albedo');
-  m.color.set('#ffffff');
+  m.color.set(tint);
   m.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, { tStoneA: alb, tStoneN: nrm, tMoss: moss });
     shader.fragmentShader = shader.fragmentShader
@@ -74,29 +75,31 @@ function projectedStone(m: THREE.MeshStandardMaterial) {
         `#include <color_fragment>
         stoneGN = normalize(cross(dFdx(vEraWorld), dFdy(vEraWorld)));
         stoneW = pow(abs(stoneGN), vec3(4.0)); stoneW /= stoneW.x + stoneW.y + stoneW.z;
-        vec4 sa = tri(tStoneA, vEraWorld, stoneW, 2.2);
+        vec4 sa = tri(tStoneA, vEraWorld, stoneW, ${S});
         diffuseColor.rgb *= sa.rgb;
+        // Stylized: no photographs; two flat painted tones following the masonry
+        if (eraF > 2.5 && eraF < 3.5) diffuseColor.rgb = mix(vec3(0.62, 0.52, 0.45), vec3(0.8, 0.7, 0.58), step(0.42, dot(sa.rgb, vec3(0.333))));
         if (eraF > 4.5) {
           float top = smoothstep(0.45, 0.85, abs(stoneGN.y));
           float patches = smoothstep(0.42, 0.62, fbm(vEraWorld * 1.4)) * top + smoothstep(0.72, 0.86, fbm(vEraWorld * 2.3)) * 0.35;
           diffuseColor.rgb = mix(diffuseColor.rgb, texture2D(tMoss, vEraWorld.xz / 1.6).rgb * vec3(0.75, 1.0, 0.62), clamp(patches, 0.0, 1.0) * 0.85);
         }`,
       )
-      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = clamp(tri(tStoneA, vEraWorld, stoneW, 2.2).a, 0.4, 1.0);')
+      .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\nroughnessFactor = clamp(tri(tStoneA, vEraWorld, stoneW, ${S}).a, 0.4, 1.0);`)
       .replace(
         '#include <normal_fragment_maps>',
         `#include <normal_fragment_maps>
         {
-          vec3 nx = texture2D(tStoneN, vEraWorld.zy / 2.2).xyz * 2.0 - 1.0;
-          vec3 ny = texture2D(tStoneN, vEraWorld.xz / 2.2).xyz * 2.0 - 1.0;
-          vec3 nz = texture2D(tStoneN, vEraWorld.xy / 2.2).xyz * 2.0 - 1.0;
+          vec3 nx = texture2D(tStoneN, vEraWorld.zy / ${S}).xyz * 2.0 - 1.0;
+          vec3 ny = texture2D(tStoneN, vEraWorld.xz / ${S}).xyz * 2.0 - 1.0;
+          vec3 nz = texture2D(tStoneN, vEraWorld.xy / ${S}).xyz * 2.0 - 1.0;
           vec3 pert = vec3(0.0, nx.y, nx.x) * stoneW.x + vec3(ny.x, 0.0, ny.y) * stoneW.y + vec3(nz.x, nz.y, 0.0) * stoneW.z;
           vec3 wn = normalize((vec4(normal, 0.0) * viewMatrix).xyz + pert * 0.9);
           normal = normalize((viewMatrix * vec4(wn, 0.0)).xyz);
         }`,
       );
   };
-  m.customProgramCacheKey = () => 'projected-stone-v1';
+  m.customProgramCacheKey = () => `projected-stone-v2-${S}`;
 }
 
 /** Beyond: light flows along the teal glyph inlays instead of a steady glow. */
@@ -120,6 +123,11 @@ function materialRules(m: THREE.MeshStandardMaterial): Partial<EraMatOptions> {
   if (n.startsWith('ancient_glyph')) {
     flowingGlyph(m);
     return {};
+  }
+  if (n.startsWith('stone_wall_tri_large')) {
+    // big structures (the aqueduct): larger blocks of warmer stone, so they read as masonry from across a canyon
+    projectedStone(m, 3.6, '#f2dfc6');
+    return { cutaway: true };
   }
   if (n.startsWith('stone_wall_tri')) {
     projectedStone(m);

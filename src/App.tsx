@@ -30,6 +30,7 @@ export function App() {
     setReady(true);
     // Dev builds: ?scenario=<name> starts straight into a fixed, reproducible game state.
     if (import.meta.env.DEV) {
+      void import('./dev/perf');
       void import('./dev/scenarios').then((m) => {
         const sc = m.requestedScenario();
         if (sc) m.bootScenario(sc);

@@ -47,6 +47,8 @@ const PROBES: [number, number][] = [
 /** The camera keeps at least this much air between itself and the terrain along its view of Pip. */
 const TERRAIN_CLEARANCE = 0.35;
 
+/** On an aligned deck, the 2D camera looks at this height above it (see the 2D eye level below). */
+const ALIGN_LOOK = 0.35;
 /** Distance of the 2D camera from the lane (its framing is fixed by CAM2D.fov and viewHeight). */
 const DIST2D = CAM2D.viewHeight / (2 * Math.tan(((CAM2D.fov / 2) * Math.PI) / 180));
 
@@ -162,7 +164,12 @@ export class CameraRig {
     if (ctx.alignY != null) this.alignY = ctx.alignY;
     this.alignW = damp(this.alignW, ctx.alignY != null ? 1 : 0, 2.2, dt);
     this.zoom2 = damp(this.zoom2, ctx.zoom2D ?? 1, 2, dt);
-    const level2 = Math.asin(clamp((this.alignY - this.y2) / (DIST2D * this.zoom2), -0.5, 0.5));
+    // Looking at a point just above the deck: the horizon (and Pip on it) sits a little above the middle of the
+    // frame, and the structure under the bridge fills the lower half. The eye stays at deck height, so the
+    // alignment holds (every point at eye height projects to the horizon whatever the pitch).
+    const aw = smoothstep(0, 1, this.alignW);
+    const ty2 = lerp(this.y2, this.alignY + ALIGN_LOOK, aw);
+    const level2 = Math.asin(clamp((this.alignY - ty2) / (DIST2D * this.zoom2), -0.5, 0.5));
     const pitch2 = lerp(CAM2D.pitch, level2, smoothstep(0, 1, this.alignW));
 
     // --- Blend 2D <-> 3D
@@ -179,7 +186,7 @@ export class CameraRig {
     let dist = viewH / (2 * Math.tan(((fov / 2) * Math.PI) / 180));
     const laneZ = ctx.laneZ ?? 0;
     const t3 = this.t3;
-    let target = v3(lerp(this.x2, t3.x, s), lerp(this.y2, t3.y, s), lerp(laneZ, t3.z, s));
+    let target = v3(lerp(this.x2, t3.x, s), lerp(ty2, t3.y, s), lerp(laneZ, t3.z, s));
 
     // --- Cinematic override
     this.overrideW = damp(this.overrideW, this.overrideGoal, this.overrideRate, dt);
