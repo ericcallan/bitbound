@@ -56,6 +56,10 @@ export const GORGES: [number, number][] = [
 export const PADS: [number, number, number, number, number][] = [
   // the hidden chamber floor (it has its own stone floor mesh; the terrain mesh is drawn just under it)
   [51.6, 62, -12, -3, 0],
+  // the far aqueduct half's landing on the seal side: a cut through the seal ridge behind the door. It leads
+  // only onto that half, which ends in mid-air over the canyon (its secret is the reward), so the door can't be
+  // bypassed this way (tested in valley.test.ts).
+  [210.8, 214.2, -6.8, -3.9, 12.5],
 ];
 /** Gates on the lane: the terrain rises into a rock ridge across the valley on either side of each. */
 export const GATES: [number, number][] = [

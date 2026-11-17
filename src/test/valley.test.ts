@@ -101,10 +101,26 @@ describe('The valley (immersive 3D terrain)', () => {
     for (const [a, b] of GATES) {
       const x = (a + b) / 2;
       const top = valleyHeight(x, 0);
+      const seal = a > 210;
       for (const z of [-30, -12, -5, -3.6, 3.2, 6, 12, 18, 26]) {
+        // the seal ridge has one cut, behind the door, where the far aqueduct half lands (see the next test)
+        if (seal && z === -5) continue;
         expect(valleyHeight(x, z), `gate ${a} z=${z}`).toBeGreaterThan(top + 3);
       }
     }
+  });
+
+  it("the cut in the seal ridge leads only onto the far aqueduct half, which can't reach the far bank", () => {
+    const { game } = makeGame({ ...ready, era: 5 as const, checkpoint: 'seal', glyphsRead: false });
+    const aqA = game.world.get('aqA')!;
+    const aqB = game.world.get('aqB')!;
+    // from the end of the far half, the nearest far-bank ground (x 226, beside the near half) is out of reach
+    const gapX = 226 - aqA.max.x;
+    const gapZ = aqB.min.z - aqA.max.z;
+    expect(Math.hypot(gapX, Math.max(0, gapZ - 6))).toBeGreaterThan(0);
+    expect(Math.hypot(gapX, gapZ)).toBeGreaterThan(6.5);
+    // and the canyon floor below is a respawn, not a route: the lane between the halves has no ground in 3D
+    expect(game.world.groundBelow(game.player.box({ x: 222, y: aqA.max.y, z: 0 }), 4, false)).toBeFalsy();
   });
 
   const raised = { ...ready, era: 4 as const, checkpoint: 'stair', stairRepaired: false };

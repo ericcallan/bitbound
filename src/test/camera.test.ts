@@ -111,15 +111,25 @@ describe('3D camera: collision, clearance and line of sight', () => {
     expect(game.camera.occlusion.kept).toBeGreaterThan(0.95);
   });
 
-  it('at the aqueduct, with the seal ridge behind him, the camera lifts over the rock instead of filming it', () => {
+  it('with a rock ridge right behind Pip, the camera detects it and keeps a clear view instead of filming the rock', () => {
     const { game } = game3d();
-    game.player.teleport({ x: 215.5, y: game.level.sealY, z: -5.4 });
+    // just past the light fence's ridge on the plateau, off the lane: the chase camera's spot is inside the ridge
+    game.player.teleport({ x: 119.2, y: game.level.plateauY + 0.1, z: -5 });
     game.camera.snap(game.cameraContext());
     run(game, 2);
     const cam = game.camera.pos;
     const chest = v3(game.player.pos.x, game.player.pos.y + 0.6, game.player.pos.z);
-    expect(terrainClearance(cam, chest)).toBeGreaterThan(0);
     expect(game.camera.occlusion.by).not.toBe('none');
+    expect(terrainClearance(cam, chest)).toBeGreaterThan(0);
+  });
+
+  it('on the far aqueduct half, the cut in the seal ridge leaves the chase view clear', () => {
+    const { game } = game3d();
+    game.player.teleport({ x: 215.5, y: game.level.sealY, z: -5.4 });
+    game.camera.snap(game.cameraContext());
+    run(game, 2);
+    const chest = v3(game.player.pos.x, game.player.pos.y + 0.6, game.player.pos.z);
+    expect(terrainClearance(game.camera.pos, chest)).toBeGreaterThan(0);
   });
 
   it('turning around on the spot recovers the full distance smoothly (no snapping)', () => {
