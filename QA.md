@@ -1,6 +1,6 @@
 # QA report: PIP — Beyond the Frame (phase 6)
 
-Build: `tsc --noEmit` clean, `vite build` clean (one 1.5 MB chunk, ~430 KB gzipped).
+Build: `tsc --noEmit` clean, `vite build` clean (one 1.59 MB chunk, 466 KB gzipped).
 
 ## 1. Automated coverage (Vitest, headless): 92 / 92 passing
 
