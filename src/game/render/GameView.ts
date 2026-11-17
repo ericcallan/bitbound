@@ -8,6 +8,8 @@ import { PixelSprite } from './sprites';
 import { TerrainView } from './terrain';
 import { loadHdSky, type HdSkyData, type SkyName } from './sky';
 import { RETRO_ROWS, RetroLayer, TILE_PX } from './retro/RetroLayer';
+import { Sprite16 } from './retro/sprites16';
+import { RETRO16_ROWS, RetroLayer16, TILE16_PX } from './retro/RetroLayer16';
 import { SHADOW_PROXY_LAYER, ValleyDressing } from './dressing';
 import { PipModel } from '../pip/PipModel';
 import { PipGLB } from '../pip/PipGLB';
@@ -79,6 +81,8 @@ export class GameView {
   /** The Blender-built Pip, used from Modern HD on once its asset has loaded. */
   pipHD = new PipGLB();
   pipSprite = new PixelSprite('pip', 1, 1);
+  /** 16-bit Pip in 2D: pre-rendered from the Blender model. */
+  pipSprite16 = new Sprite16('pip_idle');
   particles = new Particles();
   post = new PostPipeline();
   private sun: THREE.DirectionalLight;
@@ -96,8 +100,14 @@ export class GameView {
   private retro: RetroLayer;
   /** 0..1: how far the 2D camera is locked to whole 8-bit pixels. */
   private retroCamW = 0;
-  /** Screen pixels per 8-bit pixel while the camera is locked. */
+  /** Screen pixels per retro pixel while the camera is locked, the frame's rows, and which frame. */
   private retroK = 1;
+  private retroRows = 240;
+  private retroMode: 8 | 16 = 8;
+  /** Visible lane height (world units) of the locked retro frame, eased between modes. */
+  private retroViewH = 0;
+  /** The 16-bit tile renderer and parallax (2D only). */
+  private retro16: RetroLayer16;
   private gl: THREE.WebGLRenderer;
   private blob: THREE.Mesh;
   private motes: THREE.InstancedMesh;
@@ -145,6 +155,9 @@ export class GameView {
     laneZ: 0,
     letterbox: 0,
     retroK: 1,
+    letterboxRows: 240,
+    retro16: null,
+    camXY: new THREE.Vector2(),
   };
   private lastDt = 1 / 60;
 
@@ -169,10 +182,11 @@ export class GameView {
     this.options = options;
     this.gl = gl;
     this.retro = new RetroLayer(game.level);
+    this.retro16 = new RetroLayer16(game.level);
     this.level = new LevelView(game.level);
     this.entities = new EntityViews(game, this.level.eras);
     this.scene.add(this.level.group, this.entities.group, this.terrain.group, this.dressing.group);
-    this.scene.add(this.pip.root, this.pip.trail, this.pipHD.root, this.pipSprite.sprite, this.particles.mesh);
+    this.scene.add(this.pip.root, this.pip.trail, this.pipHD.root, this.pipSprite.sprite, this.pipSprite16.sprite, this.particles.mesh);
     this.scene.fog = new THREE.Fog('#bfe3ff', 90, 380);
     this.dayEnv = skyEnvironment(gl);
     this.scene.environment = this.dayEnv;
@@ -262,9 +276,11 @@ export class GameView {
     this.terrain.dispose();
     this.post.dispose();
     this.retro.dispose();
+    this.retro16.dispose();
     this.pip.dispose();
     this.pipHD.dispose();
     this.pipSprite.dispose();
+    this.pipSprite16.dispose();
     this.sun.dispose();
     this.chamberLight.dispose();
     this.scene.traverse((o) => {
@@ -431,26 +447,35 @@ export class GameView {
     const sideOn = g.camera.overrideW < 0.001 || (Math.abs(g.camera.yaw) < 1e-3 && g.camera.fov < 20);
     const flat = !this.options.split && g.shift.mode === '2d' && !g.shift.transition && sideOn;
     eraUniforms.uRetro2D.value = flat ? 1 : 0;
+    // Which retro frame the camera locks to: the world's generation (and a ripple's), not bubbles or fields.
     const tr = g.era.transition;
-    const eight =
-      flat && ((tr ? tr.from === 0 || tr.to === 0 : g.era.era === 0) || g.era.bubble?.era === 0 || g.era.fields.some((f) => f.era === 0));
-    this.retroCamW = eight ? Math.min(1, this.retroCamW + dt * 1.5) : Math.max(0, this.retroCamW - dt * 1.5);
+    const shows = (e: number) => (tr ? tr.from === e || tr.to === e : g.era.era === e);
+    const mode = !flat ? null : shows(0) ? 8 : shows(1) ? 16 : null;
+    this.retroCamW = mode ? Math.min(1, this.retroCamW + dt * 1.5) : Math.max(0, this.retroCamW - dt * 1.5);
     if (!flat) this.retroCamW = 0;
+    if (mode) this.retroMode = mode;
     if (this.retroCamW <= 0) return flat;
     const w = smoothstep(0, 1, this.retroCamW);
     const laneZ = g.shift.laneZ;
     const dist = cam.position.distanceTo(target);
     const buf = this.gl.getDrawingBufferSize(new THREE.Vector2());
     const H = buf.y;
-    // A 1985 frame: exactly 240 rows (15 tiles tall), each 8-bit pixel a whole number (k) of screen pixels;
-    // letterbox bars fill what's left, like a console on a modern screen.
-    const k = Math.max(1, Math.floor(H / RETRO_ROWS));
+    // 8-bit: exactly 240 rows at 16 px per unit (a 1985 frame). 16-bit: 224 rows at 24 px per unit. Each
+    // retro pixel is a whole number (k) of screen pixels; letterbox bars fill what's left.
+    const ppu = this.retroMode === 8 ? TILE_PX : TILE16_PX;
+    const rows = this.retroMode === 8 ? RETRO_ROWS : RETRO16_ROWS;
+    const k = Math.max(1, Math.floor(H / rows));
     this.retroK = k;
-    const fov = THREE.MathUtils.radToDeg(2 * Math.atan(H / (TILE_PX * k) / (2 * dist)));
-    const snap = (v: number) => Math.round(v * TILE_PX) / TILE_PX;
-    // With an odd buffer size the screen centre sits on a half pixel: shift half a screen pixel so 8-bit
-    // pixel edges fall between screen pixels, not on their centres.
-    const half = 0.5 / (TILE_PX * k);
+    this.retroRows = rows;
+    // The visible height eases between the two frames, so the 8-bit → 16-bit upgrade is a camera pull-in.
+    const wantH = H / (ppu * k);
+    this.retroViewH = this.retroViewH > 0 ? this.retroViewH + (wantH - this.retroViewH) * Math.min(1, dt * 2.5) : wantH;
+    const settled = Math.abs(this.retroViewH - wantH) < 1e-3;
+    const fov = THREE.MathUtils.radToDeg(2 * Math.atan(this.retroViewH / (2 * dist)));
+    const snap = (v: number) => (settled ? Math.round(v * ppu) / ppu : v);
+    // With an odd buffer size the screen centre sits on a half pixel: shift half a screen pixel so retro pixel
+    // edges fall between screen pixels, not on their centres.
+    const half = settled ? 0.5 / (ppu * k) : 0;
     const look = new THREE.Vector3(snap(target.x) + (buf.x % 2) * half, snap(target.y) + (buf.y % 2) * half, laneZ);
     target.lerp(look, w);
     cam.position.lerp(new THREE.Vector3(look.x, look.y, laneZ + dist), w);
@@ -594,10 +619,11 @@ export class GameView {
     };
     // Gallery/menu views keep the classic rig so every band shows the same Pip.
     const useSprite = !split && pipEra === 0 && g.assemble >= 1;
+    const useSprite16 = !split && pipEra === 1 && g.shift.mode === '2d' && !g.shift.transition && g.assemble >= 1;
     const useHD = !split && !useSprite && pipEra >= 4 && this.pipHD.ready;
     this.pip.update(pose, dt);
     this.pipHD.update(pose, dt);
-    if (useSprite || useHD) {
+    if (useSprite || useSprite16 || useHD) {
       this.pip.root.visible = false;
       this.pip.trail.visible = false;
     }
@@ -609,6 +635,16 @@ export class GameView {
       this.pipSprite.set(!p.grounded ? 3 : moving ? 1 + (Math.floor(t * 8) % 2) : 0, p.dir < 0);
       // pixel-snapped to the 16-px tile grid
       this.pipSprite.sprite.position.set(Math.round(pipPos.x * 16) / 16, Math.round(pipPos.y * 16) / 16, pipPos.z);
+    }
+
+    const blinkHide = g.invuln > 0 && Math.floor(t * 18) % 2 === 0;
+    this.pipSprite16.sprite.visible = useSprite16 && !blinkHide;
+    if (useSprite16) {
+      const moving = Math.abs(p.vel.x) > 0.5;
+      const frame = !p.grounded ? 'pip_jump' : moving ? `pip_walk${Math.floor(t * 10) % 4}` : 'pip_idle';
+      this.pipSprite16.set(frame, p.dir < 0);
+      // pixel-snapped to the 24-px 16-bit grid
+      this.pipSprite16.sprite.position.set(Math.round(pipPos.x * 24) / 24, Math.round(pipPos.y * 24) / 24, pipPos.z);
     }
 
     // blob shadow (16-bit + early 3D: before shadow maps)
@@ -742,6 +778,10 @@ export class GameView {
     f.retro2D = retro2D;
     f.letterbox = smoothstep(0, 1, this.retroCamW);
     f.retroK = this.retroK;
+    f.letterboxRows = this.retroRows;
+    this.retro16.update(g.world);
+    f.retro16 = this.retro16;
+    f.camXY.set(this.camera.position.x, this.camera.position.y);
     f.laneZ = g.shift.laneZ;
   }
 

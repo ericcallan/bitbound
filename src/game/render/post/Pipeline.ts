@@ -54,6 +54,12 @@ export interface PostFrame {
   /** 0..1: how far the 8-bit letterbox (exactly 240 rows at retroK screen px each) has closed in. */
   letterbox: number;
   retroK: number;
+  /** Rows the letterbox frames: 240 (8-bit) or 224 (16-bit). */
+  letterboxRows: number;
+  /** The 16-bit tile layer and its parallax layers (null: none). */
+  retro16: { texture: THREE.Texture; origin: THREE.Vector2; size: THREE.Vector2; far: THREE.Texture; mid: THREE.Texture; clouds: THREE.Texture } | null;
+  /** The camera's world position (2D), for parallax. */
+  camXY: THREE.Vector2;
 }
 
 const rt = (w: number, h: number, type: THREE.TextureDataType = THREE.HalfFloatType) => {
@@ -191,6 +197,15 @@ export class PostPipeline {
       uSunW: { value: new THREE.Vector3(0, 1, 0) },
       uLetterbox: { value: 0 },
       uRetroK: { value: 1 },
+      uLetterboxRows: { value: 240 },
+      tRetro16: { value: this.black },
+      uRetro16Origin: { value: new THREE.Vector2() },
+      uRetro16Size: { value: new THREE.Vector2(1, 1) },
+      tFar16: { value: this.black },
+      tMid16: { value: this.black },
+      tClouds16: { value: this.black },
+      uLayerW16: { value: new THREE.Vector3(768, 640, 512) },
+      uCamXY: { value: new THREE.Vector2() },
 
     });
     this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.comp);
@@ -361,6 +376,16 @@ export class PostPipeline {
     u.uSunW.value.copy(f.sunDir);
     u.uLetterbox.value = f.letterbox;
     u.uRetroK.value = f.retroK;
+    u.uLetterboxRows.value = f.letterboxRows;
+    u.uCamXY.value.copy(f.camXY);
+    if (f.retro16) {
+      u.tRetro16.value = f.retro16.texture;
+      u.uRetro16Origin.value.copy(f.retro16.origin);
+      u.uRetro16Size.value.copy(f.retro16.size);
+      u.tFar16.value = f.retro16.far;
+      u.tMid16.value = f.retro16.mid;
+      u.tClouds16.value = f.retro16.clouds;
+    }
     u.uViewProj.value.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
 
     this.pass(gl, this.comp, null);

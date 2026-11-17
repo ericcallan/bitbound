@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeom
 import { PATTERN, sharedEraMaterial } from './eraMaterial';
 import { eras as E, type EraSwapRegistry } from './eraSwap';
 import type { DecorDef } from '../level/meadows';
+import { Sprite16 } from './retro/sprites16';
 import { rng } from '../math';
 import { instanceOf, type AssetName } from './assets';
 
@@ -58,7 +59,7 @@ export const M = {
   stem: () => sharedEraMaterial('stem', { color: '#2f9a4a' }),
   moss: () => sharedEraMaterial('moss', { color: '#4f9a3a', roughness: 0.95 }),
   metal: () => sharedEraMaterial('metal', { color: '#6e7aa0', metalness: 0.6, roughness: 0.35, pattern: PATTERN.metal }),
-  cloud: () => sharedEraMaterial('cloud', { color: '#ffffff', roughness: 1, flatBoost: 1.08, emissive: '#cfe6ff', emissiveIntensity: 0.25 }),
+  cloud: () => sharedEraMaterial('cloud', { color: '#ffffff', roughness: 1, flatBoost: 1.08, emissive: '#cfe6ff', emissiveIntensity: 0.25, retroTile: true }),
 };
 
 /** Modern HD / Beyond materials for the hero plants: velvety petals, waxy leaves, glossy eyes. */
@@ -124,16 +125,12 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       t8.add(at(box(0.5 * s, h, 0.5 * s, M.trunk()), 0, h / 2, 0));
       t8.add(at(box(2.2 * s, 1.2 * s, 1.6 * s, M.leaf()), 0, h + 0.2, 0));
       t8.add(at(box(1.4 * s, 0.9 * s, 1.2 * s, M.leafLight()), 0, h + 1.1 * s, 0));
-      // 16-bit: faceted clusters
-      const t16 = new THREE.Group();
-      t16.add(at(cyl(0.18 * s, 0.3 * s, h, M.trunk(), 6), 0, h / 2, 0));
       const blobs = [
         [0, h + 0.3, 0, 1.15],
         [-0.8, h - 0.1, 0.1, 0.8],
         [0.85, h, -0.1, 0.85],
         [0.1, h + 1.05, 0, 0.75],
       ];
-      for (const [x, y, z, rad] of blobs) t16.add(at(ico(rad * s, x === 0 ? M.leaf() : M.leafDark(), 0), x * s, y, z * s));
       // modern: soft round canopy
       const tM = new THREE.Group();
       const trunk = cyl(0.16 * s, 0.32 * s, h, M.trunk(), 14);
@@ -150,8 +147,9 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       // Modern HD and Beyond: the Blender trees (the Great Tree where the old one stood tallest).
       const great = s >= 1.2;
       const tHD = assetSlot('tree', great ? 'great_tree' : 'meadow_tree', tM.clone(), s * (great ? 0.62 : 0.78), r() * Math.PI * 2);
-      // No 8-bit variant: the first consoles had no background scenery.
-      reg.variants(g, [[t16, E(1)], [tL, E(2)], [tM, E(3)], [tHD, E(4, 5)]], anchor, false);
+      // 8-bit: a blocky green tree on the landscape; 16-bit: a sprite pre-rendered from the Blender tree
+      const t16 = new Sprite16('tree', s * 0.78 * (great ? 1.5 : 1)).sprite;
+      reg.variants(g, [[t8, E(0)], [t16, E(1)], [tL, E(2)], [tM, E(3)], [tHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'bush': {
@@ -172,7 +170,7 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       const bL = new THREE.Group();
       bL.add(at(ico(0.75 * s, M.leaf(), 0), -0.35 * s, 0.55 * s, 0));
       bL.add(at(ico(0.6 * s, M.leafDark(), 0), 0.45 * s, 0.45 * s, 0));
-      reg.variants(g, [[bL, E(2)], [bR, E(1, 3, [2])], [fernHD, E(4, 5)]], anchor, false);
+      reg.variants(g, [[new Sprite16('bush', s).sprite, E(1)], [bL, E(2)], [bR, E(3)], [fernHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'bloomer': {
@@ -334,7 +332,7 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       }
       // Modern HD and Beyond: a Blender cluster of wild mushrooms
       const mHD = assetSlot('props', 'mushroom_cluster', new THREE.Group(), 1.15, r() * Math.PI * 2);
-      reg.variants(g, [[mR, E(1, 3)], [mHD, E(4, 5)]], anchor, false);
+      reg.variants(g, [[new Sprite16('mushroom').sprite, E(1)], [mR, E(2, 3)], [mHD, E(4, 5)]], anchor, false);
       g.scale.setScalar(s);
       break;
     }
@@ -353,7 +351,7 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       moss.scale.set(1.4, 0.4, 1.4);
       pR.add(at(moss, 0.1, h + 0.2, 0));
       const pHD = assetSlot('gateway', 'ruin_column', pR.clone(), s, r() * Math.PI * 2);
-      reg.variants(g, [[p8, E(0)], [pR, E(1, 3)], [pHD, E(4, 5)]], anchor, false);
+      reg.variants(g, [[p8, E(0)], [new Sprite16('pillar', s).sprite, E(1)], [pR, E(2, 3)], [pHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'arch': {
@@ -368,7 +366,7 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       aR.add(at(box(1.4, 0.18, 0.1, M.rune()), 0, 3.75, 0.43));
       a8.add(at(box(1.4, 0.18, 0.1, M.rune()), 0, 3.75, 0.41));
       const aHD = assetSlot('gateway', 'shard_arch', aR.clone());
-      reg.variants(g, [[a8, E(0)], [aR, E(1, 3)], [aHD, E(4, 5)]], anchor, false);
+      reg.variants(g, [[a8, E(0)], [new Sprite16('arch').sprite, E(1)], [aR, E(2, 3)], [aHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'rock': {
@@ -380,7 +378,7 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       rR.position.y = 0.3 * s;
       // Modern HD and Beyond swap in a baked, scanned-texture rock from the Blender pipeline.
       const rHD = assetSlot('rocks', ['rock_a', 'rock_b', 'rock_c'][Math.floor(r() * 3)], rR.clone(), s * 1.05, r() * Math.PI * 2);
-      reg.variants(g, [[rR, E(1, 3)], [rHD, E(4, 5)]], anchor, false);
+      reg.variants(g, [[new Sprite16('rock', s * 1.05).sprite, E(1)], [rR, E(2, 3)], [rHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'statue': {
@@ -438,7 +436,7 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
       sg.add(at(box(0.4, 0.08, 0.02, M.cream()), 0.0, 1.0, 0.06));
       // Modern HD and Beyond: a weathered Blender signpost
       const signHD = assetSlot('props', 'signpost', new THREE.Group());
-      reg.variants(g, [[sg, E(0, 3)], [signHD, E(4, 5)]], anchor, false);
+      reg.variants(g, [[sg, E(0)], [new Sprite16('sign').sprite, E(1)], [sg.clone(), E(2, 3)], [signHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'crystal': {

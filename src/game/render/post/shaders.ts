@@ -210,6 +210,15 @@ uniform mat4 uViewProj;
 uniform vec3 uSunW;
 uniform float uLetterbox;
 uniform float uRetroK;
+uniform float uLetterboxRows;
+uniform sampler2D tRetro16;
+uniform vec2 uRetro16Origin;
+uniform vec2 uRetro16Size;
+uniform sampler2D tFar16;
+uniform sampler2D tMid16;
+uniform sampler2D tClouds16;
+uniform vec3 uLayerW16;
+uniform vec2 uCamXY;
 
 ${DEPTH_HELPERS}
 
@@ -317,6 +326,43 @@ vec3 retroEra(vec2 uv) {
     if (t.a > 0.5) return t.rgb;
   }
   return uPal[3];
+}
+
+// --- 16-bit (2D): the tile layer at 24 px per unit over three parallax layers and a banded sky. Scene
+// objects (sprites, enemies) are snapped to the same grid at 15-bit colour.
+vec4 layer16(sampler2D t, float width, float px, float row, float factor, float shiftY) {
+  float lx = px - floor(uCamXY.x * 24.0) * (1.0 - factor);
+  float r = row + shiftY;
+  if (r < 0.0) return vec4(0.0);
+  vec2 luv = vec2((lx + 0.5) / width, 1.0 - (min(r, 223.0) + 0.5) / 224.0);
+  return texture2D(t, luv);
+}
+vec3 retroEra16(vec2 uv) {
+  vec3 L = lanePoint(uv);
+  vec2 rp = floor((L.xy - uRetro16Origin) * 24.0);
+  vec4 clip = uViewProj * vec4((rp + 0.5) / 24.0 + uRetro16Origin, uLaneZ, 1.0);
+  vec2 suv = clip.xy / clip.w * 0.5 + 0.5;
+  if (texture2D(tDepth, suv).r < 0.99999) {
+    vec3 c = toSRGB(clamp(texture2D(tColor, suv).rgb, 0.0, 1.2));
+    return floor(c * 31.0 + 0.5) / 31.0;
+  }
+  if (all(greaterThanEqual(rp, vec2(0.0))) && all(lessThan(rp, uRetro16Size))) {
+    vec4 t = texelFetch(tRetro16, ivec2(rp), 0);
+    if (t.a > 0.5) return t.rgb;
+  }
+  // backdrop: rows counted from the top of the 224-row frame
+  float px = floor(L.x * 24.0);
+  float row = 112.0 - floor((L.y - uCamXY.y) * 24.0);
+  float bands = floor(clamp(row / 224.0, 0.0, 1.0) * 9.0) / 9.0;
+  vec3 col = mix(vec3(0.17, 0.35, 0.84), vec3(0.66, 0.88, 1.0), bands);
+  float climb = max(uCamXY.y, 0.0) * 24.0;
+  vec4 cl = layer16(tClouds16, uLayerW16.z, px + floor(uTime * 3.0), row, 0.08, -climb * 0.05);
+  col = mix(col, cl.rgb, cl.a);
+  vec4 far = layer16(tFar16, uLayerW16.x, px, row, 0.18, -climb * 0.12);
+  col = mix(col, far.rgb, far.a);
+  vec4 mid = layer16(tMid16, uLayerW16.y, px, row, 0.42, -climb * 0.3);
+  col = mix(col, mid.rgb, mid.a);
+  return col;
 }
 
 // --- Early 3D: low-res framebuffer, 15-bit colour with dither, short draw-distance fog
@@ -463,7 +509,7 @@ void main() {
   float era = eraAt(uv, depth);
   vec3 col;
   if (era < 0.5) col = uRetro2D > 0.5 ? retroEra(uv) : pixelEra(fc, 150.0, true);
-  else if (era < 1.5) col = pixelEra(fc, 280.0, false);
+  else if (era < 1.5) col = uRetro2D > 0.5 ? retroEra16(uv) : pixelEra(fc, 280.0, false);
   else if (era < 2.5) col = early3D(fc);
   else if (era < 3.5) col = stylized(uv);
   else if (era < 4.5) col = modern(uv, depth);
@@ -504,7 +550,7 @@ void main() {
   col += uFlash * vec3(0.8, 1.0, 1.0);
   // 8-bit letterbox: exactly 240 rows in the middle of the screen
   if (uLetterbox > 0.001) {
-    float halfBand = mix(uRes.y * 0.5 + 1.0, 120.0 * uRetroK, uLetterbox);
+    float halfBand = mix(uRes.y * 0.5 + 1.0, uLetterboxRows * 0.5 * uRetroK, uLetterbox);
     if (abs(gl_FragCoord.y - uRes.y * 0.5) > halfBand) col = vec3(0.0);
   }
   col = mix(col, uFadeColor, uFade);

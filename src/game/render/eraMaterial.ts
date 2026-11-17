@@ -213,7 +213,7 @@ export interface EraMatOptions {
    * scattered Blender vegetation is 4 (Modern HD and Beyond).
    */
   minEra?: number;
-  /** Level ground the 8-bit tile renderer draws itself: hidden wherever a 2D view shows 8-bit. */
+  /** Level ground (and backdrop) the retro tile renderers draw themselves: hidden wherever 2D shows 8- or 16-bit. */
   retroTile?: boolean;
   /**
    * Resolve the generation per vertex instead of per pixel. For small, dense geometry (leaf cards, grass,
@@ -254,7 +254,7 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
   const discardRule = [
     o.hideInValley ? 'if (vEraWorld.x < uValleyX && eraF > 1.5) discard;' : '',
     o.minEra ? `if (eraF < ${(o.minEra - 0.5).toFixed(1)}) discard;` : '',
-    o.retroTile ? 'if (uRetro2D > 0.5 && eraF < 0.5) discard;' : '',
+    o.retroTile ? 'if (uRetro2D > 0.5 && eraF < 1.5) discard;' : '',
   ].join('\n');
   // Chain onto any patch already on the material (e.g. the terrain splat shader).
   const prev = m.onBeforeCompile.bind(m);

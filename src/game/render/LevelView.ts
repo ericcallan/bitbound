@@ -95,7 +95,6 @@ export class LevelView {
   skyMesh!: THREE.Mesh;
   frameEngine = new THREE.Group();
   private holoRings: THREE.Mesh[] = [];
-  private islands: THREE.Object3D[] = [];
   /** Pip's position for grass push (shared uniform). */
   static pipUniform = eraUniforms.uPip;
 
@@ -458,9 +457,9 @@ export class LevelView {
     // Rolling hills (mid layer) — chunky steps in 8-bit, low-poly in early 3D, soft domes otherwise.
     const hillMats = [
       // The valley terrain replaces these inside the slice from Early 3D up.
-      sharedEraMaterial('hill1', { color: '#58b956', pattern: PATTERN.grass, hideInValley: true }),
-      sharedEraMaterial('hill2', { color: '#3f9f57', pattern: PATTERN.grass, hideInValley: true }),
-      sharedEraMaterial('hill3', { color: '#7fcf6a', pattern: PATTERN.grass, hideInValley: true }),
+      sharedEraMaterial('hill1', { color: '#58b956', pattern: PATTERN.grass, hideInValley: true, retroTile: true }),
+      sharedEraMaterial('hill2', { color: '#3f9f57', pattern: PATTERN.grass, hideInValley: true, retroTile: true }),
+      sharedEraMaterial('hill3', { color: '#7fcf6a', pattern: PATTERN.grass, hideInValley: true, retroTile: true }),
     ];
     const islandTop = sharedEraMaterial('islandTop', { color: '#58b956', pattern: PATTERN.grass });
     for (let i = 0; i < 36; i++) {
@@ -488,8 +487,9 @@ export class LevelView {
       this.group.add(g);
     }
     // Distant mountains
-    const mtn = sharedEraMaterial('mtn', { color: '#8b9fd8' });
-    const snow = sharedEraMaterial('snow', { color: '#f2f6ff' });
+    // (in 2D 16-bit the painted parallax replaces these)
+    const mtn = sharedEraMaterial('mtn', { color: '#8b9fd8', retroTile: true });
+    const snow = sharedEraMaterial('snow', { color: '#f2f6ff', retroTile: true });
     for (let i = 0; i < 18; i++) {
       const h = 30 + r() * 30;
       const cone = new THREE.Mesh(new THREE.ConeGeometry(h * 0.8, h, 5 + Math.floor(r() * 3)), mtn);
@@ -503,33 +503,6 @@ export class LevelView {
       cap.rotation.y = cone.rotation.y;
       this.group.add(cap);
       this.eras.add(cap, E(1, 3), false);
-    }
-    // Floating islands with waterfalls — teasing the Skybound Isles.
-    for (let i = 0; i < 10; i++) {
-      const g = new THREE.Group();
-      const x = -10 + i * 18 + r() * 8;
-      const y = 9 + r() * 10 + (x > 100 ? 8 : 0);
-      const z = -48 - r() * 30;
-      g.position.set(x, y, z);
-      const rad = 2.5 + r() * 2.5;
-      const rock = new THREE.Mesh(new THREE.ConeGeometry(rad, rad * 1.6, 7), M.stone());
-      rock.rotation.x = Math.PI;
-      rock.position.y = -rad * 0.8;
-      const top = new THREE.Mesh(new THREE.CylinderGeometry(rad * 1.02, rad, 0.6, 7), islandTop);
-      g.add(rock, top);
-      const tree = new THREE.Mesh(new THREE.SphereGeometry(rad * 0.4, 10, 8), M.leafDark());
-      tree.position.set(rad * 0.3, rad * 0.4, 0);
-      g.add(tree);
-      if (r() > 0.4) {
-        const fall = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 14), this.waterfallMaterial());
-        fall.position.set(-rad * 0.4, -7, rad * 0.5);
-        g.add(fall);
-        this.eras.add(fall, E(1, 5), false, g.position);
-      }
-      this.islands.push(g);
-      this.group.add(g);
-      // 16-bit only: from Early 3D on the valley's mountains stand where they float.
-      this.eras.add(g, E(1), false);
     }
     // Clouds
     for (let i = 0; i < 24; i++) {
@@ -560,7 +533,7 @@ export class LevelView {
       this.group.add(g);
     }
     // Background cliff + waterfall behind the moving-platform pit.
-    const cliff = new THREE.Mesh(new THREE.BoxGeometry(5, 15, 2), sharedEraMaterial('oldCliff', { color: '#aaa3bc', pattern: PATTERN.stone, hideInValley: true }));
+    const cliff = new THREE.Mesh(new THREE.BoxGeometry(5, 15, 2), sharedEraMaterial('oldCliff', { color: '#aaa3bc', pattern: PATTERN.stone, hideInValley: true, retroTile: true }));
     cliff.position.set(49.2, -1, -15);
     cliff.receiveShadow = true;
     this.group.add(cliff);
@@ -571,14 +544,14 @@ export class LevelView {
     fall.position.set(49.2, -1, -13.95);
     this.group.add(fall);
     // A deep meadow floor far below so pits read as height, not void.
-    const deep = new THREE.Mesh(new THREE.PlaneGeometry(700, 300), sharedEraMaterial('deep', { color: '#3f8f5a', hideInValley: true }));
+    const deep = new THREE.Mesh(new THREE.PlaneGeometry(700, 300), sharedEraMaterial('deep', { color: '#3f8f5a', hideInValley: true, retroTile: true }));
     deep.rotation.x = -Math.PI / 2;
     deep.position.set(70, -12, -100);
     this.group.add(deep);
     // 8-bit has nothing behind the play layer but the flat sky.
     for (const o of [cliff, cliffTop, deep]) this.eras.add(o, E(1, 5), false);
-    // This waterfall sits inside the valley slice, which has its own terrain from Early 3D up.
-    this.eras.add(fall, E(1), false);
+    // Retired: from Early 3D up the valley has its own river, and 16-bit has its painted backdrop.
+    fall.visible = false;
 
     // The Frame Engine — a vast ancient ring on the horizon, revealed at the finale.
     const ringMat = eraMaterial({ color: '#4b4566', metalness: 0.7, roughness: 0.3, pattern: PATTERN.metal });
@@ -659,7 +632,6 @@ export class LevelView {
       c.position.x += c.userData.speed * dt;
       if (c.position.x > 190) c.position.x = -40;
     }
-    this.islands.forEach((g, i) => (g.position.y += Math.sin(t * 0.5 + i) * 0.004));
     this.frameEngine.rotation.z += dt * 0.02;
     (this.frameEngine.children[2] as THREE.Mesh).rotation.z -= dt * 0.05;
     this.holoRings.forEach((h, i) => {
