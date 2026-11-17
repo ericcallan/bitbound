@@ -6,6 +6,7 @@ import { Particles } from './Particles';
 import { PostPipeline, type PostFrame, type QualitySetting } from './post/Pipeline';
 import { PixelSprite } from './sprites';
 import { PipModel } from '../pip/PipModel';
+import { PipGLB } from '../pip/PipGLB';
 import type { Game, GameEvent } from '../sim/Game';
 import { MAX_RIFTS, type Era } from '../era/EraSystem';
 import { segmentHitsBox } from '../collision/World';
@@ -65,6 +66,8 @@ export class GameView {
   level: LevelView;
   entities: EntityViews;
   pip = new PipModel();
+  /** The Blender-built Pip, used from Modern HD on once its asset has loaded. */
+  pipHD = new PipGLB();
   pipSprite = new PixelSprite('pip', 1, 1);
   particles = new Particles();
   post = new PostPipeline();
@@ -137,7 +140,7 @@ export class GameView {
     this.level = new LevelView(game.level);
     this.entities = new EntityViews(game, this.level.eras);
     this.scene.add(this.level.group, this.entities.group);
-    this.scene.add(this.pip.root, this.pip.trail, this.pipSprite.sprite, this.particles.mesh);
+    this.scene.add(this.pip.root, this.pip.trail, this.pipHD.root, this.pipSprite.sprite, this.particles.mesh);
     this.scene.fog = new THREE.Fog('#bfe3ff', 90, 380);
     this.scene.environment = skyEnvironment(gl);
     this.scene.environmentIntensity = 0.55;
@@ -206,6 +209,7 @@ export class GameView {
     this.level.dispose();
     this.post.dispose();
     this.pip.dispose();
+    this.pipHD.dispose();
     this.pipSprite.dispose();
     this.sun.dispose();
     this.chamberLight.dispose();
@@ -456,11 +460,14 @@ export class GameView {
     };
     // Gallery/menu views keep the classic rig so every band shows the same Pip.
     const useSprite = !split && pipEra === 0 && g.assemble >= 1;
+    const useHD = !split && !useSprite && pipEra >= 4 && this.pipHD.ready;
     this.pip.update(pose, dt);
-    if (useSprite) {
+    this.pipHD.update(pose, dt);
+    if (useSprite || useHD) {
       this.pip.root.visible = false;
       this.pip.trail.visible = false;
     }
+    if (!useHD) this.pipHD.root.visible = false;
     this.pipSprite.sprite.visible = useSprite && !(g.invuln > 0 && Math.floor(t * 18) % 2 === 0);
     if (useSprite) {
       this.pipSprite.width = this.pipSprite.height = p.h * 1.15;

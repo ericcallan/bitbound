@@ -17,6 +17,7 @@ dist = float(argv[1]) if len(argv) > 1 else 4.0
 th = float(argv[2]) if len(argv) > 2 else 0.4
 anim = argv[3] if len(argv) > 3 else None
 frame = int(argv[4]) if len(argv) > 4 else 1
+azim = math.radians(float(argv[5])) if len(argv) > 5 else math.radians(35)
 
 C.reset_scene()
 scene = bpy.context.scene
@@ -51,11 +52,11 @@ cam = bpy.data.cameras.new("cam")
 cam.lens = 50
 co = bpy.data.objects.new("cam", cam)
 scene.collection.objects.link(co)
-co.location = Vector((dist * 0.7, -dist, th + dist * 0.35))
+co.location = Vector((math.sin(azim) * dist * 1.22, -math.cos(azim) * dist * 1.22, th + dist * 0.35))
 d = Vector((0, 0, th)) - co.location
 co.rotation_euler = d.to_track_quat("-Z", "Y").to_euler()
 scene.camera = co
-out = os.path.join(C.ROOT, "assets", "previews", f"{name}{'_' + anim if anim else ''}.png")
+out = os.path.join(C.ROOT, "assets", "previews", f"{name}{'_' + anim + str(frame) if anim else ''}{'_a' + argv[5] if len(argv) > 5 else ''}.png")
 os.makedirs(os.path.dirname(out), exist_ok=True)
 scene.render.filepath = out
 bpy.ops.render.render(write_still=True)

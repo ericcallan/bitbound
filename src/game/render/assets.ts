@@ -16,7 +16,7 @@ const listeners = new Set<() => void>();
 export type AssetName = 'rocks' | 'pip' | 'tree' | 'gateway' | 'terrain';
 
 /** Assets fetched as soon as the game starts (small, needed early). */
-export const PRELOAD: AssetName[] = ['rocks'];
+export const PRELOAD: AssetName[] = ['rocks', 'pip'];
 
 export const assetUrl = (name: AssetName) => `${import.meta.env.BASE_URL}assets/${name}.glb`;
 

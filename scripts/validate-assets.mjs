@@ -19,11 +19,12 @@ const DIR = path.join(ROOT, 'public', 'assets');
 const SPEC = {
   rocks: { nodes: ['rock_a', 'rock_b', 'rock_c'], maxTris: 4000, maxKB: 800, height: [0.3, 1.6] },
   pip: {
-    nodes: ['pip_body', 'pip_rig'],
+    nodes: ['pip_body', 'pip_rig', 'face_display', 'core_lens', 'antenna_tip'],
+    materials: ['pip_paint', 'pip_face', 'pip_glow'],
     animations: ['idle', 'walk', 'run', 'jump_start', 'jump_up', 'fall', 'land', 'brake', 'celebrate', 'surprise', 'shift'],
     maxTris: 40000,
     maxKB: 3000,
-    height: [0.8, 1.05],
+    height: [0.8, 1.2],
   },
   tree: { nodes: ['great_tree'], maxTris: 120000, maxKB: 4000, height: [5, 16] },
   gateway: { nodes: ['shard_arch'], maxTris: 30000, maxKB: 2500, height: [2, 6] },
@@ -55,9 +56,16 @@ for (const f of fs.readdirSync(DIR).filter((x) => x.endsWith('.glb'))) {
     const s = tex.getSize();
     if (s && Math.max(...s) > MAX_TEX) errs.push(`texture ${tex.getName()} ${s.join('x')} > ${MAX_TEX}`);
   }
-  const scene = root.listScenes()[0];
-  const b = getBounds(scene);
+  // Quantized skinned meshes keep their real scale in the inverse bind matrices, so measure
+  // characters from the raw export instead.
+  const skinned = root.listSkins().length > 0;
+  const measure = skinned ? await io.read(path.join(ROOT, 'assets', 'exports', f)) : doc;
+  const b = getBounds(measure.getRoot().listScenes()[0]);
   const h = b.max[1] - b.min[1];
+  if (skinned) {
+    const mats = new Set(root.listMaterials().map((m) => m.getName()));
+    for (const m of spec?.materials ?? []) if (!mats.has(m)) errs.push(`missing material ${m}`);
+  }
   if (spec) {
     const names = new Set(root.listNodes().map((n) => n.getName()));
     for (const n of spec.nodes) if (!names.has(n)) errs.push(`missing node ${n}`);
