@@ -301,6 +301,7 @@ function CharacterSheet() {
 
 const VIEWS = [
   { id: 'field', label: 'Awakening Field', pose: { target: v3(3, 1.6, 0), yaw: 0, pitch: 0.05, fov: 13, dist: 44 } },
+  { id: 'valley', label: 'Opening Valley (3D)', pose: { target: v3(24, 3.5, -8), yaw: 0.35, pitch: 0.12, fov: 55, dist: 22 } },
   { id: 'ruins', label: 'Shard Ruins', pose: { target: v3(31, 2.6, 0), yaw: 0, pitch: 0.05, fov: 13, dist: 46 } },
   { id: 'passage', label: 'Broken Passage', pose: { target: v3(63, 2, 0), yaw: 0, pitch: 0.05, fov: 13, dist: 50 } },
   { id: 'chamber', label: 'Hidden Chamber (3D)', pose: { target: v3(57, 0.6, -5.5), yaw: -0.85, pitch: 0.55, fov: 45, dist: 17 } },

@@ -1,70 +1,49 @@
-# QA report — PIP: Beyond the Frame (phase 3: "Growing Up")
+# QA report: PIP — Beyond the Frame (phase 5: Blender assets, immersive valley, 1985 8-bit)
 
-Scope:
-- the story ("Fidelity is truth")
-- bare-bones 8-bit Chapter 1
-- Regress (generation masks)
-- Neon Verge (Chapter 6): adult Pip, the third-person shooter, the Warden, the core and the epilogue
-- regression over Chapters 1–5
+Build: `tsc --noEmit` clean, `vite build` clean (one 1.49 MB chunk, 427 KB gzipped).
 
-Build: `tsc --noEmit` clean, `vite build` clean.
-
-## 1. Automated coverage (Vitest, headless simulation): 81 / 81 passing
+## 1. Automated coverage (Vitest, headless): 83 / 83 passing
 
 | Suite | What it proves |
 |---|---|
-| controller / shift / puzzle (22) | Unchanged phase-2 physics, shift safety and puzzle rules |
-| `playthrough.test.ts` (1) | A bot plays the whole game on one `Game` through the real input path. It covers new game, the meadow, the Regress fence, the dome, the city (emitter, roof fight, market, 8-bit laser nook, shutter, billboard climb in 2D, plaza, censored code, Warden) and the core. Every beat fires, generations arrive 1→2→3→4→5, and the epilogue is 8-bit. "Keep exploring" returns to the city in 3D. |
-| `qa.test.ts`: resume matrix (14) | Continue from every checkpoint in both zones and finish |
-| `qa.test.ts`: fuzz (16) | 16 seeds × 120 s of random movement, jump, shift, generation, fire, aim, dash, Regress and charge spam, starting in both zones. Asserts finite state, no interpenetration and no stuck shift, and that the game stays completable. |
-| `qa.test.ts`: edge cases (11) | Phase-2 edge cases, plus migration now ending at v3 |
-| `chapter6.test.ts` (17) | Regress rules: the fence, refusal when it would trap Pip, locked before the beacon, the Q wheel, the 16-bit advert, stylized graffiti, 8-bit turrets, lasers and bolt fizzle, the draw-distance rule, the full-fidelity code. Combat: heat and venting, Censor kills, emitter offline in 8-bit, Warden shield and armour, dash i-frames. Zones: dome → adult, the city lane flattens to its plane, v2 → v3 migration. |
+| controller / shift / puzzle | Physics, shift safety and puzzle rules |
+| `playthrough.test.ts` | A bot plays new game → Halo Path → ending through the real input path |
+| `qa.test.ts` | Resume matrix over every checkpoint, fuzz over 16 seeds, v3 → v4 save migration |
+| `chapter6.test.ts` (10) | The Halo Path's generation-rule obstacles |
+| `valley.test.ts` (6) | Height-field walking, slopes, cliffs as walls, gorges, drowning, shift back to the lane |
+| `retro.test.ts` (4) | One 16×16 ground block in exactly 3 palette colours; sprites ≤ 3 colours; palette-only sky and clouds; tiles only from solids that exist in 8-bit |
 
-## 2. Browser pass (Chrome, dev server)
+## 2. Browser pass (Chrome, M4 Pro, dev server)
 
 | Area | Result |
 |---|---|
-| Chapter 1 from New Game: flat sky, flat clouds, sprite Pip, one-line HUD, no backdrop hills, mountains or islands | ✅ after fixes 3–4 |
-| Title screen: the 8-bit band now has a flat sky | ✅ |
-| Chapter 5 meadow: HUD shows the objective line and the Regress indicator | ✅ |
-| Dome cinematic → white-out → adult Pip on the roof, with story line and objective | ✅ |
-| City: neon, lit windows, rain, puddle reflections, holo adverts, fog | ✅ after fixes 1–2, 6 |
-| Shooter: crosshair, firing, heat gauge, enemy fire, integrity cells, ARCHIVE dialogue | ✅ |
-| 8-bit Regress bubble in the city: sprite Pip, dithered interior, glowing generation seam, "EMITTER OFFLINE" | ✅ |
-| Warden: boss bar, shield (hex Fresnel), Regress hint, dialogue | ✅ after fix 8 |
+| 8-bit start: flat sky, one ground block, plain clouds, tiny 3-colour Pip, no scenery | ✅ |
+| 8-bit frame read back from WebGL: **0 off-palette pixels** (13 colours on screen); every vertical pixel run a multiple of the scale | ✅ after fix 4 |
+| 8-bit → 16-bit ripple sweeps through tiles and sky | ✅ |
+| Valley in Modern HD / Beyond: full canopies, real sky, sun-matched shadows, river, no backdrop pieces poking through | ✅ after fixes 1–3 |
+| Stylized valley still renders | ✅ (terrain is not toon-shaded; see limitations) |
+| Gallery → Environment: 8-bit tiles and the 3D valley from matched cameras | ✅ |
 | Console during all of the above | ✅ no errors |
 
 ## 3. Bugs found and fixed in this pass
 
-| # | Severity | Bug | Fix |
-|---|---|---|---|
-| 1 | High | City windows rendered as TV static: hashed per pixel using the bump-mapped normal | Use the geometric normal |
-| 2 | High | Same symptom after fix 1: quantising the normal with `floor(n·1.5+0.5)` landed exactly on a boundary at n = ±1 | Use `sign(n)·step(0.5, abs(n))` |
-| 3 | High | **New Game was impossible once a save existed** (from phase 2): the confirm dialog sits inside `.menu`, which has `pointer-events: none` | `.overlay { pointer-events: auto }` |
-| 4 | Medium | The 8-bit sky wasn't flat: the meadow sky is a sphere, so the "empty depth = sky" test never fired; hills, mountains, islands, cliff and deep floor also showed | Those objects now exist only in eras 1–5 |
-| 5 | Medium | The plateau Regress fence drew as a plain blue slab | Laser beams between posts, shown only where the collider is active |
-| 6 | Medium | The roof was a black void and Pip a silhouette | Rooftop wet-asphalt material, two extra roof lights, a soft fill light on Pip, brighter night ambient |
-| 7 | Medium | Resuming at a later city checkpoint showed "Deal with the Censors" (roof enemies still count as alive) | That objective applies only while Pip is on the roof |
-| 8 | Medium | The Warden wakes behind Pip while the camera faces the door panel and wall | The camera turns to face the Warden when it wakes |
-| 9 | Low | Depth of field blurred adult Pip in the shoulder camera | City DOF reduced to a hint |
+| # | Bug | Fix |
+|---|---|---|
+| 1 | Tree canopies almost bare | The exported leaf material had depth writes off; leaves now write depth, and alpha sharpening runs before any discard |
+| 2 | A bright green dome in the cliff gap | An old backdrop hill poking through the terrain; old hills, deep floor, cliff and waterfall are hidden inside the valley |
+| 3 | Glossy cartoon-blue river under the real sky | Deeper green water with a reduced sky reflection |
+| 4 | Uneven 8-bit rows on odd-sized windows | Half-pixel camera offset so pixel edges fall between screen pixels |
+| 5 | 8-bit drew 4.85 M triangles (valley grass discarded per pixel) | Terrain and dressing are skipped when no 3D/modern generation can be on screen; now 8 k |
+| 6 | Cartoon clouds floating in front of the real sky | Limited to 16-bit … Stylized |
 
-## 4. Decisions made without asking
+## 4. Known limitations
 
-- The dome crack is a white-out plus a cracked glass dome on the roof, not a crack painted across the sky.
-- In 8-bit the emitter is offline and enemies become stompable sprites. Pip himself is drawn as a sprite.
-- Esc in the city releases pointer lock and pauses (browsers swallow the Esc keydown while the pointer is locked).
-- Inside a Regress bubble the music is low-pass filtered by generation.
-
-## 5. Known limitations and residual risk
-
-- **Not a full human playthrough in the browser.** The complete game is played headlessly by the bot. In Chrome I
-  checked each chapter and every city system by loading saves and driving the game. Difficulty and feel
-  (aiming, recoil, Warden fairness) need a human playtest.
-- **Mouse pointer lock** behaviour was reasoned through and wired, but not exercised with real mouse movement in
-  automation.
-- **Audio was not judged by ear.** The city score, rain, combat SFX and 3-channel 8-bit score are new and unheard.
-- **Quality tiers in the city** (Low turns reflections off) and frame rate in the city were not measured this pass.
-- Gamepad untested (no device). Mobile and touch are not supported.
-- The adult rig is procedural boxes and capsules: readable and on-model, not AAA.
-- The gallery's character lineup still shows the classic Pip in all six bands; adult Pip does not appear there yet.
-- Bundle is about 417 kB gzipped in one chunk.
+See `docs/GRAPHICS_REPORT.md` → "What still falls short". In short:
+- Beyond is near the 60 fps limit on High in the valley overview (p95 GPU 17.3 ms).
+- The immersive world ends at x ≈ 52.
+- Early 3D and Stylized have no dedicated terrain look.
+- Cartoon props remain in the modern valley.
+- The 8-bit HUD is a DOM pixel-font overlay.
+- 16-bit is still the filter treatment.
+- No full human playthrough in the browser; the complete game is played by the bot.
+- Audio was not judged by ear.

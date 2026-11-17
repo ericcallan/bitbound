@@ -552,8 +552,8 @@ export class LevelView {
         s.position.set(x, r() * 0.8, 0);
         cR.add(s);
       }
-      // 8-bit clouds are drawn by the tile renderer.
-      this.eras.variants(g, [[cL, E(2)], [cR, E(1, 5, [2])]], pos, false);
+      // 8-bit clouds are drawn by the tile renderer; Modern HD and Beyond have the real sky's clouds.
+      this.eras.variants(g, [[cL, E(2)], [cR, E(1, 3, [2])]], pos, false);
       g.userData.speed = 0.3 + r() * 0.5;
       this.clouds.push(g);
       this.group.add(g);

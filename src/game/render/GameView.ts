@@ -399,7 +399,9 @@ export class GameView {
    */
   private lockRetroCamera(cam: THREE.PerspectiveCamera, target: THREE.Vector3, dt: number): boolean {
     const g = this.game;
-    const flat = !this.options.split && g.shift.mode === '2d' && !g.shift.transition && g.camera.overrideW < 0.001;
+    // Fully 2D and side-on (posed cameras count too, e.g. the gallery; cinematic close-ups do not).
+    const sideOn = g.camera.overrideW < 0.001 || (Math.abs(g.camera.yaw) < 1e-3 && g.camera.fov < 20);
+    const flat = !this.options.split && g.shift.mode === '2d' && !g.shift.transition && sideOn;
     eraUniforms.uRetro2D.value = flat ? 1 : 0;
     const tr = g.era.transition;
     const eight =
@@ -478,8 +480,6 @@ export class GameView {
     // Menu/gallery split views show the original level; the immersive valley is for play.
     if (split) eraUniforms.uValleyX.value = -1e9;
     else this.terrain.update();
-    this.terrain.group.visible = !split;
-    this.dressing.group.visible = !split;
 
     // --- lights follow the action. From Modern HD up the real sky lights the scene and sets the sun.
     const lookEra = split ? 4 : this.eraAt(camTarget);
@@ -656,6 +656,10 @@ export class GameView {
       if (f.fieldMin[i].y > -900) fieldMax = Math.max(fieldMax, f.fieldEra[i]);
     }
     f.maxEra = split ? 5 : Math.max(f.eraFrom, f.eraTo, bub ? bub.era : 0, fieldMax);
+    // The valley terrain exists from Early 3D up and its Blender dressing from Modern HD up: skip them
+    // entirely (not just per pixel) while no such generation can be on screen.
+    this.terrain.group.visible = !split && f.maxEra >= 2;
+    this.dressing.group.visible = !split && f.maxEra >= 4;
     f.fade = g.fade;
     f.fadeColor.set(g.fadeWhite ? '#f4fbff' : '#0d0b1e');
     const st = g.shift.transition;
