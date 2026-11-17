@@ -29,6 +29,7 @@ export type GameEventType =
   | 'hurt'
   | 'respawn'
   | 'fizzle'
+  | 'shiftHint'
   | 'shiftStart'
   | 'shiftEnd'
   | 'eraStart'
@@ -508,6 +509,7 @@ export class Game {
       raycast: (a, b) => this.world.raycast(a, b, (c) => c.kind !== 'invisible' && c.kind !== 'cube' && c.max.y > a.y - 0.6),
       laneZ: this.shift.laneZ,
       groundAt: valleyCollideHeight,
+      alignY: this.level.align2D.find(([x0, x1]) => this.player.pos.x >= x0 && this.player.pos.x <= x1)?.[2] ?? null,
     };
   }
 
@@ -786,7 +788,7 @@ export class Game {
         'off-lane': { keys: [], text: 'Return to the glowing lane to flatten back into 2D.', tone: 'warn' },
         obstructed: { keys: [], text: 'Something is in the way on the lane.', tone: 'warn' },
         'no-ground': { keys: [], text: "There's no ground on the lane here.", tone: 'warn' },
-        painted: { keys: [], text: "Can't unfold here — this only holds together from the side.", tone: 'warn' },
+        painted: { keys: [], text: "Can't unfold here — this only holds together from the side. Find solid stone first.", tone: 'warn' },
         busy: null,
       };
       const m = msgs[block];
@@ -795,6 +797,14 @@ export class Game {
         this.toastT = 2.4;
         this.emit('fizzle', { pos: { ...this.player.pos }, text: block });
         this.antennaGlitch = 0.6;
+      }
+      // On a 2D-only surface, point at the nearest solid ground where unfolding works.
+      if (block === 'painted') {
+        const x = this.shift.nearestUnfold();
+        if (x !== null) {
+          this.emit('shiftHint', { pos: { x, y: this.player.pos.y, z: this.player.pos.z } });
+          if (m) m.text = `Can't unfold here — this only holds together from the side. Solid stone ${x > this.player.pos.x ? 'ahead →' : '← behind'}.`;
+        }
       }
       return block;
     }
@@ -1195,6 +1205,11 @@ export class Game {
     }
     if (bubble && x > L.aqueduct.x1) return { keys: ['Q'], text: 'Tap Q to drop the bubble', tone: 'info' };
     return null;
+  }
+
+  /** Why the shift is refused right now (for the HUD chip and the debug overlay), or null. */
+  get shiftBlock(): ShiftBlock | null {
+    return this.shift.unlocked ? this.shift.check() : 'locked';
   }
 
   get shiftStatus(): 'hidden' | 'locked' | 'ready' | 'blocked' | 'active' {

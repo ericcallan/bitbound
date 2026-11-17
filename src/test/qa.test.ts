@@ -8,6 +8,7 @@ import { overlaps } from '../game/collision/World';
 import type { Action } from '../game/sim/Input';
 import { rng } from '../game/math';
 import { STAIR, stairStep } from '../game/level/meadows';
+import { SAFE_SLIDE } from '../game/shift/DimensionShift';
 
 /** Save states a player can be in when pressing Continue, one per checkpoint. */
 const CHECKPOINT_SAVES: [string, Partial<SaveData>, string][] = [
@@ -204,16 +205,38 @@ describe('QA: edge cases', () => {
     expect(game.world.isFree(box)).toBe(true);
   });
 
-  it('flattening into 2D underneath a painted step is refused, not clipped', () => {
+  it('flattening into 2D underneath a painted step slides Pip clear instead of clipping him', () => {
     const { game } = makeGame({ ...ready, stairRepaired: true, checkpoint: 'stair' });
     run(game, 0.3);
     game.requestShift();
     run(game, SHIFT_DURATION + 0.1);
     // In 3D, Pip can stand on the ground at a spot where a painted step would overlap his head.
     const s = stairStep(0);
-    game.player.teleport({ x: (s.x0 + s.x1) / 2, y: 0, z: 0 });
+    const x0 = (s.x0 + s.x1) / 2;
+    game.player.teleport({ x: x0, y: 0, z: 0 });
     run(game, 0.2);
+    expect(game.world.isFree(game.player.box({ x: x0, y: 0, z: 0 }), null, true)).toBe(false);
+    expect(game.requestShift()).toBeNull();
+    run(game, SHIFT_DURATION + 0.1);
+    expect(game.shift.mode).toBe('2d');
+    const p = game.player;
+    expect(Math.abs(p.pos.x - x0)).toBeLessThanOrEqual(SAFE_SLIDE + 1e-6);
+    expect(game.world.isFree(p.box(p.pos), null, true)).toBe(true);
+    expect(game.world.groundBelow(p.box(p.pos), 0.1, true)).toBeTruthy();
+  });
+
+  it('flattening is refused when nothing free is within the safe slide', () => {
+    const { game } = makeGame({ ...ready, checkpoint: 'stair' });
+    run(game, 0.3);
+    game.requestShift();
+    run(game, SHIFT_DURATION + 0.1);
+    const x0 = 96;
+    game.player.teleport({ x: x0, y: 0, z: 0 });
+    run(game, 0.2);
+    // a 2D-only slab over the lane, wider than Pip plus the slide either way
+    game.world.add('testSlab', 'platform', { min: { x: x0 - 2, y: 0.5, z: -0.45 }, max: { x: x0 + 2, y: 1.2, z: 0.45 } }, true, true);
     expect(game.requestShift()).toBe('obstructed');
+    expect(game.shift.mode).toBe('3d');
   });
 
   it('the missing steps stay faded until the lamp is docked', () => {

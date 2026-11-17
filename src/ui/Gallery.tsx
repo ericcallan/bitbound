@@ -405,6 +405,7 @@ const SAMPLE: HudState = {
   bits: 12,
   totalBits: 44,
   shift: 'ready',
+  shiftWhy: '',
   mode3d: false,
   prompt: { keys: ['E'], text: 'Dimension Shift', tone: 'info' },
   banner: null,

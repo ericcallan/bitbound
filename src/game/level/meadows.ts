@@ -165,6 +165,8 @@ export const ONLY_STYLIZED = gens(3);
 // ---------------------------------------------------------------- Chapter 6: the Halo Path
 const HALO = 10.5;
 const SEAL = 12.5;
+/** How far each aqueduct half runs past the middle (see the aqueduct solids). */
+const AQ_OVERLAP = 1.5;
 /** Carved handholds across the cliff gap (solid only in a Stylized bubble). */
 export const RELIEFS = [
   { x0: 186.2, x1: 188.6, top: 11.1 },
@@ -232,9 +234,11 @@ export const LEVEL = {
     solid('cliff', 'wall', 'ruin', 184, -13, -3.4, 198, 17, -2.6),
     ground('p6', 198, 214, SEAL),
     solid('sealDoor', 'wall', 'ruin', 212.6, SEAL, -3, 213.4, SEAL + 5, 2.5),
-    // The broken aqueduct: two halves at different depths that only line up from the side.
-    solid('aqA', 'platform', 'stone', 214, SEAL - 1, -6.2, 220, SEAL, -4.6),
-    solid('aqB', 'platform', 'stone', 220, SEAL - 1, 4.6, 226, SEAL, 6.2),
+    // The broken aqueduct: two halves at different depths that only line up from the side. Each half runs
+    // AQ_OVERLAP past the middle, so from the 2D camera (which sits at deck height here, see align2D) the
+    // near half always overlaps the far one and the deck reads as continuous; in 3D they are 9 units apart.
+    solid('aqA', 'platform', 'stone', 214, SEAL - 1, -6.2, 220 + AQ_OVERLAP, SEAL, -4.6),
+    solid('aqB', 'platform', 'stone', 220 - AQ_OVERLAP, SEAL - 1, 4.6, 226, SEAL, 6.2),
     solid('aqLane', 'platform', 'invisible', 214, SEAL - 0.3, -0.45, 226, SEAL, 0.45, { only2d: true }),
     ground('p7', 226, 254, SEAL),
     // World edges
@@ -340,6 +344,11 @@ export const LEVEL = {
   glyphStone: v3(208, SEAL, -2.2),
   sleepField: { min: v3(203.5, SEAL - 1, -4), max: v3(212.4, SEAL + 8, 3), era: 1 as Era },
   aqueduct: { x0: 214, x1: 226, y: SEAL },
+  /**
+   * Where the 2D camera drops to eye level with a deck: pieces at different depths line up exactly along the
+   * horizon, so a bridge that only exists from the side looks whole. [x0, x1, deck height].
+   */
+  align2D: [[210, 230, SEAL]] as [number, number, number][],
   wheel: v3(246, SEAL, -1.6),
   summitX: 242.5,
   haloY: HALO,

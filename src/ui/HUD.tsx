@@ -133,7 +133,7 @@ export function HudView({ hud, static: isStatic = false }: { hud: HudState; stat
               <span />
             </span>
             <span className="hud__shift-text">
-              {hud.mode3d ? '3D' : '2D'} · {SHIFT_LABEL[hud.shift]}
+              {hud.mode3d ? '3D' : '2D'} · {hud.shift === 'blocked' && hud.shiftWhy ? hud.shiftWhy : SHIFT_LABEL[hud.shift]}
             </span>
             {hud.shift === 'ready' && <kbd>E</kbd>}
           </div>

@@ -28,7 +28,12 @@ export interface CameraContext {
   laneZ?: number;
   /** Ground height under a point (the valley terrain), so the 3D camera never dips underground. */
   groundAt?: (x: number, z: number) => number | null;
+  /** 2D: the height the camera's eye should sit at (a 2D-only bridge), or null for the normal framing. */
+  alignY?: number | null;
 }
+
+/** Distance of the 2D camera from the lane (its framing is fixed by CAM2D.fov and viewHeight). */
+const DIST2D = CAM2D.viewHeight / (2 * Math.tan(((CAM2D.fov / 2) * Math.PI) / 180));
 
 /**
  * One perspective camera for both modes. The shift is a continuous dolly-zoom + 90° orbit:
@@ -52,6 +57,9 @@ export class CameraRig {
   private sinceOrbit = 99;
   private clipDist = 100;
   pitch = 0;
+  /** 0..1: how far the 2D camera has dropped to eye level with an aligned deck. */
+  alignW = 0;
+  private alignY = 0;
 
   override: CamPose | null = null;
   overrideW = 0;
@@ -65,6 +73,8 @@ export class CameraRig {
     this.y2 = ctx.pip.y + CAM2D.height;
     this.t3 = v3(ctx.pip.x, ctx.pip.y + CAM3D.height, ctx.pip.z);
     this.look = 0;
+    this.alignW = ctx.alignY != null ? 1 : 0;
+    this.alignY = ctx.alignY ?? 0;
     this.step(1 / 120, ctx);
     this.prevPos = { ...this.pos };
     this.prevTarget = { ...this.target };
@@ -115,6 +125,13 @@ export class CameraRig {
       }
     }
 
+    // --- 2D eye level: on a 2D-only bridge the eye drops to deck height, so pieces at different depths meet
+    // on the horizon line (a perspective camera only lines up what is at eye height).
+    if (ctx.alignY != null) this.alignY = ctx.alignY;
+    this.alignW = damp(this.alignW, ctx.alignY != null ? 1 : 0, 2.2, dt);
+    const level2 = Math.asin(clamp((this.alignY - this.y2) / DIST2D, -0.5, 0.5));
+    const pitch2 = lerp(CAM2D.pitch, level2, smoothstep(0, 1, this.alignW));
+
     // --- Blend 2D <-> 3D
     const s = blend;
     const yaw3 = wrapAngle(CAM3D.behindYaw + this.orbitYaw);
@@ -122,7 +139,7 @@ export class CameraRig {
     const fov3 = CAM3D.fov;
     const dist3 = CAM3D.dist;
     let yaw = lerpAngle(0, yaw3, s);
-    let pitch = lerp(CAM2D.pitch, pitch3, smoothstep(0, 1, s));
+    let pitch = lerp(pitch2, pitch3, smoothstep(0, 1, s));
     let fov = lerp(CAM2D.fov, fov3, s);
     const h3 = 2 * dist3 * Math.tan(((fov3 / 2) * Math.PI) / 180);
     const viewH = lerp(CAM2D.viewHeight * sc, h3, s);

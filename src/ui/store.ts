@@ -12,6 +12,8 @@ export interface HudState {
   bits: number;
   totalBits: number;
   shift: ShiftStatus;
+  /** Why the shift is blocked (short, for the chip), or ''. */
+  shiftWhy: string;
   mode3d: boolean;
   prompt: Prompt | null;
   banner: Banner | null;
@@ -88,6 +90,7 @@ export const useUI = create<UIStore>((set, get) => ({
     bits: 0,
     totalBits: 0,
     shift: 'hidden',
+    shiftWhy: '',
     mode3d: false,
     prompt: null,
     banner: null,

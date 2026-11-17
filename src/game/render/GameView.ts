@@ -372,6 +372,11 @@ export class GameView {
         this.flash = 0.6;
         P.burst({ x: p.x, y: p.y + 3, z: p.z }, { count: 160, colors: ['#f0862a', '#ffcf6b', '#5ec8f0', '#ff8fb8', '#6ff6ff', '#b388ff'], speed: 9, up: 2, size: 0.12, life: 2.2, gravity: 0, drag: 0.8 });
         break;
+      case 'shiftHint':
+        // where unfolding works: a ring of light on the ground and a short fountain of sparks
+        this.pulse(p.x, p.y + 0.05, p.z, '#6ff6ff', 3.2, true);
+        P.burst({ x: p.x, y: p.y + 0.2, z: p.z }, { count: 26, colors: ['#6ff6ff', '#2fd6c3', '#ffffff'], speed: 1.6, up: 3.2, size: 0.07, life: 1.1, gravity: 1.5, drag: 0.6 });
+        break;
       case 'fizzle':
         P.burst({ x: p.x, y: p.y + 0.6, z: p.z }, { count: 10, colors: ['#8e5bd6', '#6b6b8a'], speed: 1.8, up: 1.5, size: 0.06, life: 0.5, gravity: 3 });
         break;

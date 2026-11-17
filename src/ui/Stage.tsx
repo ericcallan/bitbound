@@ -1,3 +1,4 @@
+import { SHIFT_BLOCK_LABEL } from '../game/shift/DimensionShift';
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import type * as THREE from 'three';
@@ -16,6 +17,7 @@ function hudSnapshot(g: Game): HudState {
     bits: g.bitsCollected,
     totalBits: g.bits.length,
     shift: g.shiftStatus,
+    shiftWhy: g.shiftStatus === 'blocked' ? SHIFT_BLOCK_LABEL[g.shiftBlock ?? 'busy'] : '',
     mode3d: g.shift.mode === '3d',
     prompt: g.prompt(),
     banner: g.banner,
