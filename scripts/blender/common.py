@@ -343,3 +343,310 @@ def ph_shader(name, base_asset, scale=1.0, tint=(1, 1, 1), top_asset=None, top_s
     nt.links.new(height, bp.inputs["Height"])
     nt.links.new(bp.outputs["Normal"], bsdf.inputs["Normal"])
     return m
+
+
+# ---------------------------------------------------------------- painted (procedural) source materials
+#
+# The art bible's surfaces (docs/ART_BIBLE.md): broad regions of a few palette colours, mid-scale value variation,
+# short brush-like strokes, flecks, and on modelled objects worn edges and crevices. No photographs. Every texture
+# is 4D noise: on objects the fourth dimension is a constant, and for tileable ground textures UV is wrapped onto
+# two circles (u → x,y; v → z,w), so a bake on a plane tiles without seams.
+
+def _lin(h):
+    """sRGB hex → linear RGBA (Blender colour ramps and defaults are linear)."""
+    def c(v):
+        v /= 255.0
+        return v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4
+    return (c(int(h[1:3], 16)), c(int(h[3:5], 16)), c(int(h[5:7], 16)), 1.0)
+
+
+PAINTED = {
+    # ramp: broad regions dark → light · stroke: the colour short strokes lean to · fleck: small spots
+    "grass": dict(ramp=[(0.0, "#3e5b3a"), (0.42, "#567a42"), (0.78, "#7f9c55"), (1.0, "#9db466")], stroke="#a9bf6e", stretch=(1, 3.2),
+                  fleck="#c3cf8e", fleck_amt=0.22, fleck_size=0.22, fleck_freq=9.0, blades="#2f4a2e", rough=0.9, freq=1.0),
+    "path": dict(ramp=[(0.0, "#8f6a45"), (0.5, "#b98a5a"), (1.0, "#cfa774")], stroke="#d6b383", stretch=(1, 2.2),
+                 fleck="#e4d6b6", fleck_amt=0.3, fleck_size=0.28, fleck_freq=7.0, pebbles=True, rough=0.92, freq=1.0),
+    "forest": dict(ramp=[(0.0, "#3a432c"), (0.45, "#5a4a32"), (1.0, "#7a6a3e")], stroke="#6e7f45", stretch=(1, 1.6),
+                   fleck="#d58f3c", fleck_amt=0.32, fleck_size=0.34, fleck_freq=6.0, rough=0.92, freq=1.1),
+    "rock": dict(ramp=[(0.0, "#857f7a"), (0.38, "#a8957a"), (0.75, "#c4b292"), (1.0, "#d9c7a3")], stroke="#e2d3b2", stretch=(1, 1.6),
+                 crack="#545468", crack_freq=2.6, rough=0.84, freq=0.8),
+    "stone": dict(ramp=[(0.0, "#c2ae8a"), (0.5, "#dccdae"), (1.0, "#f1e6cf")], stroke="#f6eedb", stretch=(1.4, 1),
+                  mortar="#8a8670", bricks=True, rough=0.8, freq=0.8),
+    "moss": dict(ramp=[(0.0, "#2f4a2e"), (0.45, "#4e7040"), (0.85, "#7f9c55"), (1.0, "#9fb468")], stroke="#a8bd6c", stretch=(1, 1),
+                 fleck="#b9c97c", fleck_amt=0.25, fleck_size=0.3, fleck_freq=8.0, blades="#2f4a2e", rough=0.96, freq=1.3),
+    "bark": dict(ramp=[(0.0, "#36261d"), (0.5, "#5a3d2b"), (1.0, "#7d5a3c")], stroke="#8c6a48", stretch=(1, 7.0),
+                 furrows=True, rough=0.86, freq=1.4),
+}
+
+
+def _math(nt, op, a, b=None, loc=(0, 0), clamp=False):
+    n = node(nt, "ShaderNodeMath", loc)
+    n.operation = op
+    n.use_clamp = clamp
+    for i, v in enumerate((a, b)):
+        if v is None:
+            continue
+        if isinstance(v, (int, float)):
+            n.inputs[i].default_value = v
+        else:
+            nt.links.new(v, n.inputs[i])
+    return n.outputs[0]
+
+
+def _maprange(nt, v, f0, f1, t0=0.0, t1=1.0, smooth=True):
+    n = node(nt, "ShaderNodeMapRange")
+    n.interpolation_type = "SMOOTHSTEP" if smooth else "LINEAR"
+    n.inputs["From Min"].default_value = f0
+    n.inputs["From Max"].default_value = f1
+    n.inputs["To Min"].default_value = t0
+    n.inputs["To Max"].default_value = t1
+    nt.links.new(v, n.inputs["Value"])
+    return n.outputs["Result"]
+
+
+def _mix(nt, fac, a, b, blend="MIX"):
+    """Colour mix; `a`/`b` may be sockets or hex colours; `fac` a socket or a float."""
+    n = node(nt, "ShaderNodeMix")
+    n.data_type = "RGBA"
+    n.blend_type = blend
+    for key, v in (("A", a), ("B", b)):
+        if isinstance(v, str):
+            n.inputs[key].default_value = _lin(v)
+        elif isinstance(v, tuple):
+            n.inputs[key].default_value = v
+        else:
+            nt.links.new(v, n.inputs[key])
+    if isinstance(fac, (int, float)):
+        n.inputs["Factor"].default_value = fac
+    else:
+        nt.links.new(fac, n.inputs["Factor"])
+    return n.outputs["Result"]
+
+
+class _Space:
+    """Texture coordinates: 'object' (3D object space) or 'torus' (UV wrapped for seamless tiles)."""
+
+    def __init__(self, nt, mode, scale):
+        self.nt, self.mode, self.scale = nt, mode, scale
+        tc = node(nt, "ShaderNodeTexCoord", (-2400, 0))
+        if mode == "torus":
+            sep = node(nt, "ShaderNodeSeparateXYZ", (-2200, 0))
+            nt.links.new(tc.outputs["UV"], sep.inputs["Vector"])
+            self.a = _math(nt, "MULTIPLY", sep.outputs["X"], 2 * math.pi)
+            self.b = _math(nt, "MULTIPLY", sep.outputs["Y"], 2 * math.pi)
+            self.parts = {k: _math(nt, op, s) for k, (op, s) in {"ca": ("COSINE", self.a), "sa": ("SINE", self.a), "cb": ("COSINE", self.b), "sb": ("SINE", self.b)}.items()}
+        else:
+            self.obj = tc.outputs["Object"]
+
+    def coords(self, freq, stretch=(1, 1), seed=0.0):
+        """(vector, w) for features about 1/`freq` in size; `stretch` lengthens features along (x, y)."""
+        nt = self.nt
+        f = freq * self.scale
+        if self.mode == "torus":
+            # a feature every 1/f of the tile: circles of circumference f (radius f / 2π), stretched per axis
+            ru = f / stretch[0] / (2 * math.pi)
+            rv = f / stretch[1] / (2 * math.pi)
+            x = _math(nt, "MULTIPLY_ADD", self.parts["ca"], ru)
+            x.node.inputs[2].default_value = seed * 3.7  # the seed shifts along x (still periodic)
+            y = _math(nt, "MULTIPLY", self.parts["sa"], ru)
+            z = _math(nt, "MULTIPLY", self.parts["cb"], rv)
+            w = _math(nt, "MULTIPLY", self.parts["sb"], rv)
+            comb = node(nt, "ShaderNodeCombineXYZ")
+            nt.links.new(x, comb.inputs["X"])
+            nt.links.new(y, comb.inputs["Y"])
+            nt.links.new(z, comb.inputs["Z"])
+            return comb.outputs["Vector"], w
+        mp = node(nt, "ShaderNodeMapping")
+        # object space: stretch (x, y) maps to (horizontal, vertical) for bark-like strokes running up the trunk
+        mp.inputs["Scale"].default_value = (f / stretch[0], f / stretch[0], f / stretch[1])
+        mp.inputs["Location"].default_value = (seed * 3.7, seed * 1.3, seed * 2.1)
+        nt.links.new(self.obj, mp.inputs["Vector"])
+        val = node(nt, "ShaderNodeValue")
+        val.outputs[0].default_value = seed * 5.3
+        return mp.outputs["Vector"], val.outputs[0]
+
+    def noise(self, freq, detail=2.0, rough=0.5, stretch=(1, 1), seed=0.0, distortion=0.0):
+        nt = self.nt
+        n = node(nt, "ShaderNodeTexNoise")
+        n.noise_dimensions = "4D"
+        v, w = self.coords(freq, stretch, seed)
+        nt.links.new(v, n.inputs["Vector"])
+        nt.links.new(w, n.inputs["W"])
+        n.inputs["Scale"].default_value = 1.0
+        n.inputs["Detail"].default_value = detail
+        n.inputs["Roughness"].default_value = rough
+        n.inputs["Distortion"].default_value = distortion
+        return n.outputs["Fac"]
+
+    def voronoi(self, freq, feature="F1", stretch=(1, 1), seed=0.0, randomness=1.0):
+        nt = self.nt
+        n = node(nt, "ShaderNodeTexVoronoi")
+        n.voronoi_dimensions = "4D"
+        n.feature = feature
+        v, w = self.coords(freq, stretch, seed)
+        nt.links.new(v, n.inputs["Vector"])
+        nt.links.new(w, n.inputs["W"])
+        n.inputs["Scale"].default_value = 1.0
+        n.inputs["Randomness"].default_value = randomness
+        return n.outputs
+
+
+def _painted_layer(nt, sp, kind, objectish):
+    """Colour, roughness and height sockets for one painted surface kind."""
+    p = PAINTED[kind]
+    seed = sum(ord(c) for c in kind) * 0.01
+    # 1. broad regions: a few palette colours, eased (a painter's large flat areas, not noise)
+    broad = sp.noise(p["freq"] * 0.7, detail=1.5, rough=0.45, seed=seed, distortion=0.3)
+    ramp = node(nt, "ShaderNodeValToRGB")
+    ramp.color_ramp.interpolation = "EASE"
+    els = ramp.color_ramp.elements
+    stops = p["ramp"]
+    els[0].position, els[0].color = stops[0][0], _lin(stops[0][1])
+    els[1].position, els[1].color = stops[-1][0], _lin(stops[-1][1])
+    for pos, col in stops[1:-1]:
+        e = els.new(pos)
+        e.color = _lin(col)
+    nt.links.new(_maprange(nt, broad, 0.3, 0.7, smooth=False), ramp.inputs["Fac"])
+    col = ramp.outputs["Color"]
+    # 2. mid-scale value variation (±10%)
+    mid = sp.noise(p["freq"] * 1.4, detail=3.0, rough=0.55, seed=seed + 1)
+    val = _maprange(nt, mid, 0.3, 0.7, 0.88, 1.1, smooth=False)
+    cc = node(nt, "ShaderNodeCombineColor")
+    for s in ("Red", "Green", "Blue"):
+        nt.links.new(val, cc.inputs[s])
+    col = _mix(nt, 1.0, col, cc.outputs["Color"], "MULTIPLY")
+    # 3. brush strokes: short stretched dabs leaning lighter
+    strokes = sp.noise(p["freq"] * 4.0, detail=1.0, rough=0.4, stretch=p["stretch"], seed=seed + 2)
+    smask = _maprange(nt, strokes, 0.56, 0.68)
+    col = _mix(nt, _math(nt, "MULTIPLY", smask, 0.38), col, p["stroke"])
+    height = _math(nt, "ADD", _math(nt, "MULTIPLY", broad, 0.35), _math(nt, "MULTIPLY", smask, 0.25))
+    # fine blades: thin dark and light ticks (grass, moss), so the surface holds up close to Pip
+    if p.get("blades"):
+        fine = sp.noise(p["freq"] * 14.0, detail=1.0, rough=0.3, stretch=(1, 4.5), seed=seed + 7)
+        dark = _maprange(nt, fine, 0.36, 0.28)
+        light = _maprange(nt, fine, 0.64, 0.72)
+        col = _mix(nt, _math(nt, "MULTIPLY", dark, 0.45), col, p["blades"])
+        col = _mix(nt, _math(nt, "MULTIPLY", light, 0.3), col, p["stroke"])
+        height = _math(nt, "ADD", height, _math(nt, "MULTIPLY", _math(nt, "SUBTRACT", light, dark), 0.3))
+    rough = _maprange(nt, mid, 0.3, 0.7, p["rough"] - 0.06, p["rough"] + 0.04, smooth=False)
+    # 4. flecks / pebbles / leaves: small cells, a random share of them coloured
+    if p.get("fleck"):
+        vo = sp.voronoi(p["freq"] * p["fleck_freq"], seed=seed + 3)
+        sep = node(nt, "ShaderNodeSeparateColor")
+        nt.links.new(vo["Color"], sep.inputs["Color"])
+        pick = _maprange(nt, sep.outputs["Red"], 1.0 - p["fleck_amt"] - 0.02, 1.0 - p["fleck_amt"] + 0.02)
+        dot = _maprange(nt, vo["Distance"], p["fleck_size"], p["fleck_size"] * 0.55)
+        fm = _math(nt, "MULTIPLY", pick, dot)
+        col = _mix(nt, _math(nt, "MULTIPLY", fm, 0.85), col, p["fleck"])
+        height = _math(nt, "ADD", height, _math(nt, "MULTIPLY", fm, 0.55 if p.get("pebbles") else 0.25))
+        if p.get("pebbles"):
+            rough = _math(nt, "SUBTRACT", rough, _math(nt, "MULTIPLY", fm, 0.25))
+    # 5. bark furrows: long vertical grooves
+    if p.get("furrows"):
+        fur = sp.voronoi(p["freq"] * 2.2, "DISTANCE_TO_EDGE", stretch=(1, 9.0), seed=seed + 4)
+        groove = _maprange(nt, fur["Distance"], 0.0, 0.12, 1.0, 0.0)
+        col = _mix(nt, _math(nt, "MULTIPLY", groove, 0.7), col, "#24180f")
+        height = _math(nt, "SUBTRACT", height, _math(nt, "MULTIPLY", groove, 0.6))
+    # 6. ivory masonry: blocks with mortar (tileable in UV; on objects the geometry is already blocks)
+    if p.get("bricks") and not objectish:
+        tc = node(nt, "ShaderNodeTexCoord")
+        br = node(nt, "ShaderNodeTexBrick")
+        br.offset = 0.5
+        br.offset_frequency = 2
+        nt.links.new(tc.outputs["UV"], br.inputs["Vector"])
+        br.inputs["Scale"].default_value = 1.0
+        br.inputs["Brick Width"].default_value = 0.25
+        br.inputs["Row Height"].default_value = 0.125
+        br.inputs["Mortar Size"].default_value = 0.008
+        br.inputs["Mortar Smooth"].default_value = 0.6
+        br.inputs["Bias"].default_value = 0.0
+        br.inputs["Color1"].default_value = (1, 1, 1, 1)
+        br.inputs["Color2"].default_value = (0.76, 0.74, 0.7, 1)
+        br.inputs["Mortar"].default_value = (0, 0, 0, 1)
+        col = _mix(nt, 1.0, col, br.outputs["Color"], "MULTIPLY")
+        col = _mix(nt, _math(nt, "MULTIPLY", br.outputs["Fac"], 0.85), col, p["mortar"])
+        height = _math(nt, "SUBTRACT", height, _math(nt, "MULTIPLY", br.outputs["Fac"], 0.9))
+    # 7. cracks: thin dark lines along cell edges (rock faces, old stone)
+    if p.get("crack"):
+        cr = sp.voronoi(p["freq"] * p["crack_freq"], "DISTANCE_TO_EDGE", seed=seed + 5)
+        jitter = sp.noise(p["freq"] * 6.0, detail=2.0, seed=seed + 6)
+        line = _maprange(nt, _math(nt, "ADD", cr["Distance"], _math(nt, "MULTIPLY", jitter, 0.04)), 0.012, 0.04, 1.0, 0.0)
+        # only some edges crack: a broad mask, so faces read as stone with a few fissures, not a net
+        line = _math(nt, "MULTIPLY", line, _maprange(nt, sp.noise(p["freq"] * 1.1, detail=1.0, seed=seed + 8), 0.48, 0.6))
+        col = _mix(nt, _math(nt, "MULTIPLY", line, 0.75), col, p["crack"])
+        height = _math(nt, "SUBTRACT", height, _math(nt, "MULTIPLY", line, 0.5))
+    return col, rough, height
+
+
+def painted_shader(name, kind, scale=1.0, tint=(1, 1, 1), top_kind=None, top_from=0.55, top_to=0.85, bump=0.5, bump_dist=0.03, mode="object", edges=True):
+    """
+    A painted bake source in the art bible's style (replaces the scanned `ph_shader`). `kind` is a key of
+    PAINTED; `top_kind` blends a second painted surface on up-facing faces (moss on stone). `mode` 'torus' makes
+    a tileable texture from a plane's UVs. Height is left on a node named "__height__" for bakes that need it.
+    """
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    objectish = mode == "object"
+    sp = _Space(nt, mode, scale)
+    col, rough, height = _painted_layer(nt, sp, kind, objectish)
+    if top_kind:
+        tcol, trough, theight = _painted_layer(nt, sp, top_kind, objectish)
+        geo = node(nt, "ShaderNodeNewGeometry")
+        sep = node(nt, "ShaderNodeSeparateXYZ")
+        nt.links.new(geo.outputs["Normal"], sep.inputs["Vector"])
+        brk = sp.noise(2.2, detail=2.0, seed=9.0)
+        up = _math(nt, "ADD", sep.outputs["Z"], _math(nt, "MULTIPLY", _math(nt, "SUBTRACT", brk, 0.5), 0.35))
+        mask = _maprange(nt, up, top_from, top_to)
+        col = _mix(nt, mask, col, tcol)
+        rough = _math(nt, "ADD", _math(nt, "MULTIPLY", rough, _math(nt, "SUBTRACT", 1.0, mask)), _math(nt, "MULTIPLY", trough, mask))
+        height = _math(nt, "ADD", height, _math(nt, "MULTIPLY", mask, 0.2))
+    if objectish and edges:
+        # worn, lighter edges and darker, cooler crevices: what makes it read as made by hand
+        geo = node(nt, "ShaderNodeNewGeometry")
+        wear = _maprange(nt, geo.outputs["Pointiness"], 0.52, 0.6)
+        col = _mix(nt, _math(nt, "MULTIPLY", wear, 0.45), col, "#f6ead0")
+        ao = node(nt, "ShaderNodeAmbientOcclusion")
+        ao.samples = 8
+        ao.inputs["Distance"].default_value = 0.35
+        crev = _math(nt, "SUBTRACT", 1.0, ao.outputs["AO"])
+        col = _mix(nt, _math(nt, "MULTIPLY", crev, 0.55), col, "#3d4462")
+    if tuple(tint) != (1, 1, 1):
+        col = _mix(nt, 1.0, col, (*tint, 1.0), "MULTIPLY")
+    nt.links.new(col, bsdf.inputs["Base Color"])
+    nt.links.new(rough, bsdf.inputs["Roughness"])
+    hn = node(nt, "ShaderNodeMath")
+    hn.name = "__height__"
+    hn.operation = "ADD"
+    nt.links.new(height, hn.inputs[0])
+    hn.inputs[1].default_value = 0.0
+    bp = node(nt, "ShaderNodeBump")
+    bp.inputs["Strength"].default_value = bump
+    bp.inputs["Distance"].default_value = bump_dist
+    nt.links.new(hn.outputs[0], bp.inputs["Height"])
+    nt.links.new(bp.outputs["Normal"], bsdf.inputs["Normal"])
+    return m
+
+
+def wire_vertex_shade(meshes):
+    """The glTF importer keeps COLOR_0 as an attribute but leaves it out of the material: multiply it back in."""
+    for o in meshes:
+        attrs = [a.name for a in o.data.color_attributes]
+        if not attrs:
+            continue
+        for slot in o.material_slots:
+            nt = slot.material.node_tree
+            bsdf = next(n for n in nt.nodes if n.type == "BSDF_PRINCIPLED")
+            link = next((l for l in nt.links if l.to_socket == bsdf.inputs["Base Color"]), None)
+            if not link:
+                continue
+            ca = nt.nodes.new("ShaderNodeVertexColor")
+            ca.layer_name = attrs[0]
+            mul = nt.nodes.new("ShaderNodeMix")
+            mul.data_type = "RGBA"
+            mul.blend_type = "MULTIPLY"
+            mul.inputs["Factor"].default_value = 1.0
+            nt.links.new(link.from_socket, mul.inputs["A"])
+            nt.links.new(ca.outputs["Color"], mul.inputs["B"])
+            nt.links.new(mul.outputs["Result"], bsdf.inputs["Base Color"])

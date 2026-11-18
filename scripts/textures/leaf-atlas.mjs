@@ -13,7 +13,8 @@ const S = 1024;
 
 let seed = 7;
 const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-const greens = ['#3f7d2a', '#4f9233', '#5ea43c', '#6fb544', '#3a6e27', '#86c255', '#558a30', '#7aa83c'];
+// the art bible's moss and sage ramp (docs/ART_BIBLE.md §3)
+const greens = ['#4e7040', '#5e7f45', '#6f9150', '#7f9c55', '#567a42', '#9db466', '#668a48', '#8fa76a'];
 
 function leaf(cx, cy, len, w, rot, fill) {
   // a pointed ellipse leaf with a midrib and a few veins
@@ -36,8 +37,8 @@ for (let i = 0; i < 9; i++) {
   const a = rnd() * Math.PI * 2;
   leaves += `<path d="M ${S / 2} ${S / 2} Q ${S / 2 + Math.cos(a) * 180} ${S / 2 + Math.sin(a) * 120} ${S / 2 + Math.cos(a) * 380} ${S / 2 + Math.sin(a) * 380}" stroke="#4a3520" stroke-width="7" fill="none" />`;
 }
-for (let i = 0; i < 140; i++) {
-  const r = Math.sqrt(rnd()) * S * 0.4;
+for (let i = 0; i < 230; i++) {
+  const r = Math.sqrt(rnd()) * S * 0.42;
   const a = rnd() * Math.PI * 2;
   const cx = S / 2 + Math.cos(a) * r;
   const cy = S / 2 + Math.sin(a) * r;

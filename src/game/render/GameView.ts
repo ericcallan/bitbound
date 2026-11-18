@@ -139,6 +139,10 @@ export class GameView {
   private motes: THREE.InstancedMesh;
   private moteSeeds: Float32Array;
   private moteFade = 0;
+  /** Beyond's life: falling leaves and a few butterflies around the camera focus. */
+  private leaves: THREE.InstancedMesh;
+  private butterflies: THREE.InstancedMesh;
+  private lifeFade = 0;
   private pulses: Pulse[] = [];
   private t = 0;
   private flash = 0;
@@ -293,6 +297,31 @@ export class GameView {
     this.motes.frustumCulled = false;
     this.moteSeeds = new Float32Array(N * 4).map(() => Math.random());
     this.scene.add(this.motes);
+    // Beyond: leaves drifting down (amber, sage, honey) and butterflies (lavender, honey, cream)
+    const lifeMat = () => new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
+    const leafGeo = new THREE.PlaneGeometry(0.13, 0.07);
+    this.leaves = new THREE.InstancedMesh(leafGeo, lifeMat(), 46);
+    const wing = new THREE.BufferGeometry();
+    // two rounded wings hinged on the body (x = 0), drawn as triangles fanned from the hinge
+    const wv: number[] = [];
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 6; i++) {
+        const a0 = (i / 6) * Math.PI - Math.PI / 2;
+        const a1 = ((i + 1) / 6) * Math.PI - Math.PI / 2;
+        const r = (a: number) => 0.075 * (1 + 0.35 * Math.sin(a * 2 + 1));
+        wv.push(0, 0, 0, side * Math.cos(a0) * r(a0), Math.sin(a0) * r(a0), 0, side * Math.cos(a1) * r(a1), Math.sin(a1) * r(a1), 0);
+      }
+    }
+    wing.setAttribute('position', new THREE.Float32BufferAttribute(wv, 3));
+    this.butterflies = new THREE.InstancedMesh(wing, lifeMat(), 8);
+    const pick = (list: string[], i: number) => new THREE.Color(list[i % list.length]);
+    for (let i = 0; i < this.leaves.count; i++) this.leaves.setColorAt(i, pick(['#d58f3c', '#e0a142', '#8fa76a', '#b9773a', '#f2c978'], i));
+    for (let i = 0; i < this.butterflies.count; i++) this.butterflies.setColorAt(i, pick(['#cfc8e6', '#f2c978', '#fff4e0', '#9c95c4'], i));
+    for (const m of [this.leaves, this.butterflies]) {
+      m.frustumCulled = false;
+      m.visible = false;
+      this.scene.add(m);
+    }
     // Beyond: footstep glyph pulses
     for (let i = 0; i < 10; i++) {
       const m = new THREE.Mesh(
@@ -314,6 +343,49 @@ export class GameView {
 
   setQuality(q: QualitySetting) {
     this.post.setQuality(q);
+  }
+
+  /** Beyond's life around the camera focus: leaves tumbling down on the breeze, butterflies wandering low. */
+  private updateLife(t: number, dt: number, at: THREE.Vector3, on: boolean) {
+    this.lifeFade += ((on ? 1 : 0) - this.lifeFade) * Math.min(1, dt * 1.5);
+    const vis = this.lifeFade > 0.01;
+    this.leaves.visible = this.butterflies.visible = vis;
+    if (!vis) return;
+    (this.leaves.material as THREE.MeshBasicMaterial).opacity = this.lifeFade * 0.95;
+    (this.butterflies.material as THREE.MeshBasicMaterial).opacity = this.lifeFade;
+    const m4 = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const e = new THREE.Euler();
+    const sc = new THREE.Vector3(1, 1, 1);
+    const p = new THREE.Vector3();
+    const seed = this.moteSeeds;
+    for (let i = 0; i < this.leaves.count; i++) {
+      const s0 = seed[i * 4];
+      const s1 = seed[i * 4 + 1];
+      const s2 = seed[i * 4 + 2];
+      const s3 = seed[i * 4 + 3];
+      // each leaf falls through a 7-unit column in its own time, drifting downwind and swaying
+      const fall = (t * (0.35 + s3 * 0.25) + s0 * 7) % 7;
+      p.set(at.x - 9 + ((s0 * 18 + fall * 0.9) % 18) + Math.sin(t * 1.3 + s1 * 9) * 0.35, at.y + 4.5 - fall, at.z - 6 + s2 * 9);
+      e.set(t * (1.5 + s1 * 2) + s2 * 6, t * (0.8 + s3) + s0 * 5, Math.sin(t * 2 + s0 * 7) * 0.8);
+      m4.compose(p, q.setFromEuler(e), sc);
+      this.leaves.setMatrixAt(i, m4);
+    }
+    this.leaves.instanceMatrix.needsUpdate = true;
+    for (let i = 0; i < this.butterflies.count; i++) {
+      const s0 = seed[200 + i * 4];
+      const s1 = seed[201 + i * 4];
+      const s2 = seed[202 + i * 4];
+      // a slow looping wander low over the meadow, wings beating (scaled across the hinge)
+      const a = t * (0.25 + s1 * 0.2) + s0 * 6.28;
+      p.set(at.x - 7 + s0 * 14 + Math.cos(a) * 1.6, at.y - 0.4 + s2 * 1.6 + Math.sin(a * 2.3) * 0.25, at.z - 4 + s1 * 5 + Math.sin(a) * 1.2);
+      e.set(0.5, -a + Math.PI / 2, 0);
+      sc.set(0.25 + 0.75 * Math.abs(Math.sin(t * (9 + s2 * 4) + s0 * 10)), 1, 1);
+      m4.compose(p, q.setFromEuler(e), sc);
+      this.butterflies.setMatrixAt(i, m4);
+    }
+    sc.set(1, 1, 1);
+    this.butterflies.instanceMatrix.needsUpdate = true;
   }
 
   dispose() {
@@ -757,6 +829,7 @@ export class GameView {
       }
       this.motes.instanceMatrix.needsUpdate = true;
     }
+    this.updateLife(t, dt, camTarget, focusEra === 5 && !this.title);
     for (const pu of this.pulses) {
       if (pu.t >= 1) continue;
       pu.t = Math.min(1, pu.t + dt * 1.4);
@@ -861,8 +934,9 @@ export class GameView {
     f.time = t;
     // The camera target tracks Pip in play and frames the subject in cinematics/gallery views.
     f.focus.copy(camTarget);
-    // 2D keeps the depth of field gentle: the walls and ruins just behind the lane are part of the play space.
-    f.dof = split ? 0 : g.cine ? 0.6 : g.shift.mode === '2d' ? 0.16 : 0.4;
+    // No depth of field over play (docs/ART_BIBLE.md §5): only cinematics use it; 3D keeps a trace, so the far
+    // hills soften while everything near Pip stays sharp.
+    f.dof = split ? 0 : g.cine ? 0.6 : g.shift.mode === '2d' ? 0 : 0.1;
     if (this.title) {
       // the title: Pip in focus, the valley only slightly soft
       f.focus.copy(pipPos);

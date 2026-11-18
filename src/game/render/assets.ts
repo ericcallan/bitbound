@@ -183,6 +183,10 @@ function materialRules(m: THREE.MeshStandardMaterial): Partial<EraMatOptions> {
     m.customProgramCacheKey = () => 'leaf-coverage-v2';
     return { vertexWorld: LEAF_WIND, minEra: 4, vertexEra: true, cutaway: true };
   }
+  // The trees' other generations (scripts/blender/create_tree.py): faceted low-poly for Early 3D, the smooth
+  // three-mass shell for Stylized. Stiff in the wind, like their generations.
+  if (/_low_(leaf|bark)$/.test(n)) return { vertexWorld: BARK_SWAY, onlyEra: 2, vertexEra: true, cutaway: true };
+  if (/_shell_(leaf|bark)$/.test(n)) return { vertexWorld: BARK_SWAY, onlyEra: 3, vertexEra: true, cutaway: true };
   if (n.endsWith('_bark')) {
     m.envMapIntensity = 0.6;
     return { vertexWorld: BARK_SWAY, minEra: 4, vertexEra: true, cutaway: true };

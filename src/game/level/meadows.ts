@@ -460,7 +460,7 @@ export const LEVEL = {
     { type: 'tree', pos: v3(131.5, PLATEAU, -2.4), scale: 1.0, seed: 12 },
     { type: 'tree', pos: v3(127.6, PLATEAU, -2.7), scale: 1.3, seed: 13 },
     { type: 'bloomer', pos: v3(7.8, 0, -1.9), seed: 1 },
-    { type: 'bloomer', pos: v3(25.2, 1, -1.9), seed: 2, scale: 1.2 },
+    { type: 'bloomer', pos: v3(25.2, 1, -2.7), seed: 2, scale: 1.2 },
     { type: 'bloomer', pos: v3(36.5, 1, -2.0), seed: 3 },
     { type: 'bloomer', pos: v3(41.2, 0, -2.1), seed: 4, scale: 1.3 },
     { type: 'bloomer', pos: v3(78, 0, -2.0), seed: 5, scale: 1.1 },

@@ -295,7 +295,7 @@ export class EntityViews {
 
   /** Moving stone platforms with a glowing teal underside. */
   private buildMovers() {
-    const top = eraMaterial({ color: '#b3abc0', pattern: PATTERN.stone, roughness: 0.6 });
+    const top = eraMaterial({ color: '#cdbd9c', pattern: PATTERN.stone, roughness: 0.6 });
     const under = glow('#2fd6c3', 1.6);
     for (const m of this.game.movers) {
       const c = m.collider;

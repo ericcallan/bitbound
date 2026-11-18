@@ -34,6 +34,27 @@ What each step changes **today**, read from the frames:
 | Modern HD → Beyond | Warmer haze, a little more glow | Barely different from Modern HD |
 | 3D frames | The flower fills the left third of the frame | Readability |
 
+## After Phase 1 (2026-11-18)
+
+![after Phase 1](after-phase1-sheet.jpg)
+
+Before and after side by side, frame by frame: `compare-phase1.jpg`.
+
+What each step changes **now**, read from the frames:
+
+| Step | What changes |
+|---|---|
+| 8-bit → 16-bit | The tree keeps its three masses, now shaded; the arch is ivory in both; soil goes from flat brown to ramped soil with pebbles; lavender ranges and sage hills appear behind |
+| 16-bit → Early 3D | The same masses as facets; clean greens and lavender fog instead of olive mush |
+| Early 3D → Stylized | The true smooth masses, three bands and ink; palette ground with real values |
+| Stylized → Modern HD | Leaf-clump canopies; painted ivory stone under real light; grass in drifts |
+| Modern HD → Beyond | Warm grade, falling leaves, butterflies, dappled forest floor, no play blur |
+
+Still open (details in `docs/GRAPHICS_REPORT.md`):
+- Modern HD and Beyond are close in still 2D frames.
+- The 8-bit columns have purple shading.
+- The flower fills the left of the 3D frames at this camera.
+
 ## Target (Phase 1)
 
 What each step should change, per the bible:

@@ -82,6 +82,7 @@ def render(spec):
             if o.name not in keep and o.parent is None:
                 bpy.data.objects.remove(o)
         meshes = [o for o in scene.objects if o.type == "MESH"]
+    C.wire_vertex_shade(meshes)
     # turn and scale everything about the world origin (the importer's roots carry their own axis fix-ups)
     pivot = bpy.data.objects.new("pivot", None)
     scene.collection.objects.link(pivot)

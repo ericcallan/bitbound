@@ -11,8 +11,8 @@ import { rng } from '../math';
 const LOOK_MAT = {
   dirt: () => sharedEraMaterial('dirt', { color: '#9a6440', pattern: PATTERN.dirt, retroTile: true }),
   grassCap: () => sharedEraMaterial('grassCap', { color: '#52c24a', pattern: PATTERN.grass, roughness: 0.9, retroTile: true }),
-  stone: () => sharedEraMaterial('stoneSolid', { color: '#aaa3bc', pattern: PATTERN.stone, retroTile: true }),
-  chamber: () => sharedEraMaterial('chamberFloor', { color: '#8a849e', pattern: PATTERN.stone, roughness: 0.55, retroTile: true }),
+  stone: () => sharedEraMaterial('stoneSolid', { color: '#c8b796', pattern: PATTERN.stone, retroTile: true }),
+  chamber: () => sharedEraMaterial('chamberFloor', { color: '#9a8c76', pattern: PATTERN.stone, roughness: 0.55, retroTile: true }),
   ruin: () => sharedEraMaterial('ruinSolid', { color: '#c9b99e', pattern: PATTERN.ruin, retroTile: true }),
   hedge: () => eraMaterial({ color: '#2f8f4a', pattern: PATTERN.hedge, roughness: 0.95, retroTile: true }),
   wood: () => sharedEraMaterial('woodSolid', { color: '#a8703f', pattern: PATTERN.wood, retroTile: true }),
@@ -561,7 +561,7 @@ export class LevelView {
       this.group.add(g);
     }
     // Background cliff + waterfall behind the moving-platform pit.
-    const cliff = new THREE.Mesh(new THREE.BoxGeometry(5, 15, 2), sharedEraMaterial('oldCliff', { color: '#aaa3bc', pattern: PATTERN.stone, hideInValley: true, retroTile: true }));
+    const cliff = new THREE.Mesh(new THREE.BoxGeometry(5, 15, 2), sharedEraMaterial('oldCliff', { color: '#c8b796', pattern: PATTERN.stone, hideInValley: true, retroTile: true }));
     cliff.position.set(49.2, -1, -15);
     cliff.receiveShadow = true;
     this.group.add(cliff);

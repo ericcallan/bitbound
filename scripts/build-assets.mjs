@@ -22,8 +22,11 @@ for (const n of names) {
   if (n === 'tree') execFileSync('node', [path.join(ROOT, 'scripts', 'textures', 'leaf-atlas.mjs')], { stdio: 'inherit', cwd: ROOT });
   if (n === 'gateway' || n === 'aqueduct') execFileSync('npx', ['vite-node', path.join(ROOT, 'scripts', 'terrain', 'export-props.ts')], { stdio: 'inherit', cwd: ROOT });
   if (n === 'terrain') {
-    // The terrain mesh is built from the game's own height field, and shaded with packed scanned textures.
+    // The terrain mesh is built from the game's own height field, and shaded with the painted ground textures
+    // (baked in Blender, then packed).
     execFileSync('npx', ['vite-node', path.join(ROOT, 'scripts', 'terrain', 'export-valley.ts')], { stdio: 'inherit', cwd: ROOT });
+    execFileSync(BLENDER, ['-b', '-P', path.join(ROOT, 'scripts', 'blender', 'create_painted_textures.py')], { stdio: 'ignore' });
+    execFileSync('node', [path.join(ROOT, 'scripts', 'textures', 'retro16.mjs')], { stdio: 'inherit', cwd: ROOT });
     execFileSync('node', [path.join(ROOT, 'scripts', 'build-terrain-textures.mjs')], { stdio: 'inherit', cwd: ROOT });
     execFileSync('node', [path.join(ROOT, 'scripts', 'textures', 'ktx2.mjs')], { stdio: 'inherit', cwd: ROOT });
   }

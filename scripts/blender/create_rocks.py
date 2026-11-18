@@ -135,7 +135,7 @@ def make_rock(name, scale, seed):
     C.shade_smooth(low, 50)
     for o in (high, low):
         C.origin_to_base(o)
-    high.data.materials.append(C.ph_shader(f"{name}_src", "rock_face_03", scale=0.9, tint=(1.02, 0.98, 0.92), top_asset="mossy_rock", top_scale=1.1, top_from=0.35, top_to=0.75, bump=0.8))
+    high.data.materials.append(C.painted_shader(f"{name}_src", "rock", scale=0.9, top_kind="moss", top_from=0.35, top_to=0.75, bump=0.8))
     C.uv_unwrap(low, margin=0.02)
     low.data.materials.append(C.principled(f"{name}_tmp"))
     col, rough, nrm = C.bake_maps(low, high, size=1024, name=name, extrusion=0.08)

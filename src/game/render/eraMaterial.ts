@@ -95,6 +95,21 @@ export const PATTERN = {
 } as const;
 
 /** GLSL shared by vertex and fragment stages: per-point era resolution. */
+/**
+ * Whether generation `e` can be on screen this frame anywhere: the world's (or the ripple's next), Pip's
+ * Rollback bubble, a generation field, a rift, or any band of the split comparison view. Lets a view skip
+ * drawing scenery that exists in one generation only when that generation is nowhere to be seen.
+ */
+export function eraPresent(e: number) {
+  const u = eraUniforms;
+  if (u.uSplit.value > 0.5) return true;
+  if (u.uEraFrom.value === e || u.uEraTo.value === e) return true;
+  if (u.uBubble.value.w > 0 && u.uBubbleEra.value === e) return true;
+  for (let i = 0; i < 4; i++) if (u.uFieldMin.value[i].y > -900 && u.uFieldEra.value[i] === e) return true;
+  for (let i = 0; i < u.uRifts.value.length; i++) if (u.uRifts.value[i].y > -900 && u.uRiftEra.value[i] === e) return true;
+  return false;
+}
+
 export const ERA_GLSL_COMMON = /* glsl */ `
 uniform float uEraFrom;
 uniform float uEraTo;
@@ -408,7 +423,9 @@ export function patchEraMaterial<T extends THREE.MeshStandardMaterial>(m: T, o: 
             float band = lum > 0.95 ? 1.06 : (lum > 0.45 ? 0.82 : 0.55);
             vec3 shade = mix(vec3(0.62, 0.58, 0.98), vec3(1.0), smoothstep(0.55, 1.06, band));
             vec3 v = normalize(vViewPosition);
-            float rim = step(0.62, 1.0 - max(dot(nV, v), 0.0)) * 0.22 * smoothstep(-0.2, 0.4, ndl);
+            // a rim of light outlines objects, never the ground (seen edge-on by the 2D camera, the whole floor
+            // would light up): it fades out on up-facing surfaces
+            float rim = step(0.62, 1.0 - max(dot(nV, v), 0.0)) * 0.22 * smoothstep(-0.2, 0.4, ndl) * (1.0 - smoothstep(0.5, 0.85, nV.y));
             vec3 h = normalize(sun + v);
             float spec = step(0.985, max(dot(nV, h), 0.0)) * (1.0 - roughnessFactor) * 0.6;
             col = diffuseColor.rgb * band * shade * 1.04 + vec3(rim + spec);

@@ -375,13 +375,14 @@ vec3 early3D(vec2 fc) {
   col = toSRGB(clamp(col, 0.0, 1.2));
   if (d < 0.99999) {
     float dist = distance(worldOf(uvc, d), uFocus);
+    // short draw distance into a soft lavender-blue fog (the bible's Early 3D haze)
     float fog = smoothstep(26.0, 120.0, dist) * 0.72;
-    col = mix(col, vec3(0.6, 0.73, 0.86), fog);
+    col = mix(col, vec3(0.73, 0.77, 0.87), fog);
   } else {
-    col = mix(col, vec3(0.6, 0.73, 0.86), 0.4);
+    col = mix(col, vec3(0.73, 0.77, 0.87), 0.4);
   }
   col = mix(vec3(luma(col)), col, 1.12);
-  col += (bayer4(block) - 0.5) / 31.0 * 1.5;
+  col += (bayer4(block) - 0.5) / 31.0 * 0.75;
   col = floor(col * 31.0 + 0.5) / 31.0;
   return col;
 }
@@ -407,9 +408,9 @@ vec3 stylized(vec2 uv) {
   }
   col = clamp(col, 0.0, 1.3);
   col = toSRGB(col);
-  col = mix(vec3(luma(col)), col, 1.2);
-  col = (col - 0.5) * 1.06 + 0.5;
-  return mix(col, vec3(0.1, 0.07, 0.2), ink * 0.85);
+  col = mix(vec3(luma(col)), col, 1.15);
+  col = (col - 0.5) * 1.1 + 0.5;
+  return mix(col, vec3(0.165, 0.133, 0.188), ink * 0.85);
 }
 
 vec3 viewDirOf(vec2 uv) { return normalize(worldOf(uv, 1.0) - uCamWorld[3].xyz); }

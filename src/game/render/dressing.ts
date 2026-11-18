@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { beyondOnly, getAsset, loadAsset, type AssetName } from './assets';
+import { eraPresent } from './eraMaterial';
 import { GORGES, LANE_BACK, LANE_FRONT, PADS, valleyHeight, valleySplat, WATER_Y } from '../level/valley';
 import { rng } from '../math';
 
@@ -24,6 +25,8 @@ interface PlanMesh {
   band: 0 | 1 | 2 | 3;
   shadow: boolean;
   beyond: boolean;
+  /** Drawn only in this generation (the Early 3D and Stylized trees): skipped when it's nowhere on screen. */
+  onlyEra?: number;
   /** Instance matrices per mesh part, once worked out (shared by every view that builds the dressing). */
   matrices?: Float32Array[];
 }
@@ -45,6 +48,8 @@ const CELL = 16;
 interface AddOptions {
   /** Ground cover: fewer instances with distance (instances are in random order, so thinning is even). */
   thin?: boolean;
+  /** Drawn only in this generation. */
+  onlyEra?: number;
   /** A lower-detail node of the same asset, drawn instead beyond LOD_DIST. */
   lod?: string;
   /** Always the LOD (far hillsides). */
@@ -61,6 +66,7 @@ interface CellMesh {
   /** 0: always, 1: near only, 2: far only, 3: near only, shadow pass only (a cheap caster for a detailed mesh). */
   band: 0 | 1 | 2 | 3;
   shadow: boolean;
+  onlyEra?: number;
 }
 
 const LOD_DIST = 34;
@@ -91,13 +97,14 @@ export class ValleyDressing {
   update(camera: THREE.PerspectiveCamera) {
     if (!this.ready) return;
     const lens = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / Math.tan(THREE.MathUtils.degToRad(26));
+    const present = [0, 1, 2, 3, 4, 5].map(eraPresent);
     for (const c of this.cells) {
       const d = Math.max(0, camera.position.distanceTo(c.center) - c.radius) * lens;
       const thin = (d < 25 ? 1 : d < 45 ? 0.5 : d < 70 ? 0.25 : 0) * this.density;
       const near = d < LOD_DIST;
       for (const m of c.meshes) {
         m.mesh.count = m.thin ? Math.floor(m.full * thin) : m.full;
-        m.mesh.visible = m.mesh.count > 0 && (m.band === 0 || (m.band === 1 || m.band === 3) === near);
+        m.mesh.visible = m.mesh.count > 0 && (m.band === 0 || (m.band === 1 || m.band === 3) === near) && (m.onlyEra === undefined || present[m.onlyEra]);
         m.mesh.castShadow = m.shadow && d < SHADOW_DIST;
       }
     }
@@ -119,7 +126,7 @@ export class ValleyDressing {
         if (pm.band === 3) inst.layers.set(SHADOW_PROXY_LAYER);
         inst.computeBoundingSphere();
         this.group.add(inst);
-        this.cells[pm.cell].meshes.push({ mesh: inst, full: pm.list.length, thin: pm.thin, band: pm.band, shadow: pm.shadow });
+        this.cells[pm.cell].meshes.push({ mesh: inst, full: pm.list.length, thin: pm.thin, band: pm.band, shadow: pm.shadow, onlyEra: pm.onlyEra });
       });
     }
     this.counts = plan.counts;
@@ -149,6 +156,25 @@ const inGorge = (x: number) => GORGES.some(([a, b]) => x > a - 2.5 && x < b + 2.
 /** Interiors (the hidden chamber) stay clear of plants and trees. */
 const indoors = (x: number, z: number, margin = 0.6) => PADS.some(([x0, x1, z0, z1]) => x > x0 - margin && x < x1 + margin && z > z0 - margin && z < z1 + margin);
 
+/** Smooth value noise in [0, 1] (for drifts of grass and groups of flowers). */
+function drift(x: number, z: number) {
+  const h = (i: number, j: number) => {
+    const v = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
+    return v - Math.floor(v);
+  };
+  const i = Math.floor(x);
+  const j = Math.floor(z);
+  const fx = x - i;
+  const fz = z - j;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sz = fz * fz * (3 - 2 * fz);
+  return h(i, j) * (1 - sx) * (1 - sz) + h(i + 1, j) * sx * (1 - sz) + h(i, j + 1) * (1 - sx) * sz + h(i + 1, j + 1) * sx * sz;
+}
+const smooth = (a: number, b: number, v: number) => {
+  const t = Math.min(1, Math.max(0, (v - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+
 /** Placements for the whole valley. A generator: it yields every few hundred samples so the work can be sliced. */
 function* scatterPlan(): Generator<void, Plan> {
   const meshes: PlanMesh[] = [];
@@ -160,10 +186,10 @@ function* scatterPlan(): Generator<void, Plan> {
     if (i === undefined) cellIndex.set(key, (i = cellIndex.size));
     return i;
   };
-  const mesh = (asset: AssetName, node: string, list: Placement[], cell: number, thin: boolean, band: 0 | 1 | 2 | 3, shadow: boolean, beyond = false) => {
+  const mesh = (asset: AssetName, node: string, list: Placement[], cell: number, thin: boolean, band: 0 | 1 | 2 | 3, shadow: boolean, beyond = false, onlyEra?: number) => {
     const ys = new Float32Array(list.length);
     list.forEach((p, i) => (ys[i] = valleyHeight(p.x, p.z) + (p.dy ?? 0)));
-    meshes.push({ asset, node, list, ys, cell, thin, band, shadow, beyond });
+    meshes.push({ asset, node, list, ys, cell, thin, band, shadow, beyond, onlyEra });
   };
   const add = (asset: AssetName, node: string, list: Placement[], o: AddOptions = {}) => {
     if (list.length === 0) return;
@@ -175,13 +201,13 @@ function* scatterPlan(): Generator<void, Plan> {
     }
     const shadow = o.shadow ?? asset !== 'vegetation';
     for (const [i, ps] of byCell) {
-      if (o.farOnly) mesh(asset, o.lod ?? node, ps, i, false, 0, shadow);
+      if (o.farOnly) mesh(asset, o.lod ?? node, ps, i, false, 0, shadow, false, o.onlyEra);
       else if (o.lod) {
         // Near: the detailed tree is drawn, but its shadow comes from the LOD (a fraction of the triangles).
         mesh(asset, node, ps, i, false, 1, false);
         if (shadow) mesh(asset, o.lod, ps, i, false, 3, true);
         mesh(asset, o.lod, ps, i, false, 2, shadow);
-      } else mesh(asset, node, ps, i, !!o.thin, 0, shadow, !!o.beyond);
+      } else mesh(asset, node, ps, i, !!o.thin, 0, shadow, !!o.beyond, o.onlyEra);
     }
     counts[node] = (counts[node] ?? 0) + list.length;
   };
@@ -212,6 +238,12 @@ function* scatterPlan(): Generator<void, Plan> {
   add('tree', 'meadow_tree', trees, { lod: 'meadow_tree_lod1' });
   add('tree', 'meadow_tree', hillTrees, { lod: 'meadow_tree_lod1', farOnly: true, shadow: false });
   add('tree', 'great_tree', greats);
+  // the same forest, as Early 3D and Stylized draw it (the bible's one tree in every generation)
+  for (const [kind, era] of [['low', 2], ['shell', 3]] as const) {
+    add('tree', `meadow_tree_${kind}`, trees, { onlyEra: era });
+    add('tree', `meadow_tree_${kind}`, hillTrees, { onlyEra: era, farOnly: true, shadow: false });
+    add('tree', `great_tree_${kind}`, greats, { onlyEra: era });
+  }
   yield;
 
   // --- ground cover
@@ -239,9 +271,14 @@ function* scatterPlan(): Generator<void, Plan> {
       if (k < 0.08) ferns.push({ x, z, scale: 0.8 + r() * 0.7, rot: r() * 6.28 });
       else if (k < 0.2) grass.push({ x, z, scale: 0.7 + r() * 0.4, rot: r() * 6.28 });
     } else if (grassW > 0.45) {
-      if (k < 0.55) grass.push({ x, z, scale: foreground ? 0.6 + r() * 0.3 : 0.75 + r() * 0.6, rot: r() * 6.28 });
-      else if (k < 0.62 && z < LANE_BACK) tall.push({ x, z, scale: 0.8 + r() * 0.5, rot: r() * 6.28 });
-      else if (k < 0.64) flowers[r() < 0.6 ? 0 : 1].push({ x, z, scale: 0.45 + r() * 0.25, rot: r() * 6.28 });
+      // Drifts, not an even carpet (docs/ART_BIBLE.md §7): grass gathers in patches with gaps between, thins
+      // along both edges of the path and in front of it, and flowers grow in groups of one colour.
+      const edge = (z > LANE_FRONT - 0.4 && z < LANE_FRONT + 1.4) || (z < LANE_BACK + 0.4 && z > LANE_BACK - 1.4);
+      const dens = (0.1 + 0.9 * smooth(0.38, 0.72, drift(x * 0.11, z * 0.17))) * (z > LANE_FRONT - 0.4 ? 0.55 : 1) * (foreground ? 0.7 : 1) * (edge ? 0.55 : 1);
+      const bloom = drift(x * 0.08 + 31, z * 0.1 - 17);
+      if (k < 0.55 * dens) grass.push({ x, z, scale: foreground ? 0.6 + r() * 0.3 : 0.75 + r() * 0.6, rot: r() * 6.28 });
+      else if (k < 0.55 * dens + 0.07 && z < LANE_BACK) tall.push({ x, z, scale: 0.8 + r() * 0.5, rot: r() * 6.28 });
+      else if (bloom > 0.66 && k > 0.94 - (bloom - 0.66) * 0.5) flowers[drift(x * 0.05, z * 0.05 + 9) < 0.5 ? 0 : 1].push({ x, z, scale: 0.45 + r() * 0.25, rot: r() * 6.28 });
     }
     if (k > 0.9985 && !onLane && !foreground) rocks[Math.floor(r() * 3)].push({ x, z, scale: 0.5 + r() * 0.9, rot: r() * 6.28, dy: -0.12 });
   }

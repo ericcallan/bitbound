@@ -43,7 +43,7 @@ export const M = {
   leaf: () => sharedEraMaterial('leaf', { color: '#3fae4a', roughness: 0.8 }),
   leafDark: () => sharedEraMaterial('leafDark', { color: '#258a45', roughness: 0.8 }),
   leafLight: () => sharedEraMaterial('leafLight', { color: '#8fd85a', roughness: 0.8 }),
-  stone: () => sharedEraMaterial('stone', { color: '#b3abc0', pattern: PATTERN.stone }),
+  stone: () => sharedEraMaterial('stone', { color: '#cdbd9c', pattern: PATTERN.stone }),
   ruin: () => sharedEraMaterial('ruin', { color: '#c4b59c', pattern: PATTERN.ruin }),
   ruinDark: () => sharedEraMaterial('ruinDark', { color: '#8d8299', pattern: PATTERN.ruin }),
   rune: () => sharedEraMaterial('rune', { color: '#11665f', emissive: '#2fd6c3', emissiveIntensity: 1.7 }),
@@ -98,6 +98,15 @@ const ico = (r: number, mat: THREE.Material, d = 0) => new THREE.Mesh(new THREE.
 const cyl = (rt: number, rb: number, h: number, mat: THREE.Material, seg = 12) => new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat);
 const at = <T extends THREE.Object3D>(o: T, x: number, y: number, z: number) => (o.position.set(x, y, z), o);
 
+/**
+ * The canopy masses of scripts/blender/create_tree.py (MEADOW, GREAT), as fractions of the tree's height:
+ * [x, height of centre, half-width, half-height]. The 8-bit tree puts one block on each.
+ */
+const TREE_MASSES = {
+  meadow: [[-0.17, 0.52, 0.235, 0.186], [0.16, 0.56, 0.245, 0.196], [-0.01, 0.775, 0.265, 0.225]],
+  great: [[-0.36, 0.6, 0.22, 0.16], [0.36, 0.62, 0.22, 0.16], [0, 0.8, 0.36, 0.2]],
+} as const;
+
 export interface Animated {
   update(t: number, ctx: AnimCtx): void;
 }
@@ -120,36 +129,40 @@ export function buildDecor(def: DecorDef, reg: EraSwapRegistry): { obj: THREE.Ob
   switch (def.type) {
     case 'tree': {
       const h = (2.4 + r() * 1.2) * s;
-      // 8-bit: blocky
+      const great = s >= 1.2;
+      // One tree in every generation (docs/ART_BIBLE.md §4): the Blender tree's three canopy masses, at one scale,
+      // turned to face the 2D camera (give or take) so the three masses read from the side.
+      const k = s * (great ? 0.62 : 0.78);
+      const H = (great ? 7.5 : 4.6) * k;
+      const rot = (r() < 0.5 ? 0 : Math.PI) + (r() - 0.5) * 0.5;
+      // 8-bit: a trunk and one block per canopy mass, where the masses are
       const t8 = new THREE.Group();
-      t8.add(at(box(0.5 * s, h, 0.5 * s, M.trunk()), 0, h / 2, 0));
-      t8.add(at(box(2.2 * s, 1.2 * s, 1.6 * s, M.leaf()), 0, h + 0.2, 0));
-      t8.add(at(box(1.4 * s, 0.9 * s, 1.2 * s, M.leafLight()), 0, h + 1.1 * s, 0));
+      const fork = (great ? 0.4 : 0.42) * H;
+      t8.add(at(box(0.09 * H, fork, 0.09 * H, M.trunk()), 0, fork / 2, 0));
+      TREE_MASSES[great ? 'great' : 'meadow'].forEach(([x, up, rx, rz], i, all) =>
+        t8.add(at(box(2 * rx * H * 0.92, 2 * rz * H * 0.92, 1.4 * s, i === all.length - 1 ? M.leafLight() : M.leaf()), x * H, up * H, 0)),
+      );
+      // fallbacks until the tree asset has loaded: the old procedural trees
       const blobs = [
         [0, h + 0.3, 0, 1.15],
         [-0.8, h - 0.1, 0.1, 0.8],
         [0.85, h, -0.1, 0.85],
         [0.1, h + 1.05, 0, 0.75],
       ];
-      // modern: soft round canopy
       const tM = new THREE.Group();
-      const trunk = cyl(0.16 * s, 0.32 * s, h, M.trunk(), 14);
-      tM.add(at(trunk, 0, h / 2, 0));
-      for (const [x, y, z, rad] of blobs) {
-        tM.add(at(sphere(rad * s * 1.05, M.leaf(), 20), x * s, y, z * s));
-        tM.add(at(sphere(rad * s * 0.55, M.leafLight(), 14), x * s + 0.2 * s, y + rad * 0.45 * s, z * s + 0.3 * s));
-      }
-      // early 3D: a box trunk and stacked low-poly cones
+      tM.add(at(cyl(0.16 * s, 0.32 * s, h, M.trunk(), 14), 0, h / 2, 0));
+      for (const [x, y, z, rad] of blobs) tM.add(at(sphere(rad * s * 1.05, M.leaf(), 20), x * s, y, z * s));
       const tL = new THREE.Group();
       tL.add(at(cyl(0.22 * s, 0.3 * s, h, M.trunk(), 4), 0, h / 2, 0));
-      tL.add(at(new THREE.Mesh(new THREE.ConeGeometry(1.5 * s, 1.8 * s, 5), M.leaf()), 0, h + 0.3, 0));
-      tL.add(at(new THREE.Mesh(new THREE.ConeGeometry(1.05 * s, 1.4 * s, 5), M.leafDark()), 0, h + 1.2 * s, 0));
-      // Modern HD and Beyond: the Blender trees (the Great Tree where the old one stood tallest).
-      const great = s >= 1.2;
-      const tHD = assetSlot('tree', great ? 'great_tree' : 'meadow_tree', tM.clone(), s * (great ? 0.62 : 0.78), r() * Math.PI * 2);
-      // 8-bit: a blocky green tree on the landscape; 16-bit: a sprite pre-rendered from the Blender tree
+      for (const [x, y, z, rad] of blobs) tL.add(at(ico(rad * s * 1.05, M.leaf(), 0), x * s, y, z * s));
+      // Early 3D: faceted · Stylized: the smooth shell · Modern HD and Beyond: the full tree (the Great Tree where
+      // the old one stood tallest) · 16-bit: a sprite pre-rendered from the full tree
+      const node = great ? 'great_tree' : 'meadow_tree';
+      const tLow = assetSlot('tree', `${node}_low`, tL, k, rot);
+      const tShell = assetSlot('tree', `${node}_shell`, tM, k, rot);
+      const tHD = assetSlot('tree', node, tM.clone(), k, rot);
       const t16 = new Sprite16('tree', s * 0.78 * (great ? 1.5 : 1)).sprite;
-      reg.variants(g, [[t8, E(0)], [t16, E(1)], [tL, E(2)], [tM, E(3)], [tHD, E(4, 5)]], anchor, false);
+      reg.variants(g, [[t8, E(0)], [t16, E(1)], [tLow, E(2)], [tShell, E(3)], [tHD, E(4, 5)]], anchor, false);
       break;
     }
     case 'bush': {

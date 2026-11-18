@@ -1,7 +1,9 @@
 # Bitbound art bible
 
-**Status:** Phase 0 draft for approval (2026-11-18). Nothing here is built yet unless it says "today". The reference
-sheets in `docs/art/` are design diagrams drawn by `scripts/art-bible-sheets.mjs`, not game art.
+**Status:** Phase 1 built (2026-11-18). The painted materials, the one tree in every generation, the palettes and
+the per-generation looks are in the game. The sheets in `docs/art/` are rendered in Blender from the game's own
+assets (`scripts/blender/render_bible.py`, composited by `scripts/art-bible-sheets.mjs`); Sprig, the Stitchling and
+the Lost Bit are not modelled yet and are drawn there, labelled so. "Today" in section 2 means before Phase 1.
 
 Companion documents: `docs/CHAPTERS.md` (story, chapters, regions), `docs/benchmark/README.md` (the
 six-generation benchmark).
@@ -115,7 +117,7 @@ The palette is fixed for the whole game: every generation draws from the same hu
 | Sprig | A purple flower with a round face. |
 | Stitchling | A round cream body with a stitched seam, one eye and a brass antenna. |
 
-How the same tree is drawn by each generation:
+How the same tree is drawn by each generation (the game's own tree, rendered in Blender):
 
 ![tree in six generations](art/tree-generations.png)
 

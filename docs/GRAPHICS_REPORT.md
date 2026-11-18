@@ -1,5 +1,96 @@
 # Graphics report
 
+## Phase 1 of the Great Unfolding: the art kit (2026-11-18)
+
+The art direction in `docs/ART_BIBLE.md` applied to every generation, checked on the six-generation benchmark
+(`docs/benchmark/`, before and after side by side in `compare-phase1.jpg`). Everything below was built and looked at
+in the game; numbers are measured unless marked otherwise.
+
+**No photographs.** Every surface is a painted material in the bible's palette, built in Blender
+(`painted_shader` in `scripts/blender/common.py`):
+- broad colour regions, value variation and brush strokes;
+- flecks, pebbles, cracks and ivory masonry;
+- worn edges and cooler crevices on modelled objects;
+- moss on top faces.
+
+The seven ground sets are baked seamless (`scripts/blender/create_painted_textures.py`; UV wrapped onto two circles
+in 4D noise). The gateway stone, rocks, bark and signpost are re-baked with it. The terrain's khaki-to-green fix is
+gone, since the colours are right at the source.
+
+**One tree in every generation.** `create_tree.py` grows the bible silhouette: three canopy masses on a slightly
+leaning trunk, with leaf clumps shaded darker toward each mass's underside and core so the masses separate. Each
+tree also exports:
+- a smooth `_shell` (Stylized);
+- a faceted `_low` (Early 3D).
+
+The changes per generation:
+- **8-bit:** one block per mass.
+- **16-bit:** the sprite is re-rendered from the new tree.
+- **Forest:** the Early 3D and Stylized views now have the whole forest edge. Before, they had none; the
+  instances are skipped when that generation is nowhere on screen.
+
+**Per generation.**
+- **8-bit:** the palette is re-tuned (warm earth instead of brick red, ivory stone instead of lilac, moss
+  greens), and stone is warm in every generation.
+- **16-bit:**
+  - grass and stone tiles come from the painted sets, reduced to 4-step hue-shifted ramps;
+  - soil is drawn on its ramp the way an artist of the time would;
+  - the parallax layers are recoloured lavender and sage.
+- **Early 3D:** no posterise; a lavender-blue fog; half the dither.
+- **Stylized:**
+  - palette ground with value structure (slopes a band darker, ground far behind the path paler and cooler);
+  - deeper colour;
+  - a fix: the rim light lit the whole floor in 2D, which is what made Stylized look washed out.
+- **Modern HD:** grass grows in drifts and thins along both edges of the path; flowers grow in single-colour
+  groups.
+- **Beyond:**
+  - no depth of field over play (only in cinematics, and a trace for far hills in 3D);
+  - falling leaves and butterflies;
+  - dappled sunlight drifting on the forest floor.
+
+**Reference art** is now rendered in Blender from the game's assets (`scripts/blender/render_bible.py`):
+`docs/art/silhouettes.png` and `docs/art/tree-generations.png`.
+
+### Measurements
+
+GPU time: Apple M4 Pro, Chrome, drawing buffer 2259×1065, `window.__perf(5)` (mean / p95 over 300 frames), dev
+server, one headless page.
+
+| Scene | Before (this session's earlier runs) | After |
+|---|---:|---:|
+| Beyond, ruins 3D overview | 12.3–13.4 / 13.3–14.8 ms, 2.34 M triangles | **10.45 / 11.52 ms**, 1.57 M triangles |
+| Modern HD, ruins 3D overview | — | 8.72 / 9.78 ms |
+| Stylized, ruins 3D overview (now with its forest) | — | 2.27 / 2.76 ms |
+| Early 3D, ruins 3D overview (now with its forest) | — | 2.22 / 3.42 ms |
+| Beyond, ruins 2D | — | 9.48 / 10.41 ms |
+| Beyond, aqueduct 3D | 7.68–9.35 ms mean | 7.98 / 8.85 ms |
+| Beyond, hidden chamber | 11.2–11.8 ms mean | 11.27 / 11.84 ms |
+
+Beyond's p95 is now under its 12 ms target at the ruins. Dropping the depth-of-field blur over play and the
+lighter trees outweigh the new leaves, butterflies and dappled light.
+
+**Shipped assets: 6.6 MB** (was 13.8 MB; budget 15 MB). The ground textures went from 5.5 MB to 0.9 MB. Details are
+in `docs/ASSETS.md`.
+
+### What still falls short
+
+- **Terrain shapes** are unchanged off the path: sheer mesas still read as blocks from high cameras. The bible's
+  stepped rock (and the stepped variant of `create_rocks.py`) is Phase 2 work. The rock and the plinth on the
+  silhouette sheet are today's assets.
+- **8-bit:**
+  - the Shard arch's columns still show purple on their shaded faces;
+  - the machine, sign, Bits, enemies and checkpoints are still snapped meshes, not authored sprites (Phase 2).
+- **Modern HD and Beyond** are still close in 2D: Beyond's extra life shows mostly in 3D and in motion. The deep
+  pass is Phase 6.
+- **The flower at x 25.2** still fills the left of the benchmark's 3D frame. That frame's orbit puts the camera
+  beside it; normal play behind Pip is clear of it.
+- **The browser baselines** (`e2e/baselines`) all changed and were not refreshed; that is a heavy run, left for the
+  user.
+- **Not judged in motion:** wind on the new trees, the leaves and butterflies, and the dappled light were only
+  checked in still frames.
+
+## Earlier phases
+
 **Phase 7** (the title screen, camera and shift reliability, level validation, and the broken aqueduct rebuilt as
 the benchmark for Modern HD and Beyond) is reported in **docs/AUDIT.md**, with its measurements. The Phase 6 report
 follows unchanged.

@@ -75,16 +75,20 @@ development."
 
 - **8-bit** (2D only) is a real tile renderer: a green landscape of 16×16, three-colour tiles, flat hills and
   bushes, plain clouds, about 240 rows at a whole-number scale filling the screen, and a 3-colour 16×16 Pip.
-- **16-bit** (2D only): tiles cut from scanned ground materials, three parallax layers over a banded sky, and Pip and
-  the scenery pre-rendered from the Blender models; about 224 rows, filling the screen.
+- **16-bit** (2D only): tiles from the painted ground materials on the bible's 4-step ramps, three parallax layers
+  (lavender ranges, sage hills) over a banded sky, and Pip and the scenery pre-rendered from the Blender models;
+  about 224 rows, filling the screen.
 - **One 3D world** from Early 3D up, across the whole level: continuous terrain, cliffs, river gorges, forest and
   meadow you can walk anywhere in, shaped so no puzzle can be walked round. Early 3D and Stylized have their own
-  terrain looks.
+  terrain looks and their own forest (the same trees, faceted or as smooth three-mass shells).
 - **Blender-built assets** (`scripts/blender/`, sources in `assets/blender/`): Pip (18-bone rig, 11 clips plus
-  procedural foot planting, lean and squash), trees with LODs, ground cover and litter, rocks, props, ancient stone
-  and the terrain, baked from CC0 scans and optimised with glTF Transform; colour textures ship as KTX2.
-- **Modern HD** is late-afternoon daylight under a real HDRI sky; **Beyond** is golden hour under its own sky, with
-  relief-mapped ground, cloud shadows and a detailed Pip.
+  procedural foot planting, lean and squash), one tree in every generation (the art bible's three-mass silhouette,
+  with LODs), ground cover and litter, rocks, props, ancient stone and the terrain. No photographs: every surface is
+  a painted material in the bible's palette, baked in Blender and optimised with glTF Transform; colour textures
+  ship as KTX2.
+- **Modern HD** is late-afternoon daylight under a real HDRI sky, with grass in drifts; **Beyond** is golden hour
+  under its own sky, with relief-mapped ground, cloud shadows, dappled light on the forest floor, falling leaves,
+  butterflies and a detailed Pip, and no depth-of-field blur over play.
 - **Title screen:** a composed live scene with a generation timeline. 8-bit and 16-bit are their own pixel scenes
   (`src/ui/title/pixelTitle.ts`: 240 rows in the 8-bit palette only, and 224 rows from the 16-bit tiles and
   pre-rendered sprites), reached through a mosaic transition; the 3D set stops rendering behind them.

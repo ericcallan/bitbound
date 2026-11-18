@@ -61,8 +61,8 @@ def stone_pair(name, size, center, bevel=0.06, chip=0.05, flat_top=True, seed=0,
     return lo, hi
 
 
-def bake_set(name, lows, highs, size, top_asset="mossy_rock"):
-    """Join lows/highs, bake scanned masonry + moss onto the low, return the joined low."""
+def bake_set(name, lows, highs, size, top_asset="moss"):
+    """Join lows/highs, bake painted ivory stone + moss in the joints and on top onto the low, return the joined low."""
     C.select_only(*lows)
     bpy.ops.object.join()
     low = bpy.context.active_object
@@ -72,7 +72,7 @@ def bake_set(name, lows, highs, size, top_asset="mossy_rock"):
     high = bpy.context.active_object
     high.name = name + "_high"
     high.data.materials.clear()
-    high.data.materials.append(C.ph_shader(f"{name}_src", "rough_block_wall", scale=0.7, tint=(1.04, 1.0, 0.92), top_asset=top_asset, top_scale=1.2, top_from=0.6, top_to=0.92, bump=0.9))
+    high.data.materials.append(C.painted_shader(f"{name}_src", "stone", scale=0.7, top_kind=top_asset, top_from=0.6, top_to=0.92, bump=0.9))
     C.uv_unwrap(low, margin=0.006, angle=60)
     low.data.materials.clear()
     low.data.materials.append(C.principled(f"{name}_tmp"))

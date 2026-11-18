@@ -109,7 +109,7 @@ export const ART_PAGES: ArtPage[] = [
       {
         title: 'How the world is built',
         body: [
-          'Every model is made by a Blender script: terrain from the game’s own height field, trees with levels of detail, rocks, ground cover, ancient stone and the aqueduct, textured from CC0 scans by Poly Haven and compressed for the web.',
+          'Every model is made by a Blender script: terrain from the game’s own height field, trees with levels of detail, rocks, ground cover, ancient stone and the aqueduct, painted in one palette (no photographs) and compressed for the web.',
           'The camera keeps Pip in view (it collides with terrain and walls, and dissolves foliage between itself and him), and every jump on the route is checked against Pip’s measured jump.',
         ],
       },

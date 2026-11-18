@@ -1,11 +1,14 @@
 /**
- * Reference sheets for docs/ART_BIBLE.md: the palette, the fixed silhouettes, and the meadow tree drawn the way
- * each generation would draw it. These are design diagrams for the bible, not game art; nothing here ships.
+ * Reference sheets for docs/ART_BIBLE.md, from the real art: the palette; the fixed silhouettes and the meadow
+ * tree in every generation, from Blender renders of the game's own assets (scripts/blender/render_bible.py) and
+ * the game's 16-bit sprite sheet. Subjects not modelled yet (Sprig, the Stitchling, the Lost Bit) are drawn here,
+ * and labelled so. Nothing here ships.
  *
- *   node scripts/art-bible-sheets.mjs        writes docs/art/{palette,silhouettes,tree-generations}.png
+ *   Blender -b -P scripts/blender/render_bible.py && node scripts/art-bible-sheets.mjs
+ *   → docs/art/{palette,silhouettes,tree-generations}.png
  */
 import sharp from 'sharp';
-import { mkdirSync } from 'node:fs';
+import fs, { mkdirSync } from 'node:fs';
 
 const OUT = 'docs/art';
 mkdirSync(OUT, { recursive: true });
@@ -37,8 +40,8 @@ const ramp = (c, n) =>
     return t < 0.5 ? mix(PALETTE['Muted cobalt'].cobaltDeep, c, 0.45 + t * 1.1) : mix(c, PALETTE['Warm amber'].honey, (t - 0.5) * 0.7);
   });
 
-/** 8-bit: sixteen flat colours, one per hue family plus black and white. Each tile uses three of them. */
-const NES = ['#000000', '#fcfcfc', '#3e5b3a', '#5e9f3a', '#a8d060', '#2f6e73', '#58b8f8', '#e0a142', '#f1e6cf', '#a8957a', '#7a5236', '#3d5684', '#9c95c4', '#9a62d8', '#e8742a', '#5fe0e6'];
+/** 8-bit: the game's sixteen flat colours (PALETTE_8 in src/game/render/post/Pipeline.ts). Each tile uses three. */
+const NES = ['#0d0b1e', '#2b3354', '#3d5f9c', '#5ec8f0', '#b4eeff', '#2fd6c3', '#2e7040', '#5ea83c', '#b0d860', '#fff4d6', '#ffcf6b', '#f0862a', '#a0603a', '#5e3a28', '#8e5bd6', '#cbb994'];
 const RAMP_HUES = ['moss', 'sage', 'turquoise', 'cream', 'path', 'earth', 'lavender', 'pip'].map((k) => flat.find(([n]) => n === k)[1]);
 const LIGHT = [
   ['8-bit', '#58b8f8', '#58b8f8', null],
@@ -95,43 +98,11 @@ function paletteSvg() {
 // ---------------------------------------------------------------- silhouettes
 
 const P = PALETTE;
-/** Each shape in a 200×240 box, standing on y = 230. `fill` lets the same drawing be a silhouette or coloured. */
-const SHAPES = {
-  'Meadow tree': (f) => `
-    <path d="M92 230 C96 196 88 160 98 118 L114 118 C108 160 116 196 116 230 Z" fill="${f.trunk}"/>
-    <ellipse cx="70" cy="124" rx="48" ry="38" fill="${f.canopy}"/>
-    <ellipse cx="136" cy="116" rx="50" ry="40" fill="${f.canopy}"/>
-    <ellipse cx="102" cy="72" rx="54" ry="46" fill="${f.canopy}"/>`,
-  'Great Tree': (f) => `
-    <path d="M70 230 C82 200 84 170 80 130 C70 116 52 110 40 112 C60 100 80 104 90 114 L96 80 L112 80 L114 114 C126 102 148 98 164 110 C148 110 132 118 126 132 C122 170 126 200 138 230 Z" fill="${f.trunk}"/>
-    <ellipse cx="44" cy="96" rx="40" ry="30" fill="${f.canopy}"/>
-    <ellipse cx="160" cy="92" rx="40" ry="30" fill="${f.canopy}"/>
-    <ellipse cx="102" cy="56" rx="66" ry="44" fill="${f.canopy}"/>`,
-  'Stepped rock': (f) => `
-    <path d="M14 230 L16 168 Q18 156 30 154 L74 150 Q84 148 86 136 L90 96 Q92 84 104 82 L150 78 Q164 78 166 92 L186 230 Z" fill="${f.rock}"/>
-    <path d="M30 154 L74 150 Q84 148 86 136 L88 116 Q60 132 30 154 Z" fill="${f.rockTop}"/>
-    <path d="M104 82 L150 78 Q164 78 166 92 L168 104 Q130 92 104 82 Z" fill="${f.rockTop}"/>`,
-  'Ivory arch': (f) => `
-    <rect x="34" y="96" width="30" height="134" rx="4" fill="${f.stone}"/>
-    <rect x="136" y="96" width="30" height="134" rx="4" fill="${f.stone}"/>
-    <rect x="22" y="70" width="156" height="30" rx="5" fill="${f.stone}"/>
-    <circle cx="100" cy="85" r="10" fill="none" stroke="${f.tech}" stroke-width="3"/>
-    <path d="M100 75 L100 95 M91 80 L109 90 M91 90 L109 80" stroke="${f.tech}" stroke-width="2"/>`,
-  'Shard pedestal': (f) => `
-    <rect x="70" y="190" width="60" height="40" rx="4" fill="${f.stone}"/>
-    <rect x="62" y="180" width="76" height="12" rx="3" fill="${f.stone}"/>
-    <path d="M100 96 L122 136 L100 176 L78 136 Z" fill="${f.tech}"/>
-    <ellipse cx="100" cy="136" rx="38" ry="10" fill="none" stroke="${f.brass}" stroke-width="3"/>`,
+const R = 'docs/art/renders';
+
+/** Subjects not modelled yet, drawn in a 200×240 box standing on y = 230. */
+const DRAWN = {
   'Lost Bit': (f) => `<path d="M100 120 L124 165 L100 210 L76 165 Z" fill="${f.tech}"/><path d="M100 132 L112 165 L100 176 Z" fill="#ffffff66"/>`,
-  Pip: (f) => `
-    <path d="M100 52 L100 70" stroke="${f.pip}" stroke-width="4"/><circle cx="100" cy="48" r="6" fill="${f.tech}"/>
-    <rect x="62" y="70" width="76" height="64" rx="18" fill="${f.pip}"/>
-    <rect x="72" y="80" width="56" height="44" rx="10" fill="${f.screen}"/>
-    <rect x="84" y="94" width="10" height="14" rx="3" fill="${f.tech}"/><rect x="106" y="94" width="10" height="14" rx="3" fill="${f.tech}"/>
-    <rect x="76" y="136" width="48" height="50" rx="12" fill="${f.pip}"/>
-    <rect x="86" y="146" width="28" height="26" rx="6" fill="${f.cream}"/><circle cx="100" cy="159" r="7" fill="${f.tech}"/>
-    <rect x="80" y="186" width="14" height="18" fill="${f.cream}"/><rect x="106" y="186" width="14" height="18" fill="${f.cream}"/>
-    <rect x="70" y="204" width="30" height="26" rx="10" fill="${f.boot}"/><rect x="100" y="204" width="30" height="26" rx="10" fill="${f.boot}"/>`,
   Sprig: (f) => `
     <path d="M100 230 C96 200 106 170 100 140" stroke="${f.stem}" stroke-width="6" fill="none"/>
     <path d="M100 196 C80 186 70 196 66 206 C80 208 92 204 100 196 Z" fill="${f.stem}"/>
@@ -148,132 +119,105 @@ const SHAPES = {
     <rect x="74" y="214" width="12" height="16" rx="4" fill="${f.seam}"/><rect x="114" y="214" width="12" height="16" rx="4" fill="${f.seam}"/>
     <path d="M100 132 L100 118" stroke="${f.seam}" stroke-width="3"/><circle cx="100" cy="114" r="5" fill="${f.brass}"/>`,
 };
-
-const COLOURED = {
-  trunk: P.Earth.bark, canopy: P['Moss and sage'].moss, rock: P['Cream and ivory'].stoneShade, rockTop: P['Moss and sage'].sage,
-  stone: P['Cream and ivory'].ivory, tech: P['Dimensional tech (reserved)'].cyan, brass: P['Dimensional tech (reserved)'].brass,
-  pip: P["Pip's orange"].pip, screen: P["Pip's orange"].screen, cream: P["Pip's orange"].pipCream, boot: P['Muted cobalt'].cobalt,
+const DRAWN_FILL = {
+  tech: P['Dimensional tech (reserved)'].cyan, brass: P['Dimensional tech (reserved)'].brass, screen: P["Pip's orange"].screen,
   stem: P['Moss and sage'].moss, petal: P['Gentle lavender'].lavender, sprig: P['Gentle lavender'].sprig, eye: '#ffffff',
   stitch: P['Cream and ivory'].cream, seam: P['Muted cobalt'].cobaltDeep,
 };
-const SILHOUETTE = Object.fromEntries(Object.keys(COLOURED).map((k) => [k, '#1b1d24']));
+const DRAWN_DARK = Object.fromEntries(Object.keys(DRAWN_FILL).map((k) => [k, '#1b1d24']));
 
-function silhouettesSvg() {
-  const names = Object.keys(SHAPES);
-  const cw = 200, ch = 240, gap = 16, W = names.length * (cw + gap) + gap;
-  // silhouettes on cream; colour on a soft sky so ivory stone stays visible
-  const row = (fills, y, card) =>
-    names.map((n, i) => `<g transform="translate(${gap + i * (cw + gap)} ${y})"><rect width="${cw}" height="${ch}" rx="10" fill="${card}"/>${SHAPES[n](fills)}</g>`).join('');
-  const labels = names.map((n, i) => `<text x="${gap + i * (cw + gap) + cw / 2}" y="${66 + ch * 2 + 46}" text-anchor="middle" font-family="Helvetica" font-size="16" fill="#e8e3d6">${n}</text>`).join('');
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${ch * 2 + 140}">
-    <rect width="100%" height="100%" fill="#14161c"/>
-    <text x="${gap}" y="34" font-family="Helvetica" font-weight="bold" font-size="22" fill="#f6f0e2">Fixed silhouettes · must read the same in all six generations (top: shape only)</text>
-    ${row(SILHOUETTE, 50, '#eee7d6')}${row(COLOURED, 66 + ch, '#a9c4d3')}${labels}</svg>`;
+/** A render (or drawing) fitted into a card: `dark` turns it into its silhouette. */
+async function fit(input, w, h, dark = false) {
+  let img = sharp(input).trim({ threshold: 1 }).resize(Math.round(w * 0.86), Math.round(h * 0.86), { fit: 'inside' });
+  if (dark) {
+    const { data, info } = await img.ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    for (let i = 0; i < data.length; i += 4) {
+      data[i] = 0x1b;
+      data[i + 1] = 0x1d;
+      data[i + 2] = 0x24;
+      data[i + 3] = data[i + 3] > 40 ? 255 : 0;
+    }
+    img = sharp(data, { raw: info });
+  }
+  return img.png().toBuffer();
 }
 
-// ---------------------------------------------------------------- one tree, six generations
-
-const TREE = { trunk: [[92, 230], [96, 196], [88, 160], [98, 118], [114, 118], [108, 160], [116, 196], [116, 230]], masses: [[70, 124, 48, 38], [136, 116, 50, 40], [102, 72, 54, 46]] };
-const sky = (a, b) => `<defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="200" height="240" fill="url(#sky)"/>`;
-const trunkPath = `M92 230 C96 196 88 160 98 118 L114 118 C108 160 116 196 116 230 Z`;
-const ground = (c, c2) => `<rect y="226" width="200" height="14" fill="${c}"/>${c2 ? `<rect y="226" width="200" height="3" fill="${c2}"/>` : ''}`;
-
-/** Flat polygon facets for an ellipse, lit from the upper left: the Early 3D look. */
-function facets([cx, cy, rx, ry], base) {
-  const n = 7, pts = Array.from({ length: n }, (_, i) => [cx + Math.cos((i / n) * Math.PI * 2 + 0.3) * rx, cy + Math.sin((i / n) * Math.PI * 2 + 0.3) * ry]);
-  return pts.map((p, i) => {
-    const q = pts[(i + 1) % n];
-    const a = Math.atan2((p[1] + q[1]) / 2 - cy, (p[0] + q[0]) / 2 - cx);
-    const lit = 0.5 + 0.5 * Math.cos(a - (-2.3));
-    return `<path d="M${cx} ${cy - ry * 0.15} L${p[0]} ${p[1]} L${q[0]} ${q[1]} Z" fill="${mix(mix(base, P['Muted cobalt'].cobaltDeep, 0.35), mix(base, P['Warm amber'].honey, 0.45), lit)}"/>`;
-  }).join('');
+async function silhouettes() {
+  const subjects = [
+    ['Meadow tree', `${R}/meadow_tree_hd.png`],
+    ['Great Tree', `${R}/great_tree_hd.png`],
+    ['Rock (stepped: Phase 2)', `${R}/rock_hd.png`],
+    ['Ivory arch', `${R}/arch_hd.png`],
+    ['Pedestal (plinth only)', `${R}/pedestal_hd.png`],
+    ['Pip', `${R}/pip_hd.png`],
+    ...Object.keys(DRAWN).map((k) => [`${k} (drawn)`, k]),
+  ];
+  const cw = 200, ch = 240, gap = 16, W = subjects.length * (cw + gap) + gap, H = ch * 2 + 150;
+  const comp = [];
+  for (const [i, [label, src]] of subjects.entries()) {
+    const x = gap + i * (cw + gap);
+    const svg = (fill) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240">${DRAWN[src](fill)}</svg>`);
+    const drawn = src in DRAWN;
+    for (const [row, dark, card] of [[0, true, '#eee7d6'], [1, false, '#a9c4d3']]) {
+      const y = 50 + row * (ch + 16);
+      comp.push({ input: Buffer.from(`<svg width="${cw}" height="${ch}"><rect width="${cw}" height="${ch}" rx="10" fill="${card}"/></svg>`), left: x, top: y });
+      const art = drawn ? await sharp(svg(dark ? DRAWN_DARK : DRAWN_FILL)).png().toBuffer() : await fit(src, cw, ch, dark);
+      const meta = await sharp(art).metadata();
+      comp.push({ input: art, left: x + Math.round((cw - meta.width) / 2), top: y + ch - meta.height - (drawn ? 0 : 10) });
+    }
+    comp.push({ input: Buffer.from(`<svg width="${cw}" height="40"><text x="${cw / 2}" y="24" text-anchor="middle" font-family="Helvetica" font-size="15" fill="#e8e3d6">${label}</text></svg>`), left: x, top: 50 + ch * 2 + 26 });
+  }
+  comp.push({ input: Buffer.from(`<svg width="${W}" height="44"><text x="${gap}" y="32" font-family="Helvetica" font-weight="bold" font-size="22" fill="#f6f0e2">Fixed silhouettes · the game's own assets, rendered in Blender (top: shape only)</text></svg>`), left: 0, top: 0 });
+  await sharp({ create: { width: W, height: H, channels: 3, background: '#14161c' } }).composite(comp).png().toFile(`${OUT}/silhouettes.png`);
 }
 
-const GENERATIONS = [
-  {
-    name: '8-bit', note: 'shape in 16px blocks · 3 colours · no light',
-    res: 34, colours: 4,
-    svg: () => `<rect width="200" height="240" fill="#58b8f8"/>${ground('#7a5236', '#5e9f3a')}<path d="${trunkPath}" fill="#7a5236"/>${TREE.masses.map(([x, y, rx, ry]) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="#5e9f3a"/>`).join('')}<ellipse cx="96" cy="62" rx="30" ry="22" fill="#a8d060"/>`,
-  },
-  {
-    name: '16-bit', note: 'more pixels · 4-step hue-shifted ramps · a sky gradient',
-    res: 80, colours: 14,
-    svg: () => {
-      const [d, m, l, h] = ramp(P['Moss and sage'].moss, 4);
-      return `${sky('#7fb4e6', '#cfe6f0')}${ground(ramp(P.Earth.path, 4)[1], m)}<path d="${trunkPath}" fill="${ramp(P.Earth.bark, 4)[1]}"/><path d="M106 120 L114 118 C108 160 116 196 116 230 L108 230 C106 196 102 160 106 120 Z" fill="${ramp(P.Earth.bark, 4)[0]}"/>${TREE.masses.map(([x, y, rx, ry]) => `<ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${d}"/><ellipse cx="${x - rx * 0.12}" cy="${y - ry * 0.12}" rx="${rx * 0.86}" ry="${ry * 0.82}" fill="${m}"/><ellipse cx="${x - rx * 0.3}" cy="${y - ry * 0.32}" rx="${rx * 0.5}" ry="${ry * 0.42}" fill="${l}"/><ellipse cx="${x - rx * 0.4}" cy="${y - ry * 0.45}" rx="${rx * 0.2}" ry="${ry * 0.16}" fill="${h}"/>`).join('')}`;
-    },
-  },
-  {
-    name: 'Early 3D', note: 'volume as flat facets · small blurry texture · coloured fog',
-    res: 110, colours: 0,
-    svg: () => `${sky('#9cc4e4', '#dde6dc')}${ground(P.Earth.path)}<path d="M92 230 L90 160 L99 118 L113 118 L112 160 L116 230 Z" fill="${P.Earth.bark}"/><path d="M106 118 L113 118 L112 160 L116 230 L108 230 Z" fill="${mix(P.Earth.bark, '#000', 0.3)}"/>${TREE.masses.map((m) => facets(m, P['Moss and sage'].moss)).join('')}`,
-  },
-  {
-    name: 'Stylized', note: 'the true shape · three flat bands · ink outline',
-    res: 0,
-    svg: () => {
-      const r = ramp(P['Moss and sage'].moss, 5);
-      const ink = P.Ink.ink;
-      return `${sky('#a6d3ef', '#eaf3e6')}${ground(r[2], r[3])}<path d="${trunkPath}" fill="${P.Earth.bark}" stroke="${ink}" stroke-width="4"/>${TREE.masses.map(([x, y, rx, ry], i) => `<clipPath id="c${i}"><ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}"/></clipPath><ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="${r[2]}" stroke="${ink}" stroke-width="4"/><g clip-path="url(#c${i})"><ellipse cx="${x + rx * 0.25}" cy="${y + ry * 0.7}" rx="${rx * 1.1}" ry="${ry * 0.7}" fill="${r[1]}"/><ellipse cx="${x - rx * 0.3}" cy="${y - ry * 0.5}" rx="${rx * 0.45}" ry="${ry * 0.3}" fill="${r[3]}"/></g><ellipse cx="${x}" cy="${y}" rx="${rx}" ry="${ry}" fill="none" stroke="${ink}" stroke-width="4"/>`).join('')}`;
-    },
-  },
-  {
-    name: 'Modern HD', note: 'the same shape in leaf clumps · soft light, shadow',
-    res: 0,
-    svg: () => {
-      const r = ramp(P['Moss and sage'].moss, 6);
-      let clumps = '';
-      let s = 7;
-      const rnd = () => ((s = (s * 16807) % 2147483647) / 2147483647);
-      for (const [x, y, rx, ry] of TREE.masses) for (let i = 0; i < 26; i++) {
-        const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * 0.85;
-        const px = x + Math.cos(a) * rx * d, py = y + Math.sin(a) * ry * d;
-        const lit = Math.max(0, Math.min(1, 0.55 - (py - y) / ry * 0.35 - (px - x) / rx * 0.25));
-        clumps += `<circle cx="${px}" cy="${py}" r="${10 + rnd() * 8}" fill="url(#leaf${Math.round(lit * 4)})"/>`;
-      }
-      const grads = [0, 1, 2, 3, 4].map((k) => `<radialGradient id="leaf${k}" cx="0.35" cy="0.3"><stop offset="0" stop-color="${r[Math.min(5, k + 1)]}"/><stop offset="1" stop-color="${r[Math.max(0, k - 1)]}"/></radialGradient>`).join('');
-      const bark = mix(P.Earth.bark, '#ffffff', 0.12);
-      return `${sky('#86a9cf', '#d8e2e6')}<defs>${grads}</defs>${ground('#6d7f4a')}<ellipse cx="104" cy="228" rx="58" ry="6" fill="#000000" fill-opacity="0.25"/><path d="${trunkPath}" fill="${bark}"/><path d="M106 120 L114 118 C108 160 116 196 116 230 L108 230 C106 196 102 160 106 120 Z" fill="${mix(P.Earth.bark, '#000000', 0.35)}"/>${TREE.masses.map(([x, y, rx, ry]) => `<ellipse cx="${x}" cy="${y}" rx="${rx * 0.92}" ry="${ry * 0.9}" fill="${r[1]}"/>`).join('')}${clumps}`;
-    },
-  },
-  {
-    name: 'Beyond', note: 'Modern HD + warm rim light, haze, falling leaves, life',
-    res: 0,
-    svg: () => {
-      const base = GENERATIONS[4].svg().replace(sky('#86a9cf', '#d8e2e6'), sky('#e8b98a', '#f6dcc0'));
-      // warm light from the low sun on the upper left of each mass
-      const rim = `<defs><radialGradient id="sun" cx="0.25" cy="0.2" r="0.75"><stop offset="0" stop-color="#ffc27a" stop-opacity="0.55"/><stop offset="1" stop-color="#ffc27a" stop-opacity="0"/></radialGradient></defs>${TREE.masses.map(([x, y, rx, ry]) => `<ellipse cx="${x}" cy="${y}" rx="${rx * 1.02}" ry="${ry}" fill="url(#sun)"/>`).join('')}`;
-      const leaves = [[40, 170], [150, 182], [170, 150], [60, 204]].map(([x, y], i) => `<ellipse cx="${x}" cy="${y}" rx="4" ry="2" transform="rotate(${i * 50} ${x} ${y})" fill="${P['Warm amber'].amber}"/>`).join('');
-      const flowers = [[60, 226], [70, 228], [144, 227], [156, 229]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="3" fill="${i % 2 ? P['Gentle lavender'].lavenderPale : P['Warm amber'].honey}"/>`).join('');
-      return `${base}${rim}<rect width="200" height="240" fill="url(#haze)"/><defs><linearGradient id="haze" x1="0" y1="0" x2="0" y2="1"><stop offset="0.55" stop-color="#ffd9a0" stop-opacity="0"/><stop offset="1" stop-color="#ffd9a0" stop-opacity="0.18"/></linearGradient></defs>${leaves}${flowers}`;
-    },
-  },
-];
+/** The canopy masses of scripts/blender/create_tree.py (MEADOW): [x, up, half-width, half-height] of the height. */
+const MEADOW = [[-0.17, 0.52, 0.235, 0.186], [0.16, 0.56, 0.245, 0.196], [-0.01, 0.775, 0.265, 0.225]];
+
+/** The game's 8-bit tree (src/game/render/decor.ts): a trunk and one block per canopy mass, on the pixel grid. */
+async function eightBitTree(h) {
+  const px = 6;
+  const H = Math.round((h * 0.86) / px);
+  const W = Math.round(H * 0.8);
+  const cells = Array.from({ length: H }, () => Array(W).fill(null));
+  const rect = (cx, cy, hw, hh, c) => {
+    for (let y = Math.round(cy - hh); y < Math.round(cy + hh); y++)
+      for (let x = Math.round(cx - hw); x < Math.round(cx + hw); x++) if (y >= 0 && y < H && x >= 0 && x < W) cells[y][x] = c;
+  };
+  const base = H - 1;
+  const mid = W / 2;
+  rect(mid, base - 0.21 * H, 0.045 * H, 0.21 * H, NES[13]);
+  MEADOW.forEach(([x, up, rx, rz], i) => rect(mid + x * H, base - up * H, rx * H * 0.92, rz * H * 0.92, i === 2 ? NES[8] : NES[7]));
+  const svg = cells.map((row, y) => row.map((c, x) => (c ? `<rect x="${x * px}" y="${y * px}" width="${px}" height="${px}" fill="${c}"/>` : '')).join('')).join('');
+  return sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${W * px}" height="${H * px}">${svg}</svg>`)).png().toBuffer();
+}
 
 async function treeSheet() {
-  const T = 300, H = 360, gap = 14, W = GENERATIONS.length * (T + gap) + gap;
+  const T = 300, H = 360, gap = 14;
+  const sheet = JSON.parse(fs.readFileSync('public/assets/retro/sprites16.json', 'utf8')).sprites.tree;
+  const sprite16 = await sharp('public/assets/retro/sprites16.png').extract({ left: sheet.x, top: sheet.y, width: sheet.w, height: sheet.h }).png().toBuffer();
+  const panels = [
+    ['8-bit', "the game's 8-bit tree: one block per canopy mass", '#5ec8f0', await eightBitTree(H)],
+    ['16-bit', "the game's 16-bit sprite (pre-rendered from the tree)", '#7fb4e6', await sharp(sprite16).resize({ height: Math.round(H * 0.86), kernel: 'nearest' }).png().toBuffer()],
+    ['Early 3D', 'meadow_tree_low · faceted, flat light', '#9cc4e4', await fit(`${R}/meadow_tree_low_early.png`, T, H)],
+    ['Stylized', 'meadow_tree_shell · three bands, ink', '#a6d3ef', await fit(`${R}/meadow_tree_shell_stylized.png`, T, H)],
+    ['Modern HD', 'meadow_tree · leaf clumps, soft light', '#86a9cf', await fit(`${R}/meadow_tree_hd.png`, T, H)],
+    ['Beyond', 'meadow_tree · low warm sun', '#e8b98a', await fit(`${R}/meadow_tree_beyond.png`, T, H)],
+  ];
+  const W = panels.length * (T + gap) + gap;
   const comp = [];
-  for (const [i, g] of GENERATIONS.entries()) {
-    const svg = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">${g.svg()}</svg>`);
-    let img;
-    if (g.res) {
-      const h = Math.round((g.res * 240) / 200);
-      let small = sharp(svg, { density: 72 }).resize(g.res, h);
-      small = g.colours ? sharp(await small.png({ palette: true, colours: g.colours, dither: 0 }).toBuffer()) : small;
-      img = await small.resize(T, H, { kernel: g.colours ? 'nearest' : 'linear' }).png().toBuffer();
-    } else img = await sharp(svg, { density: 216 }).resize(T, H).png().toBuffer();
-    comp.push({ input: img, left: gap + i * (T + gap), top: 56 });
-    comp.push({
-      input: Buffer.from(`<svg width="${T}" height="60"><text x="0" y="22" font-family="Helvetica" font-weight="bold" font-size="18" fill="#f1ead9">${g.name}</text><text x="0" y="44" font-family="Helvetica" font-size="12" fill="#b8b2a4">${g.note}</text></svg>`),
-      left: gap + i * (T + gap),
-      top: 56 + H + 6,
-    });
+  for (const [i, [name, note, sky, art]] of panels.entries()) {
+    const x = gap + i * (T + gap);
+    comp.push({ input: Buffer.from(`<svg width="${T}" height="${H}"><defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${sky}"/><stop offset="1" stop-color="#eef0e6"/></linearGradient></defs><rect width="${T}" height="${H}" fill="url(#g)"/><rect y="${H - 14}" width="${T}" height="14" fill="#7a8f55"/></svg>`), left: x, top: 56 });
+    const meta = await sharp(art).metadata();
+    comp.push({ input: art, left: x + Math.round((T - meta.width) / 2), top: 56 + H - 12 - meta.height });
+    comp.push({ input: Buffer.from(`<svg width="${T}" height="60"><text x="0" y="22" font-family="Helvetica" font-weight="bold" font-size="18" fill="#f1ead9">${name}</text><text x="0" y="44" font-family="Helvetica" font-size="12" fill="#b8b2a4">${note}</text></svg>`), left: x, top: 56 + H + 6 });
   }
-  comp.push({ input: Buffer.from(`<svg width="${W}" height="50"><text x="${gap}" y="34" font-family="Helvetica" font-weight="bold" font-size="22" fill="#f6f0e2">The meadow tree, drawn by each generation · same silhouette, more information each time (diagram, not game art)</text></svg>`), left: 0, top: 0 });
+  comp.push({ input: Buffer.from(`<svg width="${W}" height="50"><text x="${gap}" y="34" font-family="Helvetica" font-weight="bold" font-size="22" fill="#f6f0e2">The meadow tree in every generation · the game's own tree (scripts/blender/create_tree.py), rendered in Blender</text></svg>`), left: 0, top: 0 });
   await sharp({ create: { width: W, height: 56 + H + 72, channels: 3, background: '#14161c' } }).composite(comp).png().toFile(`${OUT}/tree-generations.png`);
 }
 
 await sharp(Buffer.from(paletteSvg())).png().toFile(`${OUT}/palette.png`);
-await sharp(Buffer.from(silhouettesSvg())).png().toFile(`${OUT}/silhouettes.png`);
+await silhouettes();
 await treeSheet();
 console.log(`wrote ${OUT}/palette.png, silhouettes.png, tree-generations.png`);

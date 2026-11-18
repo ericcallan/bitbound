@@ -47,6 +47,9 @@ export function terrainMaterial(minEra = 2) {
         varying vec3 vTerrN;
         float terrRough;
         vec3 terrNormalW;
+        // forest-floor weight (the ground under the trees) and the generation here, for Beyond's dappled light
+        float terrForest;
+        float terrEra;
         // Layers with no weight at a pixel are skipped entirely (rock is only on cliffs, path only on the
         // path...). Sampling inside those branches uses explicit gradients so mip selection stays correct.
         vec2 gXZx, gXZy, gZYx, gZYy, gXYx, gXYy;
@@ -84,8 +87,8 @@ export function terrainMaterial(minEra = 2) {
         bool retro = tEra < 1.5;
         // Early 3D: textures sampled at a very low resolution (a forced coarse mip), like the first 3D consoles.
         // 8-bit and 16-bit (inside a bubble or field, or a retro band, in 3D): coarser still, so the ground keeps
-        // the scans' own colours (a cliff matches across a generation's edge) as broad flat regions, which the
-        // post pass then reduces to that generation's palette.
+        // the painted colours (a cliff matches across a generation's edge) as broad flat regions, which the post
+        // pass then reduces to that generation's palette.
         if (early3D || retro) {
           float k = retro ? 80.0 : 22.0;
           gXZx *= k; gXZy *= k; gZYx *= k; gZYy *= k; gXYx *= k; gXYy *= k;
@@ -111,8 +114,9 @@ export function terrainMaterial(minEra = 2) {
         }
         vec4 aG = vec4(0.0), aR = vec4(0.0), aP = vec4(0.0), aF = vec4(0.0);
         if (stylized) {
-          // Stylized: no photographs, flat painted colours per layer
-          aG = vec4(0.32, 0.62, 0.2, 0.9); aP = vec4(0.78, 0.6, 0.38, 0.9); aF = vec4(0.22, 0.42, 0.16, 0.9); aR = vec4(0.52, 0.42, 0.36, 0.9);
+          // Stylized: flat colours from the art bible's palette (linear): sage grass, warm path, moss forest floor,
+          // warm stone
+          aG = vec4(0.17, 0.3, 0.08, 0.9); aP = vec4(0.5, 0.29, 0.12, 0.9); aF = vec4(0.07, 0.15, 0.04, 0.9); aR = vec4(0.4, 0.31, 0.18, 0.9);
         } else {
           if (wG > EPS) aG = topA(t_grassA, 3.5);
           if (wP > EPS) aP = topA(t_pathA, 3.0);
@@ -123,19 +127,19 @@ export function terrainMaterial(minEra = 2) {
         vec4 W = vec4(wG, wR, wP, wF) * step(EPS, vec4(wG, wR, wP, wF)) * pow(vec4(dot(aG.rgb, vec3(0.33)), dot(aR.rgb, vec3(0.33)), dot(aP.rgb, vec3(0.33)), dot(aF.rgb, vec3(0.33))) + 0.35, vec4(3.0));
         W /= max(1e-4, W.x + W.y + W.z + W.w);
         vec4 A = aG * W.x + aR * W.y + aP * W.z + aF * W.w;
-        // the scanned grass reads khaki: push it toward a living meadow green, with gentle patchiness
-        float patchy = textureGrad(t_grassA, vTerrW.xz / 61.0, gXZx / 61.0, gXZy / 61.0).g;
-        A.rgb *= mix(vec3(1.0), mix(vec3(0.5, 0.82, 0.36), vec3(0.62, 0.86, 0.42), patchy), W.x);
-        A.rgb *= mix(vec3(1.0), vec3(0.85, 0.95, 0.72), W.w);
         terrRough = clamp(A.a, 0.35, 1.0);
-        if (early3D) A.rgb = floor(A.rgb * 9.0 + 0.5) / 9.0;
+        terrForest = W.w;
+        terrEra = tEra;
         // retro: one tone per ground kind where a layer dominates (the tiles' crisp edges, not a blend)
         if (retro) A.rgb = W.y > 0.5 ? aR.rgb : W.z > 0.5 ? aP.rgb : W.w > 0.5 ? aF.rgb * vec3(0.85, 0.95, 0.72) : A.rgb;
         if (stylized) {
           // soft painted bands of light and dark across the ground, and a crisp path edge
           float band = floor(noiseT(vTerrW.xz * 0.012).y * 4.0) / 4.0;
-          A.rgb *= 0.88 + band * 0.24;
-          A.rgb = mix(A.rgb, vec3(0.86, 0.7, 0.46), step(0.5, W.z) * 0.25);
+          A.rgb *= 0.9 + band * 0.18;
+          // value structure: slopes a band darker; the ground far behind the path paler and cooler (lavender
+          // distance). Measured from the path, not the camera: the 2D camera stands far back on a long lens.
+          A.rgb *= mix(1.0, 0.78, step(wn.y, 0.82));
+          A.rgb = mix(A.rgb, vec3(0.6, 0.57, 0.78), smoothstep(12.0, 70.0, -vTerrW.z) * 0.45);
         }
         // Modern HD and Beyond: steep rock is bedded stone. Thin darker seams and a slightly different tone per
         // layer, wandering a little, so cliffs read as layered formations rather than one smeared face.
@@ -193,6 +197,12 @@ export function terrainMaterial(minEra = 2) {
         '#include <aomap_fragment>',
         `#include <aomap_fragment>
         float tao = vSplat.a;
+        // Beyond: sunlight through leaves on the forest floor, drifting as the canopy moves
+        if (terrEra > 4.5 && terrForest > 0.05) {
+          float dp = noiseT(vTerrW.xz * 0.32 + vec2(uTime * 0.021, uTime * 0.013)).x * 0.6
+                   + noiseT(vTerrW.xz * 0.85 - vec2(uTime * 0.034, uTime * 0.02)).y * 0.4;
+          reflectedLight.directDiffuse *= mix(1.0, mix(0.45, 1.4, smoothstep(0.44, 0.6, dp)), min(1.0, terrForest * 1.2));
+        }
         reflectedLight.indirectDiffuse *= mix(0.3, 1.0, tao);
         reflectedLight.indirectSpecular *= mix(0.2, 1.0, tao);
         reflectedLight.directDiffuse *= mix(0.75, 1.0, tao);`,

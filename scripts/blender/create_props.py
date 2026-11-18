@@ -173,7 +173,7 @@ def signpost():
     bpy.ops.object.join()
     high = bpy.context.active_object
     high.data.materials.clear()
-    high.data.materials.append(C.ph_shader("sign_src", "bark_brown_02", scale=0.45, tint=(1.05, 0.95, 0.85), bump=0.7, bump_dist=0.01))
+    high.data.materials.append(C.painted_shader("sign_src", "bark", scale=0.45, tint=(1.05, 0.95, 0.85), bump=0.7, bump_dist=0.01))
     C.uv_unwrap(low, margin=0.01, angle=60)
     low.data.materials.append(C.principled("sign_tmp"))
     col, rough, nrm = C.bake_maps(low, high, size=512, name="signpost", extrusion=0.03)

@@ -3,11 +3,15 @@ import { MAX_RIFTS } from '../../era/EraSystem';
 import { AO_FRAG, BLUR_FRAG, COMPOSITE_FRAG, DOWN_FRAG, FS_VERT, PREFILTER_FRAG, RAYS_FRAG, UP_FRAG } from './shaders';
 
 /** The 8-bit palette (sRGB). Brand colours: burnt orange, cream, teal, cobalt, purple. */
+/**
+ * The 8-bit palette, tuned to the art bible (docs/ART_BIBLE.md §3): moss greens, warm earth and ivory stone,
+ * cobalt shadow. Indices keep their roles (tiles and sprites refer to them); 0 and 9 are also Pip's sprite colours.
+ */
 export const PALETTE_8 = [
-  '#0d0b1e', '#2b2d6e', '#3a5fcd', '#5ec8f0',
-  '#b4eeff', '#2fd6c3', '#1f8a5a', '#4cc24a',
-  '#a6e05a', '#fff4d6', '#ffcf6b', '#f0862a',
-  '#b8461f', '#6b3a2a', '#8e5bd6', '#c9c3d8',
+  '#0d0b1e', '#2b3354', '#3d5f9c', '#5ec8f0',
+  '#b4eeff', '#2fd6c3', '#2e7040', '#5ea83c',
+  '#b0d860', '#fff4d6', '#ffcf6b', '#f0862a',
+  '#a0603a', '#5e3a28', '#8e5bd6', '#cbb994',
 ];
 
 export type QualitySetting = 'auto' | 'high' | 'medium' | 'low';

@@ -27,7 +27,7 @@ const SPEC = {
     height: [0.8, 1.2],
   },
   // roots sink into the ground by design
-  tree: { nodes: ['great_tree', 'meadow_tree', 'meadow_tree_lod1'], maxTris: 120000, maxKB: 4000, height: [5, 16], baseTolerance: 0.5 },
+  tree: { nodes: ['great_tree', 'meadow_tree', 'meadow_tree_lod1', 'meadow_tree_shell', 'meadow_tree_low', 'great_tree_shell', 'great_tree_low'], maxTris: 120000, maxKB: 4000, height: [5, 16], baseTolerance: 0.5 },
   gateway: { nodes: ['shard_arch', 'ruin_column', 'block_step1', 'block_step2', 'block_float1', 'block_plinth', 'block_cliff'], maxTris: 90000, maxKB: 2500, height: [2, 32] },
   // two viaduct halves from the river to the deck, plus fallen stones; textured at runtime (no images). The halves
   // hang from their origin (the deck's underside, where the game places them), so the base check is off.
