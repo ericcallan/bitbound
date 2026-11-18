@@ -17,6 +17,10 @@ npm run assets:build   # rebuild every 3D asset from the Blender scripts (needs 
 
 ## Story: "Patch Day"
 
+> **Direction from here:** `docs/ART_BIBLE.md` (the art direction for all six generations) and `docs/CHAPTERS.md`
+> (the merged story in three acts, the six chapters as regions, and the roadmap). `docs/benchmark/` holds the
+> six-generation benchmark of the shard ruins.
+
 The valley is a world that updates itself, one graphics generation at a time, each time the world wheel on Mount
 Halo turns. The wheel stuck at version 1.0. Pip, a courier robot drawn in sixteen pixels, carries the missing
 updates up the mountain.
